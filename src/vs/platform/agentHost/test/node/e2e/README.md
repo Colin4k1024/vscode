@@ -114,6 +114,7 @@ The residual case is `providerHostOnlyTest(...)`: per-provider, but no model tra
 | `providers/copilotPromptsE2E.integrationTest.ts` | The provider request-body boundary: the complete model request body the bundled Copilot CLI sends, read off a replayed turn. See [Prompt snapshots](#prompt-snapshots). |
 | `coverage/summary.json` | Checked-in line coverage of the host implementation. |
 | `coverage/protocol-surface.json` | Checked-in coverage of the AHP contract itself. |
+| [`REPLAY_MATRIX.md`](./REPLAY_MATRIX.md) | Codex Desktop acceptance-matrix registry: negative-scenario (B-section) coverage, harness-integrity guarantees, live-only scenarios with reasons, and captures pending on unshipped behavior (D03–D05). |
 | [`KNOWN_ISSUES.md`](./KNOWN_ISSUES.md) | Inventory and reevaluation process for disabled or conditional tests. |
 
 Use these deterministic E2E tests when the value comes from running the bundled provider process with realistic captured model behavior: SDK event ordering, tool schemas and execution, provider persistence, protocol-to-provider mapping, or cross-provider parity. Use `../providerIntegration/` for a bundled provider with a synthetic local LLM, and an ordinary unit test when no server process is required. `../protocol/` is frozen; do not add to it.

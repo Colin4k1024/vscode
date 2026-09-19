@@ -1,0 +1,35 @@
+version: 1
+dialect: responses
+exchanges:
+  - request:
+      model: gpt-5.3-codex
+      system: ${system}
+      messages:
+        - role: user
+          content: Call return_nothing exactly once with no arguments, then reply exactly DONE_EMPTY_TOOL_OK.
+    response:
+      content:
+        - type: tool_use
+          id: toolcall_0
+          name: return_nothing
+          input: {}
+      stopReason: tool_use
+  - request:
+      model: gpt-5.3-codex
+      system: ${system}
+      messages:
+        - role: user
+          content: Call return_nothing exactly once with no arguments, then reply exactly DONE_EMPTY_TOOL_OK.
+        - role: assistant
+          content:
+            - type: tool_use
+              name: return_nothing
+              input: {}
+        - role: user
+          content:
+            - type: tool_result
+              tool_use_id: toolcall_0
+              content: Tool completed with no output.
+    response:
+      content: DONE_EMPTY_TOOL_OK
+      stopReason: end_turn

@@ -91,3 +91,68 @@ jobs:
       - name: Agent Host unit tests
         timeout-minutes: 20
         run: npm run test-node -- --runGlob "vs/platform/agentHost/test/node/**/*.test.js"
+
+  # D11 (#13): the deterministic Agent Host E2E replay suite as a required PR
+  # gate — tokenless and networkless (all model traffic is replayed from
+  # committed fixtures; see src/vs/platform/agentHost/test/node/e2e/README.md).
+  # Runs on every pull_request like the job above, never only on demand.
+  agent-host-e2e:
+    name: Agent Host E2E replay matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Restore node_modules cache
+        id: cache-node-modules
+        uses: ./.github/actions/restore-node-modules
+        with:
+          key-prefix: node_modules-codex-desktop
+          key-args: "compile $(node -p process.arch)"
+
+      - name: Install build tools
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: sudo apt update -y && sudo apt install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libnotify-bin libkrb5-dev
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: |
+          set -e
+
+          for i in {1..5}; do # try 5 times
+            npm ci && break
+            if [ $i -eq 5 ]; then
+              echo "Npm install failed too many times" >&2
+              exit 1
+            fi
+            echo "Npm install $i failed, trying again..."
+          done
+        env:
+          # The E2E tests execute inside Electron, so unlike the unit-test job
+          # the binary must be present; it is fetched by `npm run electron`
+          # inside the runner's prelaunch step below.
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save node_modules cache
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-node-modules
+
+      - name: Transpile client and extensions
+        run: npm run gulp transpile-client-esbuild transpile-extensions
+
+      # Deterministic replay only: AGENT_HOST_REPLAY_RECORD /
+      # AGENT_HOST_UPDATE_SNAPSHOTS are rejected by the runner, so this gate
+      # can never reach a real model backend.
+      - name: Agent Host E2E replay suite
+        timeout-minutes: 45
+        run: npm run test-agent-host-e2e

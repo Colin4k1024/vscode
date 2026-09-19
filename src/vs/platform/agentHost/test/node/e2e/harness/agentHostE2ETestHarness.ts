@@ -1035,6 +1035,16 @@ export class AgentHostE2EServerLease {
 		return client;
 	}
 
+	/**
+	 * The isolated Codex home directory this lease confines provider config to.
+	 * Exposure for isolation assertions (D11 #13): a test that plants an ambient
+	 * `CODEX_HOME` override can prove the server ignored it by checking this
+	 * directory — not the probe — is the one the provider actually used.
+	 */
+	get codexHomeDir(): string {
+		return this._startOptions.codexHomeDir;
+	}
+
 	/** Stop the current shared server so the next {@link acquire} starts a fresh one. */
 	private async _recycleSharedServer(): Promise<void> {
 		try {

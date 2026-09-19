@@ -1,0 +1,23 @@
+version: 1
+dialect: responses
+# Deliberately over-provisioned: the driven turn consumes only the first
+# exchange, so replay verification must report the second as unconsumed.
+exchanges:
+  - request:
+      model: gpt-5.3-codex
+      system: ${system}
+      messages:
+        - role: user
+          content: Say exactly "hello" and nothing else
+    response:
+      content: hello
+      stopReason: end_turn
+  - request:
+      model: gpt-5.3-codex
+      system: ${system}
+      messages:
+        - role: user
+          content: Say exactly "hello" and nothing else
+    response:
+      content: hello again
+      stopReason: end_turn

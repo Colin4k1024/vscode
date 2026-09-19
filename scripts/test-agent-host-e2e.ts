@@ -58,6 +58,11 @@ const suites: readonly ISuite[] = [
 		file: 'src/vs/platform/agentHost/test/node/e2e/providers/codexAgentHostE2E.integrationTest.ts',
 	},
 	{
+		id: 'codex-matrix',
+		label: 'Codex (acceptance matrix)',
+		file: 'src/vs/platform/agentHost/test/node/e2e/providers/codexReplayMatrixAgentHostE2E.integrationTest.ts',
+	},
+	{
 		id: 'copilot',
 		label: 'Copilot',
 		file: 'src/vs/platform/agentHost/test/node/e2e/providers/copilotAgentHostE2E.integrationTest.ts',

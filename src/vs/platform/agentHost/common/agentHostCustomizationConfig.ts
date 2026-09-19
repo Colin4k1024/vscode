@@ -7,6 +7,7 @@ import { localize } from '../../../nls.js';
 import { createSchema, schemaProperty } from './agentHostSchema.js';
 import { CustomizationType, type Customization, type PluginCustomization } from './state/protocol/state.js';
 import { customizationId } from './state/sessionState.js';
+import { AgentHostAllowSignedOutWhenUsableProductDefault } from './agentService.js';
 
 /**
  * Well-known root-config keys used by the platform to configure agent-host
@@ -102,7 +103,7 @@ export const agentHostCustomizationConfigSchema = createSchema({
 		// forwarding — its operator sets the key in that host's
 		// agent-host-config.json. `getRootValue` does not consult schema
 		// defaults. Upstream default: false, opt-in only.
-		default: true,
+		default: AgentHostAllowSignedOutWhenUsableProductDefault,
 	}),
 	[AgentHostConfigKey.SessionCustomizationDiscoveryMode]: schemaProperty<SessionCustomizationDiscoveryMode>({
 		type: 'string',

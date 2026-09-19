@@ -8,33 +8,21 @@ import { isWeb } from '../../../base/common/platform.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/common/utils.js';
 import { ConditionalAuthState, conditionalAuthState, isAllowSignedOutWhenUsableEnabled, resolveSignedOutWindowGate, shouldShowGitHubWorkspaceGroupSignIn, SignedOutWindowGate } from '../../browser/sessionsAuthGate.js';
 import { TestConfigurationService } from '../../../platform/configuration/test/common/testConfigurationService.js';
-import { Registry } from '../../../platform/registry/common/platform.js';
-import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../platform/configuration/common/configurationRegistry.js';
-import { AgentHostAllowSignedOutWhenUsableSettingId } from '../../../platform/agentHost/common/agentService.js';
+import { AgentHostAllowSignedOutWhenUsableProductDefault, AgentHostAllowSignedOutWhenUsableSettingId } from '../../../platform/agentHost/common/agentService.js';
 import { SessionTypeAuthRequirement } from '../../services/sessions/common/session.js';
-
-// Import the registration for its side effect: nothing in the test graph
-// otherwise reaches chat.shared.contribution.js (the setting's only
-// registration point), so without this the registry lookup below would
-// always be undefined.
-import '../../../workbench/contrib/chat/browser/chat.shared.contribution.js';
-
-// Capture the registered property at module scope, before any test in the
-// shared registry's lifetime can deregister it (same pattern as
-// sessions.contribution.test.ts).
-const registeredAllowSignedOutWhenUsable = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
-	.getConfigurationProperties()[AgentHostAllowSignedOutWhenUsableSettingId];
 
 suite('Sessions - Auth Gate', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
 
-	test('the fork product registers signed-out use as the default (D04)', () => {
-		// Locks the actual behavior change of D04/#6: if a rebase reintroduces
-		// `default: false` or the setting id changes, this fails even though the
-		// gate-logic tests below would stay green.
-		assert.ok(registeredAllowSignedOutWhenUsable, `setting ${AgentHostAllowSignedOutWhenUsableSettingId} is not registered`);
-		assert.strictEqual(registeredAllowSignedOutWhenUsable.default, true);
+	test('the fork product default for signed-out use is on (D04)', () => {
+		// Locks the single point of truth both registrations consume (workbench
+		// settings schema + agent-host root-config schema). Importing the
+		// registration modules themselves is not an option here: their side
+		// effects (command registrations) collide with their own tests when
+		// loaded in the same process, and the layering rules for this directory
+		// do not allow reaching vs/workbench/contrib/** anyway.
+		assert.strictEqual(AgentHostAllowSignedOutWhenUsableProductDefault, true);
 	});
 
 	test('signed-out use stays gated to desktop: enabled state is exactly `!isWeb` when the setting is on', () => {

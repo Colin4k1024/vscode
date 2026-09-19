@@ -7,22 +7,32 @@ import assert from 'assert';
 import { isWeb } from '../../../base/common/platform.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/common/utils.js';
 import { ConditionalAuthState, conditionalAuthState, isAllowSignedOutWhenUsableEnabled, resolveSignedOutWindowGate, shouldShowGitHubWorkspaceGroupSignIn, SignedOutWindowGate } from '../../browser/sessionsAuthGate.js';
-import type { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
+import { TestConfigurationService } from '../../../platform/configuration/test/common/testConfigurationService.js';
+import { Registry } from '../../../platform/registry/common/platform.js';
+import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../../platform/configuration/common/configurationRegistry.js';
+import { AgentHostAllowSignedOutWhenUsableSettingId } from '../../../platform/agentHost/common/agentService.js';
 import { SessionTypeAuthRequirement } from '../../services/sessions/common/session.js';
 
 suite('Sessions - Auth Gate', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
 
+	test('the fork product registers signed-out use as the default (D04)', () => {
+		// Locks the actual behavior change of D04/#6: if a rebase reintroduces
+		// `default: false` or the setting id changes, this fails even though the
+		// gate-logic tests below would stay green.
+		const registered = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
+			.getConfigurationProperties()[AgentHostAllowSignedOutWhenUsableSettingId];
+		assert.ok(registered, `setting ${AgentHostAllowSignedOutWhenUsableSettingId} is not registered`);
+		assert.strictEqual(registered.default, true);
+	});
+
 	test('signed-out use stays gated to desktop: enabled state is exactly `!isWeb` when the setting is on', () => {
 		// D04/#6 acceptance: web always requires sign-in. In a web context this
 		// asserts the `!isWeb` guard keeps the feature off even with the setting
 		// on; in an Electron renderer it asserts the same expression forwards
 		// `true`, so the test is meaningful in whichever suite loads it.
-		const configurationService = {
-			getValue: () => true,
-			onDidChangeConfiguration: undefined,
-		} as unknown as IConfigurationService;
+		const configurationService = new TestConfigurationService({ [AgentHostAllowSignedOutWhenUsableSettingId]: true });
 		assert.strictEqual(isAllowSignedOutWhenUsableEnabled(configurationService), !isWeb);
 	});
 

@@ -94,12 +94,14 @@ export const agentHostCustomizationConfigSchema = createSchema({
 		type: 'boolean',
 		title: localize('agentHost.config.allowSignedOutWhenUsable.title', "Allow Signed-Out Agent Host"),
 		description: localize('agentHost.config.allowSignedOutWhenUsable.description', "When enabled, Agent Host sessions remain available while signed out as long as the selected agent has a usable model and authentication (for example Codex with ChatGPT authentication or Claude in native mode with your own Anthropic credentials). When disabled, GitHub sign-in is required."),
-		// Fork product default (D04/#6): metadata for the published settings
-		// schema only. Node-side readers see the value through the workbench
-		// forwarder (the connected case, which is this product's primary path);
-		// an unconnected agent host without a forwarded value stays off —
-		// `getRootValue` does not consult schema defaults. Upstream default:
-		// false, opt-in only.
+		// Fork product default (D04/#6): metadata for the agent-host root-config
+		// protocol schema (published via toProtocol) only — not the VS Code
+		// settings schema users see. Node-side readers see the value through
+		// the workbench forwarder, which covers the LOCAL agent host (this
+		// product's primary path); a connected REMOTE agent host also gets no
+		// forwarding — its operator sets the key in that host's
+		// agent-host-config.json. `getRootValue` does not consult schema
+		// defaults. Upstream default: false, opt-in only.
 		default: true,
 	}),
 	[AgentHostConfigKey.SessionCustomizationDiscoveryMode]: schemaProperty<SessionCustomizationDiscoveryMode>({

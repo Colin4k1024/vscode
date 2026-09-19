@@ -13,6 +13,18 @@ import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '.
 import { AgentHostAllowSignedOutWhenUsableSettingId } from '../../../platform/agentHost/common/agentService.js';
 import { SessionTypeAuthRequirement } from '../../services/sessions/common/session.js';
 
+// Import the registration for its side effect: nothing in the test graph
+// otherwise reaches chat.shared.contribution.js (the setting's only
+// registration point), so without this the registry lookup below would
+// always be undefined.
+import '../../../workbench/contrib/chat/browser/chat.shared.contribution.js';
+
+// Capture the registered property at module scope, before any test in the
+// shared registry's lifetime can deregister it (same pattern as
+// sessions.contribution.test.ts).
+const registeredAllowSignedOutWhenUsable = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
+	.getConfigurationProperties()[AgentHostAllowSignedOutWhenUsableSettingId];
+
 suite('Sessions - Auth Gate', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
@@ -21,10 +33,8 @@ suite('Sessions - Auth Gate', () => {
 		// Locks the actual behavior change of D04/#6: if a rebase reintroduces
 		// `default: false` or the setting id changes, this fails even though the
 		// gate-logic tests below would stay green.
-		const registered = Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
-			.getConfigurationProperties()[AgentHostAllowSignedOutWhenUsableSettingId];
-		assert.ok(registered, `setting ${AgentHostAllowSignedOutWhenUsableSettingId} is not registered`);
-		assert.strictEqual(registered.default, true);
+		assert.ok(registeredAllowSignedOutWhenUsable, `setting ${AgentHostAllowSignedOutWhenUsableSettingId} is not registered`);
+		assert.strictEqual(registeredAllowSignedOutWhenUsable.default, true);
 	});
 
 	test('signed-out use stays gated to desktop: enabled state is exactly `!isWeb` when the setting is on', () => {

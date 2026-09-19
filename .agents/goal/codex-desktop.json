@@ -119,7 +119,7 @@
         "D17"
       ],
       "state": "open",
-      "note": "D17 已裁定：采用 grok-code-product mixin 结构",
+      "note": "WIP 已推送（占位名 OpenAgents）；续作排队（等 D11 完成后重启以省配额）",
       "deps_ok": true
     },
     "#9": {
@@ -179,7 +179,7 @@
         "D02"
       ],
       "state": "in_progress",
-      "note": "子代理实施中（worktree d11）"
+      "note": "续作子代理运行中（分支 -cont，基于 WIP）"
     },
     "#14": {
       "d": "D12",
@@ -305,6 +305,10 @@
     {
       "ts": "2026-09-19T23:00+08:00",
       "event": "D17 CLOSED: pi r3 APPROVE 8.6 → merged 567ebe16ed7; D06/D07/D08/D09 unlocked; D04 review running; D11 subagent running"
+    },
+    {
+      "ts": "2026-09-20T07:05+08:00",
+      "event": "USER DIRECTIVE: commit+push all local code. Executed: D04 r1 fixes (97e0040f31c, 物化回退+注释路线+注册默认断言测试, 6492 全绿) + goal-state snapshot (ca8a5d31d45) pushed; D11 WIP branch pushed (captures/harness/matrix partial); D06 WIP branch pushed (product/ mixin+clientInfo+placeholder OpenAgents partial). Both subagents died on 5h usage limit at 22:32; limit reset, D11 continuation agent relaunched on codex-desktop/d11-replay-matrix-cont; D06 continuation queued. D04 pi r2 review launched."
     }
   ],
   "review_state": {

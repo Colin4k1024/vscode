@@ -1,0 +1,93 @@
+name: Codex Desktop Baseline
+
+# D01 (#3): minimal reproducible bootstrap + transpile + codex protocol sync +
+# agent-host unit test subset on a stock GitHub-hosted runner. Runs on PRs and
+# on demand; later issues (D11/D14) fold these checks into PR-required gates.
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VSCODE_QUALITY: 'oss'
+
+jobs:
+  linux:
+    name: Bootstrap, transpile, protocol sync, agent-host unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Fast feedback before any heavy step: the bootstrap script is not
+      # otherwise exercised on CI (CI installs via npm ci directly), so at
+      # least statically gate it (round-2 review caught a set -euo pipefail
+      # glob regression that local runs and CI were both blind to).
+      - name: Shellcheck bootstrap script
+        run: |
+          command -v shellcheck >/dev/null || sudo apt install -y shellcheck
+          shellcheck .agents/research/codex-desktop/bootstrap.sh
+
+      - name: Restore node_modules cache
+        id: cache-node-modules
+        uses: ./.github/actions/restore-node-modules
+        with:
+          key-prefix: node_modules-codex-desktop
+          key-args: "compile $(node -p process.arch)"
+
+      - name: Install build tools
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: sudo apt update -y && sudo apt install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libnotify-bin libkrb5-dev
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: |
+          set -e
+
+          for i in {1..5}; do # try 5 times
+            npm ci && break
+            if [ $i -eq 5 ]; then
+              echo "Npm install failed too many times" >&2
+              exit 1
+            fi
+            echo "Npm install failed $i, trying again..."
+          done
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save node_modules cache
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-node-modules
+
+      - name: Transpile client and extensions
+        run: npm run gulp transpile-client-esbuild transpile-extensions
+
+      - name: Check clean git state
+        run: bash .github/workflows/check-clean-git-state.sh
+
+      - name: Codex protocol sync
+        run: npm run codex:check-protocol
+
+      - name: Agent Host unit tests
+        timeout-minutes: 20
+        run: npm run test-node -- --runGlob "vs/platform/agentHost/test/node/**/*.test.js"

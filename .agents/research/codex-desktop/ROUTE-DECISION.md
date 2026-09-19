@@ -3,6 +3,8 @@
 > **结论（一句话）**：裁定 **本仓库 agentHost 为产品内核** + **移植 grok-code-product 流水线**（逐脚本评估见 §4）+ **以 grok-build ISS-057 为 UX 验收基准**（差距表见 §5，fallback 条件见 §6）——实测确认了 `00-FINDINGS.md` §7.2 的推荐，并**纠正了 §7.1 的一个关键事实错误**：grok-build 的 ACP 层连接的是 `xai-grok-pager`（x.ai Grok agent），**从不连接 codex**；它对 codex 的全部价值是「Codex App Desktop 交互基准（ISS-057）+ 少量模式参考」，不存在「另一条 codex 集成路线」。
 >
 > Issue：Colin4k1024/vscode#2（Part of #1）。调研日期：2026-09-19。基线：`origin/main` @ `cb9b6e568bd`。
+>
+> 路径约定：文中 `/Users/jiafan/...` 为调研机本地路径——`/Users/jiafan/Desktop/poc/vscode` = 本仓库任意工作副本，`/tmp/d17-grok-build` = grok-build 的浅 clone（可重新 clone 复现），换机时按此替换。
 > 输入文档：`00-FINDINGS.md` §7、`LICENSE-CLEARANCE.md`（D10 已合并，其合规约束贯穿本文：copilot 硬阻断 → §4 脚本评估、MS Marketplace 禁入 → D15、clientInfo.name 必改 → D06）。
 
 ---
@@ -31,9 +33,9 @@
 | **grok-code-product**（Colin4k1024/grok-code-product） | Code OSS **瘦发行 overlay 构建系统**（非 fork，独立仓库），`UPSTREAM_COMMIT=138f619c86f1`（1.96 时代），`VERSION 0.1.0`，最后 push 2026-08-12；`patches/` 目录**实际为空**（仅 `.gitkeep`）——overlay 路线当前以 0 patch 运行 | `gh api repos/.../contents/patches` → 仅 `.gitkeep`；10 个脚本逐字审读（§4） |
 | 附：**grok-code-extension** | VS Code 扩展（`engines.vscode ^1.96.0`，ACP，publisher 残留 `xai`），为 grok-code-product 瘦发行服务的内置扩展 | `gh api .../contents/package.json`；去留见 §9 |
 
-**对 `00-FINDINGS.md` §7.1 的纠正**：原文把 grok-build 列为「与 Codex 的接法：ACP（较薄）」并放入三条 codex 集成路线对比。实测表明 grok-build 的 ACP 客户端连接 Grok agent，**没有任何 codex 连接代码**。因此：
+**对 `00-FINDINGS.md` §7.1 的纠正**：原文把 grok-build 列为「与 Codex 的接法：ACP（较薄）」并放入三条 codex 集成路线对比。实测表明 grok-build 的 ACP 客户端连接 Grok agent，**没有任何 codex agent 连接/spawn 代码**（全仓库 grep `app-server|app_server` = 0 命中）。它对 codex 仅有两处非连接性感知：`main.ts:707` 扫描 `~/.codex/skills` 供 composer `$` 触发，以及 `crates/codegen/xai-grok-foreign-sessions` 的**只读 codex rollout 导入器**（CodexCli/VsCode/Atlas/ChatGpt 四源 + zstd 解压）——后者反而是 D03/D04 可借鉴的资产（跨产品会话导入的模式），不应被绝对化表述掩盖。因此：
 
-- 「ACP vs app-server 能力矩阵」（§3）的真实语义是**协议层对比**——回答「若回退 grok-build 路线并把 codex 接进去，ACP 这一薄协议层要付出什么代价」，而不是「两条已有 codex 集成的优劣」。codex 官方不提供 ACP server；把 codex 接入 grok-build 需要二选一：(a) 写 codex→ACP 适配层（协议折叠，丢能力，§3 逐项列损）；(b) 把 `acp-session.ts` 重写为 app-server 客户端（等于重写本仓库 `codexAgent.ts` 15k LOC 的前身，并放弃 103 replay capture 的回归资产）。
+- 「ACP vs app-server 能力矩阵」（§3）的真实语义是**协议层对比**——回答「若回退 grok-build 路线并把 codex 接进去，ACP 这一薄协议层要付出什么代价」，而不是「两条已有 codex 集成的优劣」。codex 官方不提供 ACP server；把 codex 接入 grok-build 需要二选一：(a) 写 codex→ACP 适配层（协议折叠，丢能力，§3 逐项列损）；(b) 把 `acp-session.ts` 重写为 app-server 客户端（等于重写本仓库 codex 集成层的前身（26 个手写文件共 ~15k LOC，其中 `codexAgent.ts` 8,427 行；另有 828 个生成协议类型 / 13,550 行），并放弃 103 replay capture 的回归资产）。
 - grok-build 的可复用资产是**UX 层**（ISS-057 基准 + 已完成的 11 个交互子任务）与**工程模式**（keychain auth / detach / journal / TPN 格式），与 codex 协议层无关。
 
 ---
@@ -72,7 +74,7 @@ unset ELECTRON_RUN_AS_NODE GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
 **结论要点**：
 1. Codex provider 注册成功且走 **OpenAI 原生认证**（`account/read` 探测，读 `~/.codex` 凭据，**只做 account/read，未发起任何付费 turn**，探测 2.1s 内完成并回收子进程）。
 2. app-server 二进制从仓库 `node_modules` vendored 路径拉起——D02 的供给机制在 dev 形态下已工作。
-3. 渲染层确认：`window1/renderer.log` 出现 `[sessions welcome] Showing sign-in dialog`——**已知 G6 GitHub 登录墙仍在**（修复归 D04/#6），数据链路本身通（本机 `~/.codex/sessions` 218 个会话目录、`~/.codex/skills` 218 项可被发现）。
+3. 渲染层确认：`window1/renderer.log` 出现 `[sessions welcome] Showing sign-in dialog`——**已知 G6 GitHub 登录墙仍在**（修复归 D04/#6），数据链路本身通（实测：`find ~/.codex/sessions -name 'rollout*' | wc -l` = **174 个 rollout 文件**（分布于 72 个会话日期目录，另有 12 个 archived）、`ls ~/.codex/skills | wc -l` = **218 项**可被发现）。
 4. 测后清理：`kill <pid>` 后 `pgrep -f "codex app-server"` **无孤儿**，runDir 已删除。
 
 ### 2.2 grok-build：静态审计（如实标注：未跑起）
@@ -90,7 +92,7 @@ for i in 106..116; gh issue view $i --json state   # 11 个子 issue 全部 CLOS
 ```
 
 **客户端能力面（`acp-session.ts` 逐方法）**：`initialize`（protocolVersion 1，声明 `fs.readTextFile/writeTextFile`，`terminal: false`）、`authenticate`、`session/new`、`session/load`（恢复）、`session/prompt`（含 `_meta.promptId/screenMode`）、`session/set_model`、`session/cancel`；服务端→客户端请求处理：`session/request_permission`（唯一审批通道）、`x.ai/ask_user_question`（x.ai 私有扩展，elicitation 等价物）、`fs/read_text_file`、`fs/write_text_file`（jail 到会话根）；通知：`session/update`（`agent_message_chunk/agent_thought_chunk/user_message_chunk(replay)/tool_call/tool_call_update/plan/usage_update`）+ `x.ai/session_notification`（auto_compact 四态）。MCP 以 `mcpServers: []` 传参（客户端不管理 MCP 会话，配置写 `~/.grok/config.toml` 由 agent 端自连，`mcp-config.ts`）。
-**Rust 端 dispatch（`acp_handler/mod.rs`）**：`session/update` 为主通知通道，`x.ai/ask_user_question` 为唯一扩展请求入口；另有 background/evolution/follow_ups/interactions/mcp/permissions/prompt_origin/queue/routing/session_notification/settings/subagent_*/workflow_ingest 模块（agent 内部功能，多数不经 ACP 暴露）。
+**Rust 端 dispatch（`acp_handler/mod.rs`）**：`session/update` 为主通知通道；扩展请求入口共 3 个（`mod.rs:700-704`：`x.ai/ask_user_question`、`x.ai/exit_plan_mode`、`x.ai/mcp/elicit`），另有扩展通知 `x.ai/mcp/elicit_complete`（:626）；另有 background/evolution/follow_ups/interactions/mcp/permissions/prompt_origin/queue/routing/session_notification/settings/subagent_*/workflow_ingest 等 15 个 .rs 模块（agent 内部功能，多数不经 ACP 暴露）。
 
 ### 2.3 grok-code-product：脚本全量拉取审读
 
@@ -105,7 +107,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 
 ## 3. ACP vs app-server 能力覆盖矩阵（验收 2：逐方法）
 
-列说明：**app-server（本仓库）** = `codex app-server` v2 协议提供且 `codexAgent.ts` 实际接线的方法（证据 = `grep -oE "'[a-zA-Z]+/[a-zA-Z/]+'" codexAgent.ts` 提取的 68 个方法名 + 处理函数行号）；**ACP 标准** = Zed Agent Client Protocol v1 的协议面（以 grok-build 客户端声明的 protocolVersion 1 为准）；**grok-build 实现** = `acp-session.ts` 实际代码（§2.2）。
+列说明：**app-server（本仓库）** = `codex app-server` v2 协议提供且 `codexAgent.ts` 实际接线的方法（证据 = `grep -oE "'[a-zA-Z]+/[a-zA-Z/]+'" codexAgent.ts` 提取的 67 个方法名 + 处理函数行号）；**ACP 标准** = Zed Agent Client Protocol v1 的协议面（以 grok-build 客户端声明的 protocolVersion 1 为准）；**grok-build 实现** = `acp-session.ts` 实际代码（§2.2）。
 
 ### 3.1 审批（7 类 vs 1 类）
 
@@ -116,7 +118,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | 3 | `item/fileChange/requestApproval`（codexAgent.ts:2651；决策 `accept/acceptForSession/decline/cancel`） | 无 | 同上 | 「本会话内全部接受」语义靠 ACP `allow_always` 近似，patch 粒度信息丢失 |
 | 4 | `item/permissions/requestApproval`（网络/文件系统权限升级；`_requestItemApproval` codexAgent.ts:3808） | 无 | 同上 | 权限升级与命令审批混为一谈 |
 | 5 | `item/tool/requestUserInput`（模型 ask_user；codexAgent.ts:2671） | 无 | `x.ai/ask_user_question`（**私有扩展**，非 ACP 标准） | codex 无此扩展，需自造等价物 |
-| 6 | `mcpServer/elicitation/request`（MCP server 发起；codexAgent.ts:2679，mapper `codexElicitationMapper.ts`） | 无 | 无 | 完全缺失 |
+| 6 | `mcpServer/elicitation/request`（MCP server 发起；codexAgent.ts:2679，mapper `codexElicitationMapper.ts`） | 无 | agent 端存在私有 `x.ai/mcp/elicit`（+ `elicit_complete` 通知），但 Electron 客户端**未实现**（`acp-session.ts:494-501` 对未声明方法返回 -32601） | 回退路线仍需自建客户端侧等价物（私有扩展不能跨 agent 复用） |
 | 7 | `item/autoApprovalReview/started/completed` + `thread/approveGuardianDeniedAction`（Guardian 自动审批复核与 deny override；codexAgent.ts:4008） | 无 | 无 | 完全缺失 |
 
 ### 3.2 会话生命周期与恢复
@@ -124,7 +126,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | 能力 | app-server（本仓库） | ACP 标准 / grok-build | 结论 |
 |---|---|---|---|
 | 新会话 | `thread/start` + `thread/started`（含 `dynamicTools` 注入位） | `session/new` | 等价 |
-| 恢复 | `thread/resume`（原生）+ rollout 文件发现（`codexRolloutMetadata.ts`；实测发现本机 218 个 `~/.codex/sessions` 目录） | `session/load` + `_meta.isReplay` 转录重放（客户端 `journal.ts`/`transcript-store.ts` 自持久化，ISS-057 前置工作） | 形态不同：app-server 恢复是协议原生；ACP 靠客户端自建 journal 模拟 |
+| 恢复 | `thread/resume`（原生）+ rollout 文件发现（`codexRolloutMetadata.ts`；实测 `find ~/.codex/sessions -name 'rollout*' | wc -l` = 174 个 rollout 文件 / 72 个目录） | `session/load` + `_meta.isReplay` 转录重放（客户端 `journal.ts`/`transcript-store.ts` 自持久化，ISS-057 前置工作） | 形态不同：app-server 恢复是协议原生；ACP 靠客户端自建 journal 模拟 |
 | fork | `thread/fork`（协议原生，`codexForkPlan.ts` 决定分支边界） | 无；grok-build 的 fork 是客户端复制转录（ISS-079） | ACP 亏 |
 | side-chat / peer chat | `multipleChats: { fork: true, sideChat: true }`（codexAgent.ts:4156）+ peer-chat 目录 | 无 | ACP 亏 |
 | checkpoint / 回滚 | `thread/revert` + `thread/rollback` + `IAgentHostCheckpointService` 基线快照（codexAgent.ts:5852） | 无（grok-build 仅 diff 审阅 `git-review.ts`） | ACP 亏 |
@@ -138,7 +140,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | 能力 | app-server（本仓库） | grok-build / ACP | 结论 |
 |---|---|---|---|
 | MCP | `mcpServer/tool/call`、`mcpServer/resource/read`、`mcpServer/startupStatus/updated`、`mcpServerStatus/list`、`config/mcpServer/reload`、VS Code 动态 OAuth 客户端注册（`codexMcpServers.ts:359`） | 客户端只编辑 `~/.grok/config.toml` 的 `[mcp_servers.*]` 表（`mcp-config.ts`），会话传 `mcpServers: []` | ACP 面 MCP 管理≈0 |
-| skills | `skills/list`、`skills/changed`（变更订阅）、`skills/extraRoots/set`（`codexCustomizations.ts:304`；实测 Agents 窗口发现 218 项） | `main.ts:707 skills_list` 扫 4 目录（含 `~/.codex/skills`）仅为 composer `$` 触发提供名称+描述；无变更订阅 | 静态清单 vs 活生态 |
+| skills | `skills/list`、`skills/changed`（变更订阅）、`skills/extraRoots/set`（调用点 `codexAgent.ts:7523`；实测 Agents 窗口发现 218 项 skills） | `main.ts:707 skills_list` 扫 4 目录（含 `~/.codex/skills`）仅为 composer `$` 触发提供名称+描述；无变更订阅 | 静态清单 vs 活生态 |
 | hooks | `hooks/list`（`codexCustomizations.ts:402` 只读呈现） | 无 | ACP 亏 |
 | plugins | 客户端插件同步+解析（`codexClientCustomizations.ts`） | 无 | ACP 亏 |
 | server tools | `serverToolGroups` 能力声明 + `tools/call`（codexAgent.ts:216,76） | 无 | ACP 亏 |
@@ -154,7 +156,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | Guardian auto-review | `item/autoApprovalReview/*` + `codexGuardianReview.ts` | 无 | ACP 亏 |
 | 遥测通道 | `agentHostTelemetry.log` / 未接线清单（`remoteControl/status/changed` 已知丢弃，D16 范围） | 无 | — |
 
-**矩阵总结**：25 个能力族中，ACP（grok-build 实现面）等价/近似 8 个（会话生命周期主干、模型选择、compact、plan/usage、认证、审批的泛化单通道、转录重放式恢复、skills 静态清单），其中 2 个依赖 x.ai 私有扩展；其余 17 个（审批 7 类中的 5 类细分、elicitation、fork/side-chat/peer-chat、checkpoint/revert/rollback、rollout 原生恢复、steer、MCP 管理、skills 变更订阅、hooks、plugins、server/dynamic tools、rate limits、Guardian）**缺失或需协议外自建**。若走 grok-build 路线接 codex，要么接受能力折叠，要么重写协议客户端（≈重演 15k LOC + 190 次上游提交的沉淀过程，且失去上游每周推进的免费维护）。
+**矩阵总结**：25 个能力族中，ACP（grok-build 实现面）等价/近似 8 个（会话生命周期主干、模型选择、compact、plan/usage、认证、审批的泛化单通道、转录重放式恢复、skills 静态清单），其中 2 个依赖 x.ai 私有扩展；其余 17 个（审批 7 类中的 5 类细分、elicitation、fork/side-chat/peer-chat、checkpoint/revert/rollback、rollout 原生恢复、steer、MCP 管理、skills 变更订阅、hooks、plugins、server/dynamic tools、rate limits、Guardian）**缺失或需协议外自建**。若走 grok-build 路线接 codex，要么接受能力折叠，要么重写协议客户端（≈重演 codex 集成层 26 文件 ~15k LOC（codexAgent.ts 单文件 8,427 行）+ 190 次上游提交的沉淀过程，且失去上游每周推进的免费维护）。
 
 ---
 
@@ -172,7 +174,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | 6 | `generate-icons.sh`（54） | **直接复用** | rsvg-convert 多尺寸 PNG + `iconutil -c icns`（含 @2x）+ ImageMagick .ico——与 VS Code 各平台图标槽位（apply-patches 的四目录）严丝合缝。仅改输出文件名（D06 品牌定案后）；macOS 工具链（iconutil）本机已有 | 0.25 PD |
 | 7 | `generate-sbom.sh`（68） | **不用** | **维持 D10 §14 裁定**：不移植本体。其 SBOM 是手写 3 组件（vscode MIT / agent Apache-2.0 / "See node_modules/*/package.json" 指针），粒度不满足 D09 验收；正确路线 = 以仓库 `cgmanifest.json` + `cglicenses.json` 为基线合并 node_modules/cargo 差集生成（D10 已给出 npm 1088 包 / cargo 1457 crate 的扫描配方） | 0（D09/D19 另立） |
 | 8 | `check-update.sh`（27） | **改造后复用** | curl + python3 解析 update 服务（version/url/sha256 三字段）的客户端形态可保留；改造点：URL 换 D09 自托管端点、补 channel/平台矩阵与**签名校验**（只信 sha256 不够，需配合产物签名）；服务端是 D09 的另一工作项 | 1 PD（客户端侧） |
-| 9 | `sync-upstream.sh`（68） | **改造后复用** | 6 步编排（fetch → 分支 → apply → 版本记录 → 冲突检查 → 总结）的骨架适合 D14 runbook 落地为脚本。改造点：(a) 步骤 3 从 apply-patches 换成 **fork merge + mixin 重放**（in-tree 语义）；(b) 其冲突检查（`git diff --diff-filter=U`）在 `git apply` 流程下**实际无效**（apply 不产生 unmerged 状态）——fork merge 流程下用 `git merge` 的真实冲突退出码替代；(c) 第 4 步的 `cd ../grok-code-extension && npm test` 删除（见 §9） | 2 PD |
+| 9 | `sync-upstream.sh`（68） | **改造后复用** | 6 步编排（fetch → 分支 → apply → 版本记录 → 冲突检查 → 总结）的骨架适合 D14 runbook 落地为脚本。改造点：(a) 步骤 3 从 apply-patches 换成 **fork merge + mixin 重放**（in-tree 语义）；(b) 其冲突检查（`git diff --diff-filter=U`）在 `git apply` 流程下**实际无效**（apply 不产生 unmerged 状态）——fork merge 流程下用 `git merge` 的真实冲突退出码替代；(c) 其 Step 6 Next steps 第 3 条的 `cd ../grok-code-extension && npm test` 删除（见 §9） | 2 PD |
 | 10 | `verify-beta-gates.sh`（79） | **改造后复用** | 8 门校验的**模式**（逐门 pass/fail 汇总 + 非零退出）直接保留。检查项重写：(a) 门 1-3（grok-code-extension 编译/测试/lint）删除；(b) 新增 **copilot 剥离门**——产物不得含 `@vscode/copilot-api` / `@github/copilot`（D10 §5 的发布硬阻断，原脚本无）；(c) 新增 clientInfo.name ≠ `vscode_agent_host` 检查（D10 §3）；(d) 新增 gallery 非指向 MS Marketplace 检查（D10 §10）；(e) SBOM 门改为 cgmanifest 合并生成器可运行 | 1.5 PD |
 
 **汇总**：直接复用 1 个（generate-icons）、改造后复用 7 个（约 10.75 PD）、不用 2 个（fetch-upstream、generate-sbom——分别被 D14 fork-merge 流程与 D10 cgmanifest 合并裁定取代）。合计移植工作量约 **11 人日**，远低于重写（每脚本重写约 2-3 PD × 10）。
@@ -206,21 +208,28 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | 19 | 右侧五 tab：Files / Side chat / Review(diff) / Terminal / Browser | 能力全在：Auxiliary Bar（changes/files）、Panel（terminal）、Editor（browser/diff editors）、side chat（`multipleChats.sideChat`）、single-pane 模式把 aux 并入 editor tabs（`SINGLE_PANE_SCENARIOS.md`）——但不是 Codex 的「右栏固定五 tab」形态 | **部分满足** | 中：形态重组（布局策略层），能力无缺口 |
 | 20 | Home = 大 composer + 最近线程 | `sessionsEmptyState.ts` 新会话空态 | **部分满足** | 低-中 |
 | 21 | （负向基准）首启不得有不可跳过登录墙 | **缺失**：实测 `Showing sign-in dialog`（§2.1），`sessionsAuthGate.ts` 的 `ForceGitHubSignIn` 路径未解 | **缺失** | 已排 D04/#6（产品化 `allowSignedOutWhenUsable` 默认值） |
+| 22 | 按住说话 / Ctrl+M 语音输入 | `newChatVoice.ts` + `voiceBridge.contribution.ts` + `voiceInputDecorations.ts`（`contrib/chat/browser/`）语音输入链路在 | **已满足**（交互细节留 D07 实测） | — |
+| 23 | Triage / Review 收件箱 | changes 视图 + codeReview contrib 在（`contrib/changes/`、`contrib/codeReview/`）；「收件箱」聚合形态未呈现 | **部分满足** | 低-中：视图聚合呈现 |
+| 24 | Settings 固定侧栏底部 | 设置入口经 VS Code 标准菜单体系；「固定在侧栏底部」的 Codex 式锚位未呈现 | **部分满足** | 低：布局策略 |
+| 25 | 左栏 Plugins / Automations | 实测侧栏含 Plugins / Automations / MCP Servers / Skills / Chats / Customizations（§2.1 观察 + `automationsView.ts`） | **已满足** | — |
+| 26 | ⌘⇧O（线程切换/新线程） | `sessionsActions.ts:1178` Ctrl/Cmd+Shift+O = "Go to Chat in Session" picker（多 chat 会话内跳转）；与 Codex 语义的贴合度待 D07 | **部分满足** | 低 |
+| 27 | 窗口 chrome（ISS-068 / grok-build#115） | `LAYOUT.md:22` 明示 omits Activity Bar / Status Bar / Banner；自定义标题栏形态继承 VS Code `titleBarStyle` 体系，Codex 式 chrome 微调未做 | **部分满足** | 低：D06 品牌化时一并 |
+| 28 | 移除常驻 StatusBar / ContextBar（ISS-064 / grok-build#112） | `LAYOUT.md:22`："The workbench omits the standard Activity Bar, Status Bar, and Banner" | **已满足** | — |
 
-**汇总**：已满足 9 / 部分满足 10 / 待实测 2 / 缺失 1（且该缺失已有归属 issue D04）。**没有发现「能力层缺口」**——所有部分满足项均为呈现/布局/键位层的收敛工作，协议与数据链路层（§2.1、§3）完整。这是维持 agentHost 裁定的最强实证。
+**汇总**（28 项全覆盖，含 ISS-057 EPIC 正文全部基准点）：已满足 12 / 部分满足 14 / 待实测 2（#10 Enter/Tab 排队、#17 ⌘G 搜索）/ 缺失 1（#21 登录墙，已有归属 issue D04）。**没有发现「能力层缺口」**——所有部分满足项均为呈现/布局/键位层的收敛工作，协议与数据链路层（§2.1、§3）完整。这是维持 agentHost 裁定的最强实证。
 
 ---
 
 ## 6. fallback 触发条件（验收 5）
 
-裁定：**默认走 agentHost 路线；以下任一 gate 触发时，重开 D07 并正式评估回退 grok-build 路线**（届时工作 = 在 grok-build 中以 codex app-server 客户端替换 `acp-session.ts`，成本量级 = 重写 codexAgent.ts 的 15k LOC + 重建回归资产，应在回退评估时重新核价）。
+裁定：**默认走 agentHost 路线；以下任一 gate 触发时，重开 D07 并正式评估回退 grok-build 路线**（届时工作 = 在 grok-build 中以 codex app-server 客户端替换 `acp-session.ts`，成本量级 = 重写 codex 集成层（26 文件 ~15k LOC，codexAgent.ts 单文件 8,427 行）+ 重建回归资产，应在回退评估时重新核价）。
 
 | Gate | 触发条件（可量化） | 理由 |
 |---|---|---|
 | **F1 审批保真** | D07 落地后，§3.1 的 7 类审批中仍有 ≥2 类**无法在 Agents 窗口表达其区分语义**（如 writeStdin 与 command 混同、Guardian override 无入口），且单项修复预估 > 1 人周 | 审批是 agent desktop 的安全底线；语义折叠不可接受 |
 | **F2 范式阻力** | §5 表中「部分满足」项在 D07 交付后仍有 ≥4 项无法收敛（含 #2 线程切换单入口或 #19 右栏五 tab 之一），或收敛方案需改动 workbench 核心布局（超出 sessions 层） | 范式差距本质是产品形态之争，改不动说明宿主不合适 |
 | **F3 首启阻断** | D04 完成后，全新 profile 首启仍无法在无 GitHub/ChatGPT 登录的情况下进入可用 composer（§5 #21 复测失败） | 桌面 app 的第一分钟体验不可妥协 |
-| **F4 维护断层**（前瞻） | 上游 microsoft/vscode 停止推进 agentHost（≥2 个 monthly release 无 agent 相关提交）或 sessions 架构发生破坏性重构使 rebase 成本连续两轮 > 5 人日 | in-tree 路线的核心红利是上游维护；红利消失则重估 |
+| **F4 维护断层**（前瞻） | 上游 microsoft/vscode 停止推进 agentHost（可执行判据：`git log --since=2.months --oneline -- src/vs/platform/agentHost | wc -l` < 5，或 ≥2 个 monthly release 无 agent 相关提交）或 sessions 架构发生破坏性重构使 rebase 成本连续两轮 > 5 人日 | in-tree 路线的核心红利是上游维护；红利消失则重估 |
 
 **显式非触发**（避免误回退）：纯键位差异、图标/文案差异、单个小交互不一致——这些是 D07 的迭代项，不构成路线级 fallback。
 
@@ -249,7 +258,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 本 PR 附带以 `gh issue edit` 在 #8（D06）、#9（D07）、#11（D09）原描述**末尾追加**「D17 裁定输入」段（不删改原文）：
 
 - **D06（#8）**：mixin 结构采纳 `product/` 目录形态；`generate-icons.sh` 直接复用（改名在品牌定案后）；`apply-patches.sh` 的 mixin 半段改造为 `apply-mixin` 逻辑且失败必须硬失败；品牌定案时同步改 `CLIENT_INFO.name`（D10 §3：不得沿用 `vscode_agent_host`）。
-- **D07（#9）**：验收基准 = 本文 §5 差距表（21 项 + 判定 + 代价）；2 个「待实测」项（#10 键位行为、#17 ⌘G 搜索）在 D07 内闭环；决策门 = 本文 §6 的 F1–F4；D04 的登录墙（#21）列为 D07 验收前置。
+- **D07（#9）**：验收基准 = 本文 §5 差距表（28 项 + 判定 + 代价）；2 个「待实测」项（#10 键位行为、#17 ⌘G 搜索）在 D07 内闭环；决策门 = 本文 §6 的 F1–F4；D04 的登录墙（#21）列为 D07 验收前置。
 - **D09（#11）**：脚本移植清单 = 本文 §4（约 11 人日）；`bundle-agent.sh` → `bundle-codex-sdk.sh`（含 LICENSE/NOTICE 拷贝义务）；`generate-sbom.sh` 不移植（维持 D10 §14 裁定：cgmanifest+cglicenses 合并生成）；`verify-beta-gates.sh` 重写检查项时**必须纳入 copilot 剥离门**（D10 §5 硬阻断）；`package.sh` 补签名/公证。
 
 ---
@@ -267,6 +276,8 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 ---
 
 ## 10. 未完成项与诚实声明
+
+**范围项偏离声明（issue #2 范围第 1 条）**：「在本仓库跑通一次 Codex 完整闭环」本轮**未执行**——实测止于启动 + `account/read` 探测（§2.1），未发起任何真实 turn（写文件/跑命令/审批/中断/恢复）。真正阻断：Agents 窗口存在不可跳过的 `ForceGitHubSignIn` 登录墙（`sessionsAuthGate.ts:59-68`，BOOTSTRAP.md §6f，修复归 D04/#6）；本轮亦未用 `chat.agentHost.allowSignedOutWhenUsable` 临时绕过 + 真实 turn 补证据，因为真实 turn 消耗付费额度且未获此授权。完整闭环归 D03/D04 联合冒烟验收（#5/#6 验收 1），本节显式登记，不以探测冒充闭环。
 
 1. **grok-build 未做运行时实测**（§2.2 已声明原因：Rust workspace 编译重 + 无 x.ai 凭据 + 禁止付费调用）。能力矩阵基于双侧静态审读（客户端 630 行逐行 + Rust dispatch 抽查）。若后续需要运行时复核（例如 fallback 评估触发时），需用户授权 x.ai 凭据。
 2. **§5 有 2 项标注「待 D07 实测」**（#10 Enter/Tab 排队键位、#17 ⌘G 搜索），非本次遗漏——其判定依赖 D07 的交互实测轮，已在 D07 输入中列为该 issue 的闭环项。

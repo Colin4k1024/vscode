@@ -92,7 +92,7 @@ for i in 106..116; gh issue view $i --json state   # 11 个子 issue 全部 CLOS
 ```
 
 **客户端能力面（`acp-session.ts` 逐方法）**：`initialize`（protocolVersion 1，声明 `fs.readTextFile/writeTextFile`，`terminal: false`）、`authenticate`、`session/new`、`session/load`（恢复）、`session/prompt`（含 `_meta.promptId/screenMode`）、`session/set_model`、`session/cancel`；服务端→客户端请求处理：`session/request_permission`（唯一审批通道）、`x.ai/ask_user_question`（x.ai 私有扩展，elicitation 等价物）、`fs/read_text_file`、`fs/write_text_file`（jail 到会话根）；通知：`session/update`（`agent_message_chunk/agent_thought_chunk/user_message_chunk(replay)/tool_call/tool_call_update/plan/usage_update`）+ `x.ai/session_notification`（auto_compact 四态）。MCP 以 `mcpServers: []` 传参（客户端不管理 MCP 会话，配置写 `~/.grok/config.toml` 由 agent 端自连，`mcp-config.ts`）。
-**Rust 端 dispatch（`acp_handler/mod.rs`）**：`session/update` 为主通知通道；扩展请求入口共 3 个（`mod.rs:700-704`：`x.ai/ask_user_question`、`x.ai/exit_plan_mode`、`x.ai/mcp/elicit`），另有扩展通知 `x.ai/mcp/elicit_complete`（:626）；另有 background/evolution/follow_ups/interactions/mcp/permissions/prompt_origin/queue/routing/session_notification/settings/subagent_*/workflow_ingest 等 15 个 .rs 模块（agent 内部功能，多数不经 ACP 暴露）。
+**Rust 端 dispatch（`acp_handler/mod.rs`）**：`session/update` 为主通知通道；扩展请求入口共 3 个（`mod.rs:700-704`：`x.ai/ask_user_question`、`x.ai/exit_plan_mode`、`x.ai/mcp/elicit`），另有扩展通知 `x.ai/mcp/elicit_complete`（:626）；另有 background/evolution/follow_ups/interactions/mcp/permissions/prompt_origin/queue/routing/session_notification/settings/subagent_*/workflow_ingest 等 14 个 .rs 模块（mod.rs 之外；含 mod.rs 共 15，连 tests/mod.rs 共 16）（agent 内部功能，多数不经 ACP 暴露）。
 
 ### 2.3 grok-code-product：脚本全量拉取审读
 
@@ -126,7 +126,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | 能力 | app-server（本仓库） | ACP 标准 / grok-build | 结论 |
 |---|---|---|---|
 | 新会话 | `thread/start` + `thread/started`（含 `dynamicTools` 注入位） | `session/new` | 等价 |
-| 恢复 | `thread/resume`（原生）+ rollout 文件发现（`codexRolloutMetadata.ts`；实测 `find ~/.codex/sessions -name 'rollout*' | wc -l` = 174 个 rollout 文件 / 72 个目录） | `session/load` + `_meta.isReplay` 转录重放（客户端 `journal.ts`/`transcript-store.ts` 自持久化，ISS-057 前置工作） | 形态不同：app-server 恢复是协议原生；ACP 靠客户端自建 journal 模拟 |
+| 恢复 | `thread/resume`（原生）+ rollout 文件发现（`codexRolloutMetadata.ts`；实测 `find ~/.codex/sessions -name 'rollout*' | wc -l` = 174 个 rollout 文件（62 个日期目录，61 个含 rollout；find -type d = 72 含根/月份层）） | `session/load` + `_meta.isReplay` 转录重放（客户端 `journal.ts`/`transcript-store.ts` 自持久化，ISS-057 前置工作） | 形态不同：app-server 恢复是协议原生；ACP 靠客户端自建 journal 模拟 |
 | fork | `thread/fork`（协议原生，`codexForkPlan.ts` 决定分支边界） | 无；grok-build 的 fork 是客户端复制转录（ISS-079） | ACP 亏 |
 | side-chat / peer chat | `multipleChats: { fork: true, sideChat: true }`（codexAgent.ts:4156）+ peer-chat 目录 | 无 | ACP 亏 |
 | checkpoint / 回滚 | `thread/revert` + `thread/rollback` + `IAgentHostCheckpointService` 基线快照（codexAgent.ts:5852） | 无（grok-build 仅 diff 审阅 `git-review.ts`） | ACP 亏 |
@@ -199,7 +199,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | 10 | 运行中 Enter 注入 / Tab 排队下一条 | 协议层 `turn/steer` 已接线；默认键位行为是否等价 Codex 未实测 | **部分满足**（待 D07 实测） | 低 |
 | 11 | 侧栏 Projects→threads 树 | Sessions list 有 workspace/date 分组 + custom groups + pinned + archived（`SESSIONS_LIST.md` 放置优先级模型）——「workspace 分组」即 Projects 语义 | **已满足** | — |
 | 12 | 侧栏线程状态标注 Running/Waiting for approval/Completed | `sessionStatusIcon.ts` 存在；三态与 Codex 文案的一致性留 D07 核对 | **已满足**（细节待核对） | 低 |
-| 13 | ⌘N 新线程 | `chat.contribution.ts:170` Ctrl/Cmd+N = New Session（有测试佐证） | **已满足** | — |
+| 13 | ⌘N 新线程 | `sessions/contrib/chat/browser/chat.contribution.ts:170` Ctrl/Cmd+N = New Session（有测试佐证） | **已满足** | — |
 | 14 | ⌘K/⌘⇧P 命令菜单 | ⌘⇧P 命令面板为 VS Code 标准；⌘K 是 chord 前缀（文化差异） | **部分满足** | 低：键位重映射决策 |
 | 15 | ⌘B 侧栏 / ⌘J 终端 | `layoutActions.ts` ToggleSidebar/TogglePanel（VS Code 标准键位同款） | **已满足** | — |
 | 16 | ⌘O 添加项目 | workspace 添加路径存在；与 Codex「添加项目到 Projects」语义对齐度留 D07 | **部分满足** | 低 |
@@ -282,7 +282,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 1. **grok-build 未做运行时实测**（§2.2 已声明原因：Rust workspace 编译重 + 无 x.ai 凭据 + 禁止付费调用）。能力矩阵基于双侧静态审读（客户端 630 行逐行 + Rust dispatch 抽查）。若后续需要运行时复核（例如 fallback 评估触发时），需用户授权 x.ai 凭据。
 2. **§5 有 2 项标注「待 D07 实测」**（#10 Enter/Tab 排队键位、#17 ⌘G 搜索），非本次遗漏——其判定依赖 D07 的交互实测轮，已在 D07 输入中列为该 issue 的闭环项。
 3. **§2.1 实测为 dev 形态**（dev fallback SDK 解析 + 本机 `~/.codex` 凭据）；出厂形态（`product.json.agentSdks` 注册，G2/D02/D09 范围）不在本次验证内。
-4. 00-FINDINGS.md §7.1 的「grok-build 以 ACP 连 codex」表述与实测不符（§1 已纠正）；`00-FINDINGS.md` 本体未在本 PR 中修改（历史调研文档，保持只读；以本文为准）。
+4. 00-FINDINGS.md §7.1 的「grok-build 以 ACP 连 codex」表述与实测不符（§1 已纠正）；`00-FINDINGS.md` 在本 PR 中仅在 §7.1 追加了勘误横幅（指向本文），原文其余部分未删改（历史调研文档，以本文为准）。
 
 ## 附：复现配方
 

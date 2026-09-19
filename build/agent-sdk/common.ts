@@ -170,12 +170,27 @@ export function getSdkTargetForBuild(
 }
 
 /**
+ * Base URL of the CDN the SDK tarballs are served from. Defaults to
+ * Microsoft's CDN (upstream behavior). A fork running its own distribution
+ * sets `AGENT_SDK_CDN_BASE` (e.g. `https://cdn.example.net`) so the URLs
+ * stamped into `product.agentSdks.<sdk>.urlTemplate` — and the URLs
+ * `uploadOne` reports — point at the fork's own storage. The path shape
+ * `agent-sdk/<sdk>/<version>/<target>.tgz` is identical on both, so the
+ * runtime downloader and the HEAD-then-decide upload semantics are
+ * unchanged.
+ */
+export function cdnBase(): string {
+	const base = process.env.AGENT_SDK_CDN_BASE?.replace(/\/+$/, '');
+	return base && /^https?:\/\//.test(base) ? base : 'https://main.vscode-cdn.net';
+}
+
+/**
  * Builds the CDN URL the per-platform `product.agentSdks.<sdk>.url` points at.
  * Content-addressed under `agent-sdk/<sdk>/<version>/<target>.tgz`. Matches
  * the upload path written by `upload.ts`.
  */
 export function buildCdnUrl(sdk: Sdk, sdkVersion: string, sdkTarget: string): string {
-	return `https://main.vscode-cdn.net/agent-sdk/${sdk}/${sdkVersion}/${sdkTarget}.tgz`;
+	return `${cdnBase()}/agent-sdk/${sdk}/${sdkVersion}/${sdkTarget}.tgz`;
 }
 
 /**
@@ -187,7 +202,7 @@ export function buildCdnUrl(sdk: Sdk, sdkVersion: string, sdkTarget: string): st
  * concrete target suffix.
  */
 export function buildCdnUrlTemplate(sdk: Sdk, sdkVersion: string): string {
-	return `https://main.vscode-cdn.net/agent-sdk/${sdk}/${sdkVersion}/{sdkTarget}.tgz`;
+	return `${cdnBase()}/agent-sdk/${sdk}/${sdkVersion}/{sdkTarget}.tgz`;
 }
 
 /** Streams `filePath` into a sha256 hasher. Avoids reading the whole file

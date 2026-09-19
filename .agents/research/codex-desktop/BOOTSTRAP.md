@@ -258,11 +258,17 @@ npm run download-builtin-extensions   # → .build/builtInExtensions 6.1M
 
 实测两者均 **EXIT=0，耗时各约 1 min**。
 
-**失败模式记录（验收 8 第三处）**：
+**失败模式记录（验收 8 第三处；三处均为干净 checkout 实测，2026-09-19 D01 复核轮）**：
 
-- **Electron 下载**：*本机未复现失败*。下载源（`build/lib/electron.ts:107-115`）：本仓库 `product.json.electronArtifactFeed` 为空 → **OSS 路径从 Electron 官方 GitHub releases 拉取**（`@vscode/gulp-electron` 默认 resolver；仅 product 构建配置了 feed 时才走 Azure Artifacts）。失败形态：对 `github.com/electron/electron` release 资产（重定向到 `objects.githubusercontent.com`）的请求超时/非 200，gulp 步骤非零退出，错误含请求 URL 与状态码。解法：直接重跑 `npm run electron`（下载到 `.build/electron`，幂等）；公司网络下检查对 github.io/objects.githubusercontent.com 的出口或配置代理。
-- **built-in extensions 拉取**：*本机未复现失败*。两个已知失败形态：
-  1. 匿名 GitHub API 限速（拉取 `product.json.builtInExtensions` 列出的 VSIX 元数据时，`build/lib/fetch.ts:88-89`）：错误文本为 `Request <url> failed with status code: 403 (you may be rate limited)`。解法：导出 `GITHUB_TOKEN` 后重跑 `npm run download-builtin-extensions`（`fetch.ts:111-112` 会带上；上游 CI 即如此；本机单次匿名下载未触发）。
+- **Electron 下载**（已复现，真实错误文本）：下载源为 **Electron 官方 GitHub releases**（`build/lib/electron.ts:107-115`：`product.json.electronArtifactFeed` 为空 → OSS 路径；仅 product 构建配置 feed 时才走 Azure Artifacts）。网络瞬断时 `@vscode/gulp-electron`（`node_modules/@vscode/gulp-electron/src/download.js:260`）抛出：
+  ```
+  TypeError: fetch failed
+  [cause]: ConnectTimeoutError: Connect Timeout Error (attempted address: github.com:443, timeout: 10000ms)
+  code: 'UND_ERR_CONNECT_TIMEOUT'
+  ```
+  解法：直接重跑 `npm run electron`（幂等）。**注意**：崩溃可能在 `.build/electron/` 留下残缺目录（实测只写入了 .icns 就断了），`bootstrap.sh` 的守卫因此检查 app 二进制哨兵而非目录存在。公司网络下另查 `github.com` / `objects.githubusercontent.com` 出口。
+- **built-in extensions 拉取**（部分复现：限速未触发，错误签名来自代码）：失败形态：
+  1. 匿名 GitHub API 限速（拉取 `product.json.builtInExtensions` 列出的 VSIX 元数据时，`build/lib/fetch.ts:88-89`）：错误文本为 `Request <url> failed with status code: 403 (you may be rate limited)`。解法：导出 `GITHUB_TOKEN` 后重跑 `npm run download-builtin-extensions`（`fetch.ts:111-112` 会带上；上游 CI 即如此；本机匿名下载未触发限速）。
   2. 平台资产缺失（改 target 构建时）：`Built-in extension '<name>' is platform-specific but has no asset for target '<target>'`（`build/lib/builtInExtensions.ts:118` 原文）。解法：核对 `product.json` 的 `platformSpecific` 配置与目标三元组。
 
 built-in extensions **匿名下载成功，无需 `GITHUB_TOKEN`**：
@@ -443,7 +449,7 @@ bash .agents/research/codex-desktop/bootstrap.sh --force   # 无条件全量重�
 2. **Node**：`n $(cat .nvmrc)` 装进仓库本地前缀 `$N_PREFIX=.build/node24`，全局 node 不动；已装且版本匹配则跳过。
 3. **依赖**：守卫为「根 `node_modules/.package-lock.json` 存在 **且** `extensions/copilot/node_modules/@vscode/copilot-api` 存在」——后者是 §3 记录的"postinstall 中途死掉"故障形态的深层标记；根装完但子安装缺失时只重跑 `postinstall.ts`（幂等），不重复整个 `npm ci`。
 4. **编译**：守卫为「`out/vs` 存在 **且** `extensions/*/out` 计数 ≥ 8」（实测基线 32；阈值 8 在容忍上游扩展数量波动的同时，能抓住"编到第一个扩展就挂"的半成品树）。
-5. **Electron / built-in extensions**：目录已存在则跳过。
+5. **Electron / built-in extensions**：守卫为深层哨兵（darwin 的 app 二进制 `.build/electron/Code - OSS.app/Contents/MacOS/Code - OSS`、`.build/builtInExtensions/ms-vscode.js-debug/package.json`），而非目录存在——下载中途崩溃会留下残缺目录，`-d` 判存会跳过重试并打印假 ready（实测复现过：只剩 .icns 的残缺 app bundle）。
 
 CI 侧的等价物是 `.github/workflows/codex-desktop-baseline.yml`，触发器为 **pull_request（main，`**.md` 改动跳过）+ workflow_dispatch（合并到 main 后可用）**，带 concurrency 取消与 node_modules 缓存：`npm ci`(5×重试) → `gulp transpile-client-esbuild transpile-extensions` → `check-clean-git-state.sh` → `codex:check-protocol` → agentHost 单测子集。
 

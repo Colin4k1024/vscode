@@ -82,11 +82,16 @@ if [[ $FORCE -eq 1 ]] || [[ ! -d out/vs ]] || [[ "$EXT_OUT_COUNT" -lt 8 ]]; then
   npm run compile 2>&1 | tee .build/logs/compile.log
 fi
 
-# 4. Electron and built-in extensions
-if [[ $FORCE -eq 1 ]] || [[ ! -d .build/electron ]]; then
+# 4. Electron and built-in extensions. Guards check deep sentinels, not the
+# top-level dirs: a download that died mid-extract leaves a partial directory
+# behind (observed: only the .icns after a connect timeout), and `-d` would
+# then skip the retry and print a false "ready". A missing pinned built-in
+# extension just re-runs the (idempotent) download.
+ELECTRON_APP_BIN=".build/electron/Code - OSS.app/Contents/MacOS/Code - OSS" # darwin layout; see BOOTSTRAP.md §1
+if [[ $FORCE -eq 1 ]] || [[ ! -x "$ELECTRON_APP_BIN" ]]; then
   npm run electron
 fi
-if [[ $FORCE -eq 1 ]] || [[ ! -d .build/builtInExtensions ]]; then
+if [[ $FORCE -eq 1 ]] || [[ ! -f .build/builtInExtensions/ms-vscode.js-debug/package.json ]]; then
   npm run download-builtin-extensions
 fi
 

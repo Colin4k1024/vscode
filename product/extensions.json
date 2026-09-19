@@ -1,0 +1,6 @@
+{
+	"_comment_fork": "codex-desktop D06. Layout aligned with grok-code-product/product/extensions.json. The fork ships the upstream Code-OSS builtInExtensions (ms-vscode.js-debug et al., MIT, sha256-pinned in the root product.json) unchanged, so all three lists are empty. D09/D15 own any future additions (Open VSX or private registry only - MS Marketplace is off-limits per LICENSE-CLEARANCE.md section 10).",
+	"builtin": [],
+	"recommended": [],
+	"unwanted": []
+}

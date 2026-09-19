@@ -155,14 +155,15 @@ import { reportCodexProviderSwitch } from './codexProviderSwitchTelemetry.js';
 import { formatGuardianDenialNotification, formatGuardianReviewStatusNotification, summarizeGuardianReviewAction, toGuardianAssessmentEventJson } from './codexGuardianReview.js';
 import { CODEX_COMPACT_SLASH_COMMAND } from '../codexCompactCommand.js';
 
-const CLIENT_INFO = {
-	name: 'vscode_agent_host',
-	title: 'VS Code Agent Host',
-	// The codex `clientInfo.version` is informational. Hardcoded to a
-	// non-empty placeholder; bumping it isn't required when our code
-	// changes.
-	version: '0.1.0',
-};
+// codex-desktop D06 (D10 LICENSE-CLEARANCE.md section 3): `clientInfo.name` is
+// forwarded to the OpenAI Compliance Logs Platform and must identify this
+// product. It must NOT reuse upstream's `vscode_agent_host`, which would
+// misattribute this fork's traffic to Microsoft's registered client.
+// `openagents_desktop` / `OpenAgents Desktop` track the placeholder product
+// identity in `product/product.json` (single-point replacement, issue #8).
+const CLIENT_INFO_NAME = 'openagents_desktop';
+const CLIENT_INFO_TITLE = 'OpenAgents Desktop';
+const CLIENT_INFO_FALLBACK_VERSION = '0.0.0';
 
 const CODEX_DESKTOP_ROLLOUT_PREFIX_LENGTH = 16 * 1024;
 const CODEX_DESKTOP_ROLLOUT_PREFIX_CONCURRENCY = 8;
@@ -2537,7 +2538,14 @@ export class CodexAgent extends Disposable implements IAgent {
 
 			// Initialize handshake. Failure here is fatal for this connection.
 			const initialize = raceCancellationError(client.request<'initialize'>('initialize', {
-				clientInfo: CLIENT_INFO,
+				clientInfo: {
+					name: CLIENT_INFO_NAME,
+					title: CLIENT_INFO_TITLE,
+					// Informational on the codex side; the app version (from
+					// package.json in dev, stamped at build time when packaged)
+					// beats a hardcoded placeholder.
+					version: this._productService.version || CLIENT_INFO_FALLBACK_VERSION,
+				},
 				capabilities: { experimentalApi: true, requestAttestation: false, optOutNotificationMethods: null },
 			}), token);
 			if (initializationTimeoutMs === undefined) {

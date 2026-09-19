@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- OpenAgents placeholder app icon (codex-desktop D06).
+       Solid indigo rounded square + bold white ring ("O"). Placeholder art,
+       freely replaceable: regenerate raster assets from this SVG with
+       scripts/generate-icons.sh (ported in D09) or any SVG rasterizer.
+       MUST NOT resemble the Microsoft VS Code logo (LICENSE-CLEARANCE.md section 1). -->
+  <rect x="32" y="32" width="960" height="960" rx="200" ry="200" fill="#4F46E5"/>
+  <circle cx="512" cy="512" r="270" fill="none" stroke="#FFFFFF" stroke-width="104"/>
+</svg>

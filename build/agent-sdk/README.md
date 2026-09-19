@@ -258,3 +258,9 @@ export AGENT_SDK_CDN_BASE=https://cdn.example.net   # default: https://main.vsco
 - Caveat inherited from the content-addressed scheme: never overwrite a
   published `<version>/<target>.tgz` with different bytes. Bump the
   version instead.
+- Scope: this redirects the agent-SDK pipeline only. Other hardcoded
+  `main.vscode-cdn.net` uses in the repo (dictation-runtime, sourcemaps,
+  copilot BYOK) are unaffected and need their own handling. A
+  set-but-unusable `AGENT_SDK_CDN_BASE` value fails loud rather than
+  falling back to the default, so a typo cannot silently stamp the
+  Microsoft CDN into a fork's product.json.

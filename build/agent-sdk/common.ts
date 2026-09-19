@@ -178,10 +178,26 @@ export function getSdkTargetForBuild(
  * `agent-sdk/<sdk>/<version>/<target>.tgz` is identical on both, so the
  * runtime downloader and the HEAD-then-decide upload semantics are
  * unchanged.
+ *
+ * A set-but-unusable value throws rather than silently falling back: the
+ * fallback direction is exactly the domain a fork's egress allowlist is
+ * most likely to forbid, and a typo'd env var must not quietly stamp the
+ * Microsoft CDN into a fork's product.json (same fail-loud rule as the
+ * exact-version pin in `getAgentMeta`).
  */
 export function cdnBase(): string {
-	const base = process.env.AGENT_SDK_CDN_BASE?.replace(/\/+$/, '');
-	return base && /^https?:\/\//.test(base) ? base : 'https://main.vscode-cdn.net';
+	const raw = process.env.AGENT_SDK_CDN_BASE;
+	if (raw === undefined || raw === '') {
+		return 'https://main.vscode-cdn.net';
+	}
+	const base = raw.replace(/\/+$/, '');
+	if (!/^https?:\/\//i.test(base)) {
+		throw new Error(
+			`AGENT_SDK_CDN_BASE must be an http(s) URL (got: ${JSON.stringify(raw)}). ` +
+			`Unset it to use the default https://main.vscode-cdn.net.`,
+		);
+	}
+	return base;
 }
 
 /**

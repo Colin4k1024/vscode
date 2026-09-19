@@ -1,9 +1,12 @@
 name: Codex Desktop Baseline
 
 # D01 (#3): minimal reproducible bootstrap + transpile + codex protocol sync +
-# agent-host unit test subset on a stock GitHub-hosted runner. workflow_dispatch
-# for now; later issues (D11/D14) fold these checks into PR-required gates.
+# agent-host unit test subset on a stock GitHub-hosted runner. Runs on PRs and
+# on demand; later issues (D11/D14) fold these checks into PR-required gates.
 on:
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:

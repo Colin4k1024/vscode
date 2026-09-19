@@ -74,12 +74,12 @@ unset ELECTRON_RUN_AS_NODE GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
 **结论要点**：
 1. Codex provider 注册成功且走 **OpenAI 原生认证**（`account/read` 探测，读 `~/.codex` 凭据，**只做 account/read，未发起任何付费 turn**，探测 2.1s 内完成并回收子进程）。
 2. app-server 二进制从仓库 `node_modules` vendored 路径拉起——D02 的供给机制在 dev 形态下已工作。
-3. 渲染层确认：`window1/renderer.log` 出现 `[sessions welcome] Showing sign-in dialog`——**已知 G6 GitHub 登录墙仍在**（修复归 D04/#6），数据链路本身通（实测：`find ~/.codex/sessions -name 'rollout*' | wc -l` = **174 个 rollout 文件**（分布于 72 个会话日期目录，另有 12 个 archived）、`ls ~/.codex/skills | wc -l` = **218 项**可被发现）。
+3. 渲染层确认：`window1/renderer.log` 出现 `[sessions welcome] Showing sign-in dialog`——**已知 G6 GitHub 登录墙仍在**（修复归 D04/#6），数据链路本身通（实测：`find ~/.codex/sessions -name 'rollout*' | wc -l` = **174 个 rollout 文件**（分布于 62 个日期目录、其中 61 个含 rollout；`find ~/.codex/sessions -type d | wc -l` = 72 含根/月份层目录；另有 12 个 archived）、`ls ~/.codex/skills | wc -l` = **218 项**可被发现）。
 4. 测后清理：`kill <pid>` 后 `pgrep -f "codex app-server"` **无孤儿**，runDir 已删除。
 
 ### 2.2 grok-build：静态审计（如实标注：未跑起）
 
-**未跑起的原因（如实声明）**：完整运行需 (a) 编译 x.ai Rust workspace（`Cargo.lock` 15,892 行依赖图，`crates/{build,codegen,common}`，CI 脚本显示还需 protoc / seccomp filter 等平台件）；(b) x.ai API 凭据（本机没有，且本任务禁止真实付费 LLM 调用）。因此按预案执行**双侧静态审计**：Electron 客户端（`electron/acp-session.ts`，630 行逐行读）+ Rust agent 端（`crates/codegen/xai-grok-pager/src/app/acp_handler/` 17 个模块抽查 dispatch）。
+**未跑起的原因（如实声明）**：完整运行需 (a) 编译 x.ai Rust workspace（`Cargo.lock` 15,892 行依赖图，`crates/{build,codegen,common}`，CI 脚本显示还需 protoc / seccomp filter 等平台件）；(b) x.ai API 凭据（本机没有，且本任务禁止真实付费 LLM 调用）。因此按预案执行**双侧静态审计**：Electron 客户端（`electron/acp-session.ts`，630 行逐行读）+ Rust agent 端（`crates/codegen/xai-grok-pager/src/app/acp_handler/` 15 个 .rs 模块抽查 dispatch，含 mod.rs；连 tests/mod.rs 共 16）。
 
 **命令与产物**：
 
@@ -216,7 +216,7 @@ done   # 10/10 拉取成功，共 594 行，逐字审读 → §4
 | 27 | 窗口 chrome（ISS-068 / grok-build#115） | `LAYOUT.md:22` 明示 omits Activity Bar / Status Bar / Banner；自定义标题栏形态继承 VS Code `titleBarStyle` 体系，Codex 式 chrome 微调未做 | **部分满足** | 低：D06 品牌化时一并 |
 | 28 | 移除常驻 StatusBar / ContextBar（ISS-064 / grok-build#112） | `LAYOUT.md:22`："The workbench omits the standard Activity Bar, Status Bar, and Banner" | **已满足** | — |
 
-**汇总**（28 项全覆盖，含 ISS-057 EPIC 正文全部基准点）：已满足 12 / 部分满足 14 / 待实测 2（#10 Enter/Tab 排队、#17 ⌘G 搜索）/ 缺失 1（#21 登录墙，已有归属 issue D04）。**没有发现「能力层缺口」**——所有部分满足项均为呈现/布局/键位层的收敛工作，协议与数据链路层（§2.1、§3）完整。这是维持 agentHost 裁定的最强实证。
+**汇总**（28 项全覆盖，含 ISS-057 EPIC 正文全部基准点；#10 归入待实测桶——其行内同时标注「部分满足」，两处不叠算）：已满足 12 / 部分满足 13 / 待实测 2（#10 Enter/Tab 排队、#17 ⌘G 搜索）/ 缺失 1（#21 登录墙，已有归属 issue D04）；12+13+2+1 = 28。**没有发现「能力层缺口」**——所有部分满足项均为呈现/布局/键位层的收敛工作，协议与数据链路层（§2.1、§3）完整。这是维持 agentHost 裁定的最强实证。
 
 ---
 

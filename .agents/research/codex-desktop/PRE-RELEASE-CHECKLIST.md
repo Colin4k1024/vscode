@@ -36,7 +36,7 @@
 - [ ] D5 产物内含：Electron 分发包原带 notices（`LICENSE`、`LICENSES.chromium.html`、Electron LICENSE），未删改
 - [ ] D6 builtInExtensions 三项以 sha256 校验拉取，清单记录名称/版本/来源
 - [ ] D7 ⚖ H.264/AVC 专利声明决策已定（沿用官方 Electron / 换无专有编解码构建 / 风险接受书面记录）
-- [ ] D8 ⚖ seti 图标字体决策已定（移除/替换/保留+法务意见）
+- [x] D8 seti 图标字体：**已裁定为 MIT（四源一致，LICENSE-CLEARANCE §9.2），随 notices 保留即可**（2026-09-19）
 - [ ] D9 codicon 若沿用：notices 已署名（CC-BY-4.0）
 
 ## E. 市场与扩展（D15 #17）

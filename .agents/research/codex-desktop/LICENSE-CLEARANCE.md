@@ -16,11 +16,11 @@
 | 6 | GitHub MCP server（remote） | GitHub Copilot Terms / GitHub ToS（按用户 token 走） | **不阻断**（服务由用户自己的 GitHub 账号驱动） | D08 #10（无 token 即不注入） |
 | 7 | builtInExtensions（ms-vscode.*） | 全部 MIT（js-debug 等） | **不阻断**（保留 sha256 pin 与 MIT 声明） | D09 #11 |
 | 8 | Electron / Node / Chromium | MIT / MIT / BSD-3 + ffmpeg LGPL-2.1+ + H.264 专利声明 | **不阻断**（沿用官方 Electron；H.264 见 §8.4 法务复核项） | D09 #11 |
-| 9 | 字体与图标（codicon 等） | codicon: MIT(代码) + CC-BY-4.0(字体/图标)；seti: 证据冲突（仓库内 notices 为 MIT 全文，上游仓库无 LICENSE 文件，见 §9.2） | codicon **不阻断**（需署名）；seti 图标**需法务复核** | D06 #8 |
+| 9 | 字体与图标（codicon 等） | codicon: MIT(代码) + CC-BY-4.0(字体/图标)；seti: MIT（仓库内三处 + 上游 LICENSE.md 四源一致，见 §9.2） | codicon **不阻断**（需署名）；seti **不阻断**（MIT，随 notices 保留即可） | D06 #8 |
 | 10 | Marketplace / Open VSX | MS Marketplace ToS 限官方产品；Open VSX 按扩展各自许可 | **不得指向 MS Marketplace（阻断若违反）**；Open VSX 可用 | D15 #17 |
 | 11 | 其他 npm 依赖（非 MIT/Apache/BSD） | 见 §11 抽样清单（1 项 LGPL：jschardet，上游已合规处理） | **不阻断**（跟随上游 notices 机制 + 补充清单） | D09 #11（THIRD-PARTY-NOTICES 生成） |
 
-**整体结论：不存在"完全不可发布"的死锁；但存在 3 个发布门条件**（改品牌、剥离 copilot 扩展、不指向 MS Marketplace），以及 3 个"发布前需法务明确"的高不确定项（ChatGPT 订阅用于分发的客户端、H.264/专利再分发澄清段、seti 图标字体的上游许可状态）。在 D06/D08/D09 完成前，Epic #1 的发布门保持**未通过**；D09 产物在此之前标记"**仅内部使用**"。
+**整体结论：不存在"完全不可发布"的死锁；但存在 3 个发布门条件**（改品牌、剥离 copilot 扩展、不指向 MS Marketplace），以及 2 个"发布前需法务明确"的高不确定项（ChatGPT 订阅用于分发的客户端、H.264/专利再分发澄清段）。在 D06/D08/D09 完成前，Epic #1 的发布门保持**未通过**；D09 产物在此之前标记"**仅内部使用**"。
 
 ---
 
@@ -203,11 +203,16 @@ const CLIENT_INFO = {
 - **义务**：CC-BY-4.0 要求署名（attribution）——分发物（含 about/第三方声明文件）需标注 codicon 及其作者/链接；CC-BY 不限制商用、允许再分发与修改（修改须注明）。MIT 侧覆盖代码。
 - **裁定**：**不阻断**，D06 若自绘图标替换 codicon，则义务消失；若沿用，须在 notices 中署名。
 
-**seti 图标主题字体**：`extensions/theme-seti/icons/seti.woff`，上游 jesseweed/seti-ui（`ThirdPartyNotices.txt:2257 seti-ui 0.1.0`）。**证据冲突，需法务复核**：本仓库内的两处一手证据均为完整 MIT 文本——`ThirdPartyNotices.txt:2257` 段落是 "Copyright (c) 2014 Jesse Weed … Permission is hereby granted, free of charge …"（MIT 全文），`extensions/theme-seti/package.json` 的 `license` 字段为 `MIT`，`extensions/theme-seti/ThirdPartyNotices.txt` 亦为同一 MIT 文本；但上游 seti-ui 仓库本身无 LICENSE 文件、其 README 曾标注非标准/非商业字样，历史版本间许可状态有过变化。裁定：**不把"非商业条款"当作既定事实**（仓库内证据以 MIT 为准），但保留法务复核标记；若法务对上游状态不放心，D06/D09 可将 seti 主题降级为不内置或替换图标集（参考 VSCodium 直接移除了 seti 的非 MIT 图标）。
+**seti 图标主题字体**：`extensions/theme-seti/icons/seti.woff`，上游 jesseweed/seti-ui，**MIT，四源一致**（2026-09-19 实证核对）：
+1. `ThirdPartyNotices.txt:2257`（seti-ui 0.1.0 条目）为完整 MIT 文本（"Copyright (c) 2014 Jesse Weed / Permission is hereby granted, free of charge…"）；
+2. `extensions/theme-seti/ThirdPartyNotices.txt` 为同一 MIT 全文；
+3. `extensions/theme-seti/package.json` 的 `license` 字段为 `MIT`；
+4. 上游仓库 `jesseweed/seti-ui` 的 `LICENSE.md` 为 MIT 全文——存在于 HEAD、存在于本仓库钉住的 commit `2d6c5e68b4ded73c92dac291845ee44e1182d511`（`extensions/theme-seti/cgmanifest.json`），且自 2014 年初版即存在；上游 `package.json` 在钉版 commit 的 `license` 亦为 `MIT`。
+裁定：**不阻断**。seti.woff 随产物分发只需按既有 notices 机制保留 MIT 声明（D09）。早先版本本文档曾据不可靠记忆断言"上游无非商业 LICENSE/README 曾标注非商业"，经独立审查指出并逐源核实后**撤回**——法务文档中不得保留未经一手核实的许可溯源陈述。
 **产品图标（app icon）**：微软 VS Code 图标不可用（§1），D06 自绘。`extensions/copilot/assets/copilot.woff`（Copilot 字体图标）随 copilot 扩展一起受 §5 约束，D08 剥离后不进入产物。
 **KaTeX 字体**（markdown-language-features 内嵌 ttf/woff）：KaTeX 为 MIT（字体亦随 MIT 发布），无附加义务。
 
-**落地动作**：D06 #8（图标方案 + codicon 去留）、D09 #11（notices 署名 codicon；seti 决策落地）。
+**落地动作**：D06 #8（图标方案 + codicon 去留）、D09 #11（notices 署名 codicon；seti 随 notices 保留 MIT 声明）。
 
 ## 10. Marketplace 与 Open VSX
 
@@ -273,7 +278,7 @@ const CLIENT_INFO = {
 2. §4 ChatGPT 订阅用于第三方分发客户端的可用性（影响 D03/D05 默认；建议以书面问询 OpenAI 定案）。
 3. §5 `@vscode/copilot-api` dev-only 与 no-redistribution 条款的最终定性（当前按硬阻断处理，从严无坏处）。
 4. §8.4 H.264/AVC 专利池声明对商业分发的影响（含是否选用无专有编解码的 Electron 构建）。
-5. §9.2 seti 图标字体（上游许可状态与仓库内 MIT 证据冲突，见 §9.2）是否可随产物分发。
+5. ~~§9.2 seti 图标字体~~ **已解决（2026-09-19）**：seti 为 MIT（四源一致，见 §9.2），无需法务复核；早先的"证据冲突"定性系未经一手核实的错误陈述，已撤回。
 6. 我方修改层的开源许可选择（沿用 MIT vs Apache-2.0，grok-build 先例）与 NOTICE 组织方式。
 
 ## 14. 先验资产比对（对应验收 9）
@@ -330,7 +335,7 @@ EOF
 1. **验收 3**（第三方许可清单与 SBOM 交叉核对一致）：SBOM 生成属 D09（#11）/D19 后续，本 PR 只在 checklist F1/F2 落为发布门条件。
 2. **验收 6 后半**（D06/D08/D09 的 PR 描述中引用发布前 checklist）：那些 PR 尚不存在；checklist 已要求其 PR 描述必须引用（PRE-RELEASE-CHECKLIST.md 头部使用方式）。
 3. **验收 8**（阻断项存在时 Epic 发布门标记未通过）：**已记录**——门禁状态记录于 PRE-RELEASE-CHECKLIST.md §G（当前=未通过，D09 产物"仅内部使用"），并已在 Epic #1 留评论声明；此项保持打开，待 D09 真正产出分发物时复核勾销。
-4. **法务复核 6 项**（§13）：需法务/律师确认，工程侧无法关闭。
+4. **法务复核余 5 项**（§13 第 1–4、6 项）：需法务/律师确认，工程侧无法关闭；§13.5（seti）已实证解决，不计入。
 5. `cargo deny check` 本体未执行（机器无 cargo-deny；§15 给出等价配方与全部原始数字）。
 
 ## 17. 发布前 Checklist 摘要

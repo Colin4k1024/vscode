@@ -333,6 +333,8 @@ gh label list -R Colin4k1024/codex                           →  默认 10 个 
 
 ### 7.1 三条路线的能力对比（实测源码得出）
 
+> **⚠️ 勘误（2026-09-19，D17/#2 复核）**：下表把 grok-build 的「与 Codex 的接法」记为 ACP——**这是事实错误**。grok-build 的 ACP 客户端连接的是 `xai-grok-pager`（x.ai Grok agent），全仓库无任何 codex agent 连接/spawn 代码；其对 codex 的价值仅在 UX 基准（ISS-057）与工程模式。正确对比与证据见 `ROUTE-DECISION.md` §1/§2.2（该文档为权威裁定）。
+
 | 维度 | 本仓库 agentHost（原生） | grok-build（自建 Electron） | grok-code-product（瘦发行 + ACP 扩展） |
 |---|---|---|---|
 | 与 Codex 的协议深度 | **app-server 全量**：审批 7 类、elicitation、MCP、skills、hooks、plugins、fork/side-chat/peer chat、worktree、checkpoint、rollout 恢复、rate limits、Guardian auto-review、server tools | ACP（较薄） | ACP（较薄） |

@@ -18,11 +18,19 @@ xcode-select -p          # → /Library/Developer/CommandLineTools
 clang --version          # → Apple clang 21.0.0 (clang-2100.3.34.2)
 python3 --version        # → Python 3.11.5   (node-gyp 需要)
 make --version           # → GNU Make 3.81
+command -v n             # → /usr/local/bin/n   ← bootstrap.sh 的硬前置（见 §1）
 df -h .                  # → 需要 ~3GB 空闲（node_modules 1.4G + electron 300M + out 404M + npm-cache）
 
 cat .nvmrc               # → 24.18.0   ← 硬性要求，见 §1
 node -v                  # 若 major ≠ 24，必须换 node
 ```
+
+> **`n` 是 `bootstrap.sh` 的硬前置**：脚本用它把 `.nvmrc` 的 Node 装进仓库本地前缀 `.build/node24`。
+> 没有任何一个版本管理器时的替代方案（任选其一，把 Node 24.18.0+ 放上 PATH 即可，`build/npm/preinstall.ts` 只校验版本不校验来源）：
+> - `n`：`brew install n`（本脚本默认驱动）
+> - `fnm`：`brew install fnm && fnm use`（直接读 `.nvmrc`）
+> - `nvm`：`brew install nvm; nvm install && nvm use`
+> - `volta`：`brew install volta`（ volta 会按 package.json `engines` 自动切换；本仓库未声明 engines，需 `volta pin node@24` 或手动确保版本）
 
 `.npmrc` 里的关键事实（影响后续步骤）：
 
@@ -250,6 +258,13 @@ npm run download-builtin-extensions   # → .build/builtInExtensions 6.1M
 
 实测两者均 **EXIT=0，耗时各约 1 min**。
 
+**失败模式记录（验收 8 第三处）**：
+
+- **Electron 下载**：*本机未复现失败*。失败形态：Electron 二进制从微软 Azure Artifacts universal feed（`@vscode/gulp-electron` / `build/lib/azureFeed.ts` 驱动）拉取，网络中断/代理拦截时 gulp 步骤以非零退出结束，错误信息含 feed 下载失败的 URL 与 HTTP 状态。解法：直接重跑 `npm run electron`（下载到 `.build/electron`，幂等，已完整的文件不会重复拉取）；公司网络下检查对 `*.blob.core.windows.net` / Azure Artifacts 域名的出口。
+- **built-in extensions 拉取**：*本机未复现失败*。两个已知失败形态：
+  1. 匿名 GitHub API 限速（拉取 `product.json.builtInExtensions` 列出的 VSIX 时）：HTTP 403 + `API rate limit exceeded` 字样。解法：导出 `GITHUB_TOKEN` 后重跑 `npm run download-builtin-extensions`（上游 CI 即如此；本机单次匿名下载未触发）。
+  2. 平台资产缺失（改 target 构建时）：`Built-in extension '<name>' is platform-specific but has no asset for target '<target>'`（`build/lib/builtInExtensions.ts:118` 原文）。解法：核对 `product.json` 的 `platformSpecific` 配置与目标三元组。
+
 built-in extensions **匿名下载成功，无需 `GITHUB_TOKEN`**：
 ```
 [github] ms-vscode.js-debug-companion ✔︎
@@ -300,6 +315,8 @@ unset ELECTRON_RUN_AS_NODE GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS   # ← 见下
 {"pid":24576,"cdpPort":64701,…,"agents":true,
  "timings":{"profileMs":293,"preLaunchMs":768,"cdpReadyMs":743,"totalMs":1804}}
 ```
+
+> 时效说明：`cdpReadyMs` 在不同机器/运行之间波动（另一次实测为 699ms / total 1423ms，2026-09-19 D01 复核轮）；以数量级（<5s）为准，不要把单个毫秒数当作回归基线。
 
 必须 unset 的三个环境变量（launch skill 的 Troubleshooting 已记录，实测确认）：
 - `ELECTRON_RUN_AS_NODE` → 否则 renderer 报 ESM 错误 / `import { Menu } from 'electron'`
@@ -353,6 +370,8 @@ monaco-enable-motion monaco-workbench agent-sessions-workbench modern-ui-tabs
 modern-ui-notifications-dialogs mac chromium nomaineditorarea nopanel
 nocustomviewgrid nostatusbar macos-tahoe dock-detail
 ```
+
+窗口渲染证据截图（CDP `Page.captureScreenshot`，2026-09-19）：[`evidence/D01-agents-window.png`](evidence/D01-agents-window.png) —— Agents 窗口完整渲染：左侧 Sessions 列表 / New / Chats / Customizations / Plugins / MCP Servers / Skills，中央 composer。截图时弹出的对话框是该 profile 上次打开目录的 workspace trust 询问（选信任/浏览均可继续），不是登录墙。GitHub 登录墙的证据截图属于 D04（#6）的范围，届时单独采集。
 
 ### 6f. ⚠️ 已知阻断：Agents 窗口的 GitHub 登录墙
 
@@ -411,45 +430,22 @@ rm -rf .build/node24 .build/npm-cache .build/electron .build/builtInExtensions n
 
 ## 8. 一键脚本
 
-已落地为同目录的 **`bootstrap.sh`**（可执行，幂等），内容即下方序列。CI 侧的等价物是 `.github/workflows/codex-desktop-baseline.yml`（workflow_dispatch：`npm ci` → `gulp transpile-client-esbuild transpile-extensions` → `check-clean-git-state.sh` → `codex:check-protocol` → agentHost 单测子集）。
+**`bootstrap.sh`**（同目录，可执行）是唯一权威实现；本节只描述其行为，不再内联快照（避免与脚本漂移）。用法：
 
 ```bash
-bash .agents/research/codex-desktop/bootstrap.sh
+bash .agents/research/codex-desktop/bootstrap.sh           # 幂等
+bash .agents/research/codex-desktop/bootstrap.sh --force   # 无条件全量重跑
 ```
 
-以下为脚本展开（与本仓库实测时所用序列一致）：
-#!/bin/bash
-set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
+脚本语义（与 §1–§5 的手工序列一一对应）：
 
-export N_PREFIX="$PWD/.build/node24"
-mkdir -p "$N_PREFIX" .build/logs .build/npm-cache
-export npm_config_cache="$PWD/.build/npm-cache"
-unset ELECTRON_RUN_AS_NODE GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+1. **前置守卫**：`n` 不在 PATH 时打印可读错误并退出（列出 n / fnm / nvm / volta 四个替代项的安装命令）；见 §0 的替代方案说明。
+2. **Node**：`n $(cat .nvmrc)` 装进仓库本地前缀 `$N_PREFIX=.build/node24`，全局 node 不动；已装且版本匹配则跳过。
+3. **依赖**：守卫为「根 `node_modules/.package-lock.json` 存在 **且** `extensions/copilot/node_modules/@vscode/copilot-api` 存在」——后者是 §3 记录的"postinstall 中途死掉"故障形态的深层标记；根装完但子安装缺失时只重跑 `postinstall.ts`（幂等），不重复整个 `npm ci`。
+4. **编译**：守卫为「`out/vs` 存在 **且** `extensions/*/out` 计数 ≥ 8」（实测基线 32；阈值 8 在容忍上游扩展数量波动的同时，能抓住"编到第一个扩展就挂"的半成品树）。
+5. **Electron / built-in extensions**：目录已存在则跳过。
 
-# 1. Node 24（幂等：已装则跳过）
-if [[ ! -x "$N_PREFIX/bin/node" ]] || [[ "$("$N_PREFIX/bin/node" -v)" != "v$(cat .nvmrc)" ]]; then
-  n "$(cat .nvmrc)"
-fi
-export PATH="$N_PREFIX/bin:$PATH"
-echo "node=$(node -v) npm=$(npm -v)"
-
-# 2. 依赖（postinstall 失败则单独幂等重跑）
-[[ -f node_modules/.package-lock.json ]] || npm ci --cache "$npm_config_cache" 2>&1 | tee .build/logs/install.log \
-  || node build/npm/postinstall.ts 2>&1 | tee .build/logs/postinstall.log
-
-# 3. 编译（必须 out/ 与 extensions/*/out 都有）
-[[ -d out/vs ]] && [[ $(ls -d extensions/*/out 2>/dev/null | wc -l) -gt 0 ]] \
-  || npm run compile 2>&1 | tee .build/logs/compile.log
-
-# 4. Electron + built-in extensions
-[[ -d .build/electron ]] || npm run electron
-[[ -d .build/builtInExtensions ]] || npm run download-builtin-extensions
-
-echo "✅ ready. 启动："
-echo "   ./scripts/code.sh            # 常规窗口"
-echo "   ./scripts/code.sh --agents   # Agents 窗口（会撞 GitHub 登录墙，见 §6f）"
-```
+CI 侧的等价物是 `.github/workflows/codex-desktop-baseline.yml`，触发器为 **pull_request（main，`**.md` 改动跳过）+ workflow_dispatch（合并到 main 后可用）**，带 concurrency 取消与 node_modules 缓存：`npm ci`(5×重试) → `gulp transpile-client-esbuild transpile-extensions` → `check-clean-git-state.sh` → `codex:check-protocol` → agentHost 单测子集。
 
 ---
 

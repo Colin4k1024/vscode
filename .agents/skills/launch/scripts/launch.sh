@@ -29,14 +29,14 @@
 #                       use with content you trust.
 #
 # Defaults:
-#   --source-user-data-dir  $CODE_OSS_DEV_AUTHED_USER_DATA_DIR  (else ~/.vscode-oss-dev)
+#   --source-user-data-dir  $CODE_OSS_DEV_AUTHED_USER_DATA_DIR  (else ~/<dataFolderName>-dev, see below)
 #   --repo                  $PWD if it looks like a vscode checkout; otherwise pass it explicitly
 
 set -euo pipefail
 umask 077
 
 AGENTS=0
-SOURCE_UDD="${CODE_OSS_DEV_AUTHED_USER_DATA_DIR:-$HOME/.vscode-oss-dev}"
+SOURCE_UDD="${CODE_OSS_DEV_AUTHED_USER_DATA_DIR:-}"
 REPO=""
 EXTRA_ARGS=()
 CLONE_EXTENSIONS=0
@@ -82,9 +82,43 @@ if [[ -z "$REPO" ]]; then
 	fi
 fi
 
+# codex-desktop D06: the authed source profile tracks the product identity's
+# dataFolderName (product.json overlaid with the gitignored
+# product.overrides.json that scripts/apply-mixin.mjs writes; the dev run
+# itself applies the same overlay via src/bootstrap-meta.ts). With the fork
+# identity applied this resolves to ~/.open-agents-dev; before
+# apply-mixin it stays ~/.vscode-oss-dev, matching what the dev run uses.
+if [[ -z "${SOURCE_UDD:-}" ]]; then
+	SOURCE_UDD="$(node - "$REPO" <<'NODE'
+	const fs = require('fs');
+	const path = require('path');
+	const repo = process.argv[2];
+	let dataFolderName = '.vscode-oss';
+	try {
+		const product = JSON.parse(fs.readFileSync(path.join(repo, 'product.json'), 'utf8'));
+		if (typeof product.dataFolderName === 'string' && product.dataFolderName) {
+			dataFolderName = product.dataFolderName;
+		}
+		try {
+			const overrides = JSON.parse(fs.readFileSync(path.join(repo, 'product.overrides.json'), 'utf8'));
+			if (typeof overrides.dataFolderName === 'string' && overrides.dataFolderName) {
+				dataFolderName = overrides.dataFolderName;
+			}
+		} catch { /* no dev override - keep base identity */ }
+	} catch (error) {
+		console.error(`[launch.sh] could not read product identity: ${error}`);
+		process.exit(1);
+	}
+	console.log(`${process.env.HOME || ''}/${dataFolderName}-dev`.replace('//', '/'));
+NODE
+)"
+fi
+
 if [[ ! -d "$SOURCE_UDD" ]]; then
 	echo "Source user-data-dir does not exist: $SOURCE_UDD" >&2
 	echo "Pass --source-user-data-dir <path> or set CODE_OSS_DEV_AUTHED_USER_DATA_DIR." >&2
+	echo "After a D06 rebrand the dev profile moved with dataFolderName; to migrate:" >&2
+	echo "  cp -a ~/.vscode-oss-dev ~/.open-agents-dev   (or point CODE_OSS_DEV_AUTHED_USER_DATA_DIR at the old dir)" >&2
 	exit 2
 fi
 

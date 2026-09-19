@@ -98,6 +98,15 @@ function Get-SourceSharedDataDir([string]$repoPath) {
 		if ($product.PSObject.Properties['sharedDataFolderName']) {
 			$folderName = $product.sharedDataFolderName
 		}
+		# codex-desktop D06: apply the dev identity overlay the same way the dev
+		# run does (src/bootstrap-meta.ts reads product.overrides.json).
+		$overridesJson = Join-Path $repoPath 'product.overrides.json'
+		if (Test-Path -LiteralPath $overridesJson -PathType Leaf) {
+			$overrides = Get-Content -LiteralPath $overridesJson -Raw | ConvertFrom-Json
+			if ($overrides.PSObject.Properties['sharedDataFolderName']) {
+				$folderName = $overrides.sharedDataFolderName
+			}
+		}
 	}
 
 	return Join-Path $env:USERPROFILE $folderName
@@ -423,11 +432,29 @@ try {
 		$sourceUserDataDir = if ($env:CODE_OSS_DEV_AUTHED_USER_DATA_DIR) {
 			$env:CODE_OSS_DEV_AUTHED_USER_DATA_DIR
 		} else {
-			Join-Path $env:USERPROFILE '.vscode-oss-dev'
+			# codex-desktop D06: track the product identity's dataFolderName
+			# (product.json + the dev overlay product.overrides.json), so a
+			# branded checkout seeds from ~\.open-agents-dev.
+			$dataFolderName = '.vscode-oss'
+			$productJson = Join-Path $repo 'product.json'
+			if (Test-Path -LiteralPath $productJson -PathType Leaf) {
+				$product = Get-Content -LiteralPath $productJson -Raw | ConvertFrom-Json
+				if ($product.PSObject.Properties['dataFolderName'] -and $product.dataFolderName) {
+					$dataFolderName = $product.dataFolderName
+				}
+				$overridesJson = Join-Path $repo 'product.overrides.json'
+				if (Test-Path -LiteralPath $overridesJson -PathType Leaf) {
+					$overrides = Get-Content -LiteralPath $overridesJson -Raw | ConvertFrom-Json
+					if ($overrides.PSObject.Properties['dataFolderName'] -and $overrides.dataFolderName) {
+						$dataFolderName = $overrides.dataFolderName
+					}
+				}
+			}
+			Join-Path $env:USERPROFILE "$dataFolderName-dev"
 		}
 	}
 	if (-not (Test-Path -LiteralPath $sourceUserDataDir -PathType Container)) {
-		Exit-Usage "Source user-data-dir does not exist: $sourceUserDataDir`nPass --source-user-data-dir <path> or set CODE_OSS_DEV_AUTHED_USER_DATA_DIR."
+		Exit-Usage "Source user-data-dir does not exist: $sourceUserDataDir`nPass --source-user-data-dir <path> or set CODE_OSS_DEV_AUTHED_USER_DATA_DIR.`nAfter a D06 rebrand the dev profile moved with dataFolderName; migrate with copy-item -r or point CODE_OSS_DEV_AUTHED_USER_DATA_DIR at the old dir."
 	}
 	$sourceUserDataDir = [IO.Path]::GetFullPath($sourceUserDataDir)
 

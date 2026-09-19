@@ -1,0 +1,5 @@
+{
+	"_comment_fork": "codex-desktop D06 R12 guard record. VS Code 1.139 has NO product-level settings-defaults injection (no product/default-settings.json consumer, no product.json configurationDefaults consumer), so these values are NOT auto-applied. The effective default of both keys is registered as `product.quality !== 'stable'` (agentHostStarter.config.contribution.ts + chat.shared.contribution.ts); the fork keeps `quality` unset in the identity overlay so both evaluate to true. scripts/apply-mixin.mjs and src/vs/platform/agentHost/test/node/productIdentity.test.ts hard-fail if this invariant breaks.",
+	"chat.agentHost.codexAgent.enabled": true,
+	"chat.editor.codex.preferAgentHost": true
+}

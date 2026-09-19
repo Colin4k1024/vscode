@@ -233,3 +233,34 @@ VSCODE_AGENT_HOST_CLAUDE_SDK_ROOT=/path/to/anthropic-claude-sdk-install \
 ```
 
 (See `src/vs/platform/agentHost/common/agentService.ts` for env var names.)
+
+## Self-hosted distribution (forks)
+
+The pipeline defaults to Microsoft's CDN. A fork distributing its own
+builds points it at its own storage with one env var:
+
+```sh
+export AGENT_SDK_CDN_BASE=https://cdn.example.net   # default: https://main.vscode-cdn.net
+```
+
+- `produce.ts` then stamps `product.agentSdks.<sdk>.urlTemplate` as
+  `https://cdn.example.net/agent-sdk/<sdk>/<version>/{sdkTarget}.tgz`, and
+  `uploadOne` reports URLs on that base. The path shape is unchanged, so
+  the runtime downloader, `{sdkTarget}` substitution, and the
+  HEAD-then-decide idempotency semantics work identically.
+- `uploadOne` itself authenticates against whatever
+  `AZURE_STORAGE_ACCOUNT` it is given — running it with your own account
+  (the `$web` static-content container) is self-hosting on Azure. For
+  non-Azure object storage, produce the tarball with `package.ts` and
+  upload it with your tooling to the same content-addressed path
+  (`agent-sdk/<sdk>/<version>/<target>.tgz`); keep the sha256 in a
+  retrievable place so mismatches can be audited.
+- Caveat inherited from the content-addressed scheme: never overwrite a
+  published `<version>/<target>.tgz` with different bytes. Bump the
+  version instead.
+- Scope: this redirects the agent-SDK pipeline only. Other hardcoded
+  `main.vscode-cdn.net` uses in the repo (dictation-runtime, sourcemaps,
+  copilot BYOK) are unaffected and need their own handling. A
+  set-but-unusable `AGENT_SDK_CDN_BASE` value fails loud rather than
+  falling back to the default, so a typo cannot silently stamp the
+  Microsoft CDN into a fork's product.json.

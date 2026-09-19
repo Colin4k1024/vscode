@@ -37,6 +37,15 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      # Fast feedback before any heavy step: the bootstrap script is not
+      # otherwise exercised on CI (CI installs via npm ci directly), so at
+      # least statically gate it (round-2 review caught a set -euo pipefail
+      # glob regression that local runs and CI were both blind to).
+      - name: Shellcheck bootstrap script
+        run: |
+          command -v shellcheck >/dev/null || sudo apt install -y shellcheck
+          shellcheck .agents/research/codex-desktop/bootstrap.sh
+
       - name: Restore node_modules cache
         id: cache-node-modules
         uses: ./.github/actions/restore-node-modules

@@ -260,9 +260,9 @@ npm run download-builtin-extensions   # → .build/builtInExtensions 6.1M
 
 **失败模式记录（验收 8 第三处）**：
 
-- **Electron 下载**：*本机未复现失败*。失败形态：Electron 二进制从微软 Azure Artifacts universal feed（`@vscode/gulp-electron` / `build/lib/azureFeed.ts` 驱动）拉取，网络中断/代理拦截时 gulp 步骤以非零退出结束，错误信息含 feed 下载失败的 URL 与 HTTP 状态。解法：直接重跑 `npm run electron`（下载到 `.build/electron`，幂等，已完整的文件不会重复拉取）；公司网络下检查对 `*.blob.core.windows.net` / Azure Artifacts 域名的出口。
+- **Electron 下载**：*本机未复现失败*。下载源（`build/lib/electron.ts:107-115`）：本仓库 `product.json.electronArtifactFeed` 为空 → **OSS 路径从 Electron 官方 GitHub releases 拉取**（`@vscode/gulp-electron` 默认 resolver；仅 product 构建配置了 feed 时才走 Azure Artifacts）。失败形态：对 `github.com/electron/electron` release 资产（重定向到 `objects.githubusercontent.com`）的请求超时/非 200，gulp 步骤非零退出，错误含请求 URL 与状态码。解法：直接重跑 `npm run electron`（下载到 `.build/electron`，幂等）；公司网络下检查对 github.io/objects.githubusercontent.com 的出口或配置代理。
 - **built-in extensions 拉取**：*本机未复现失败*。两个已知失败形态：
-  1. 匿名 GitHub API 限速（拉取 `product.json.builtInExtensions` 列出的 VSIX 时）：HTTP 403 + `API rate limit exceeded` 字样。解法：导出 `GITHUB_TOKEN` 后重跑 `npm run download-builtin-extensions`（上游 CI 即如此；本机单次匿名下载未触发）。
+  1. 匿名 GitHub API 限速（拉取 `product.json.builtInExtensions` 列出的 VSIX 元数据时，`build/lib/fetch.ts:88-89`）：错误文本为 `Request <url> failed with status code: 403 (you may be rate limited)`。解法：导出 `GITHUB_TOKEN` 后重跑 `npm run download-builtin-extensions`（`fetch.ts:111-112` 会带上；上游 CI 即如此；本机单次匿名下载未触发）。
   2. 平台资产缺失（改 target 构建时）：`Built-in extension '<name>' is platform-specific but has no asset for target '<target>'`（`build/lib/builtInExtensions.ts:118` 原文）。解法：核对 `product.json` 的 `platformSpecific` 配置与目标三元组。
 
 built-in extensions **匿名下载成功，无需 `GITHUB_TOKEN`**：
@@ -371,7 +371,7 @@ modern-ui-notifications-dialogs mac chromium nomaineditorarea nopanel
 nocustomviewgrid nostatusbar macos-tahoe dock-detail
 ```
 
-窗口渲染证据截图（CDP `Page.captureScreenshot`，2026-09-19）：[`evidence/D01-agents-window.png`](evidence/D01-agents-window.png) —— Agents 窗口完整渲染：左侧 Sessions 列表 / New / Chats / Customizations / Plugins / MCP Servers / Skills，中央 composer。截图时弹出的对话框是该 profile 上次打开目录的 workspace trust 询问（选信任/浏览均可继续），不是登录墙。GitHub 登录墙的证据截图属于 D04（#6）的范围，届时单独采集。
+窗口渲染证据截图（CDP `Page.captureScreenshot`，2026-09-19）：[`evidence/D01-agents-window.png`](evidence/D01-agents-window.png) —— Agents 窗口完整渲染：左侧 Sessions 列表 / New / Chats / Customizations / Plugins / MCP Servers / Skills，中央 composer。**前景弹窗**是 workspace trust 询问（选信任/浏览均可继续）；背景底部可见 GitHub 登录卡片的一角（该登录墙现象的完整证据属于 D04（#6）的范围，届时单独采集）。
 
 ### 6f. ⚠️ 已知阻断：Agents 窗口的 GitHub 登录墙
 

@@ -73,7 +73,10 @@ fi
 # a meaningful number of compiled extensions, not just one: 32 at the time of
 # writing; >= 8 keeps the check stable against upstream churn while still
 # catching a compile that died after the first extension.
-EXT_OUT_COUNT=$(ls -d extensions/*/out 2>/dev/null | wc -l | tr -d ' ')
+# NB: `find` (not `ls extensions/*/out`) — a glob with zero matches makes `ls`
+# exit 1, which under `set -euo pipefail` would abort the script on exactly
+# the clean-checkout case this script exists to bootstrap.
+EXT_OUT_COUNT=$(find extensions -mindepth 2 -maxdepth 2 -type d -name out 2>/dev/null | wc -l | tr -d ' ')
 echo "extensions with out/: ${EXT_OUT_COUNT}"
 if [[ $FORCE -eq 1 ]] || [[ ! -d out/vs ]] || [[ "$EXT_OUT_COUNT" -lt 8 ]]; then
   npm run compile 2>&1 | tee .build/logs/compile.log

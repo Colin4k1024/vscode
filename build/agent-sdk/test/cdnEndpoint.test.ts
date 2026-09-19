@@ -40,11 +40,17 @@ suite('agent SDK CDN endpoint', () => {
 		);
 	});
 
-	test('accepts uppercase schemes and strips trailing slashes; keeps path prefixes', () => {
+	test('accepts uppercase schemes and strips trailing slashes; keeps path prefixes; trims whitespace', () => {
 		process.env.AGENT_SDK_CDN_BASE = 'HTTPS://cdn.example.net';
 		assert.strictEqual(
 			buildCdnUrl('codex', '0.153.0', 'win32-x64'),
 			'HTTPS://cdn.example.net/agent-sdk/codex/0.153.0/win32-x64.tgz',
+		);
+
+		process.env.AGENT_SDK_CDN_BASE = '  https://cdn.example.net/  ';
+		assert.strictEqual(
+			buildCdnUrl('codex', '0.153.0', 'win32-x64'),
+			'https://cdn.example.net/agent-sdk/codex/0.153.0/win32-x64.tgz',
 		);
 
 		process.env.AGENT_SDK_CDN_BASE = 'https://cdn.example.net///';

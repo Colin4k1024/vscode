@@ -5,7 +5,7 @@
 
 ## 1. 三级解析链（运行时）
 
-`codexAgent.ts:_resolveSdkRoot`（:2436）实现、`agentSdkDownloader.ts:loadSdkRoot`（:367）配合：
+`codexAgent.ts:_resolveSdkRoot`（:2436）实现、`agentSdkDownloader.ts:loadSdkRoot`（:343）配合：
 
 | 级 | 条件 | 行为 | 日志标志（实测） |
 |---|---|---|---|
@@ -18,7 +18,7 @@
 
 优先级：**env override > 出厂配置（缓存/下载）> dev fallback > 报错**。最终二进制路径恒为 `<root>/node_modules/@openai/codex-<platform>-<arch>/vendor/<rust-triple>/bin/codex`，spawn 前 `fs.accessSync(X_OK)` 校验（`codexAgent.ts:2478-2483`，throw 在 :2482）。
 
-> 脚注：issue #4 验收 1 写的 `npm run codex:check-protocol-sync` 在本仓库中不存在——真实脚本名是 `npm run codex:check-protocol`（`package.json` scripts），本文全文使用后者。
+> 脚注：issue #4 验收 1 写的 `npm run codex:check-protocol` 在本仓库中不存在——真实脚本名是 `npm run codex:check-protocol`（`package.json` scripts），本文全文使用后者。
 
 ## 2. 版本策略裁定：**(a) 保持 0.153.0**
 
@@ -28,7 +28,7 @@
 |---|---|---|
 | **(a) 保持 0.153.0** | 827 个生成 .ts 协议文件（另含 1 个跨重生成保留的手写 README.md，合计 828）、103 个 replay capture、`agents/codex` pin、根 devDep、`codex-version.txt` 完全一致（见 §5 证据） | ✅ **采用** |
 | (b) 升级到 0.155.x | 需原子三件套 + 全量重生成 + replay 全绿（成本见 §4） | 留给 D14 的升级 runbook 首次实操 |
-| (c) 跟 `/poc/codex` main | `0.0.0-dev` 无版本自证，check-protocol-sync 无法锁定 | 否决 |
+| (c) 跟 `/poc/codex` main | `0.0.0-dev` 无版本自证，`codex:check-protocol` 无法锁定 | 否决 |
 
 理由：D01–D13 的全部验收都建立在当前 pin 的一致性上；在没有功能缺口的情况下（本 Epic 未接线能力的评估归 D16），提前升级只增加回归面。升级的触发条件：上游协议出现本产品需要的能力（D16 裁定后）、或安全修复。
 
@@ -38,7 +38,7 @@
 
 - `produce.ts` 盖进 `product.agentSdks.codex.urlTemplate` 的就是自有域名（`https://<自有域>/agent-sdk/codex/<版本>/{sdkTarget}.tgz`）；
 - `uploadOne` 报告的 URL 同源；上传本体用你自己的 `AZURE_STORAGE_ACCOUNT`（`$web` 静态容器）即"自有对象存储"；非 Azure 存储用 `package.ts` 产 tarball 后自传，保持内容寻址路径 `agent-sdk/<sdk>/<版本>/<target>.tgz` 不变；
-- 约束（内容寻址纪律）：**永不覆盖**已发布的 `<版本>/<target>.tgz 字节**；要换内容就 bump 版本。`uploadOne` 的 HEAD-then-decide（同 sha 跳过 / 异 sha fail-loud）依赖此纪律；
+- 约束（内容寻址纪律）：**永不覆盖**已发布的 `<版本>/<target>.tgz` 字节；要换内容就 bump 版本。`uploadOne` 的 HEAD-then-decide（同 sha 跳过 / 异 sha fail-loud）依赖此纪律；
 - macOS Universal 前提：所有平台 job 的 `AGENT_SDK_CDN_BASE` 必须相同，保证各 job 盖出的 `urlTemplate` 完全一致（`{sdkTarget}` 运行时替换）。
 
 平台 SKU（`getSdkTargetForBuild`，与 SDK 的 npm `optionalDependencies` 约定同步）：`darwin-{arm64,x64}` / `linux-{x64,arm64}`（静态 musl 单一 SKU，`hasSeparateMuslLinuxPackage: false`，Alpine 同 `linux-*`）/ `win32-{x64,arm64}`；`web`/`armhf` → undefined。rust triple 由 `codexBinaryTriple()` 映射（darwin-arm64 → `aarch64-apple-darwin`，tarball 内 `vendor/<triple>/bin/` 实测命中）。
@@ -72,12 +72,12 @@
 | 8 负向 B2 | 契约级已有：`agentSdkDownloader.test.ts:446`（`no \`product.agentSdks.*\` configured` actionable error）+ `agentSdkDownloadTelemetry.test.ts`（notConfigured 分类）。migration-deferred / 聚合 listing 不阻塞的行为由既有 e2e capture 覆盖 |
 | 9 tarball 产出 | `node build/agent-sdk/package.ts --sdk=codex --target=darwin-arm64 --out=/tmp/d02-out` → `codex-0.153.0-darwin-arm64.tgz`（115613316 bytes，sha256=8eb8d05e…，verifyStagedTree 内建通过）；解包含 `vendor/aarch64-apple-darwin/bin/{codex,codex-code-mode-host}` |
 | 10 本文档 | 即验收 10 |
-| 版本一致性 | `cd build && node --test agent-sdk/test/versionSync.test.ts` 绿（遍历 `getSdks()`=claude+codex：agents pin = 根 devDep = lockfile 三处一致）；本 PR 新增 `cdnEndpoint.test.ts`（默认端点 / env 重定向 / 尾斜杠与非 http 回退） |
+| 版本一致性 | `cd build && node --test agent-sdk/test/versionSync.test.ts` 绿（遍历 `getSdks()`=claude+codex：agents pin = 根 devDep = lockfile 三处一致）；本 PR 新增 `cdnEndpoint.test.ts`（默认端点 / env 重定向 / 大小写与空白容错 / 非法值 fail-loud） |
 
 ## 6. 代码改动清单（薄覆盖）
 
 - `build/agent-sdk/common.ts`：新增 `cdnBase()`（读 `AGENT_SDK_CDN_BASE`，默认不变）；`buildCdnUrl/Template` 改用之
-- `build/agent-sdk/test/cdnEndpoint.test.ts`：新增 3 用例
+- `build/agent-sdk/test/cdnEndpoint.test.ts`：新增 4 用例
 - `build/agent-sdk/README.md`：新增 "Self-hosted distribution (forks)" 章节
 - 本文（`.agents/research/codex-desktop/CODEX-SDK-SUPPLY.md`）
 

@@ -186,7 +186,7 @@ export function getSdkTargetForBuild(
  * exact-version pin in `getAgentMeta`).
  */
 export function cdnBase(): string {
-	const raw = process.env.AGENT_SDK_CDN_BASE;
+	const raw = process.env.AGENT_SDK_CDN_BASE?.trim();
 	if (raw === undefined || raw === '') {
 		return 'https://main.vscode-cdn.net';
 	}

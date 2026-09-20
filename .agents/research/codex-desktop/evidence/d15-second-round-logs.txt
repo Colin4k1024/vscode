@@ -1,0 +1,31 @@
+# D15 第二轮实测日志摘录（complement PR，2026-09-20）
+# 环境：dev 形态（scripts/code.sh + mixin 应用），macOS arm64；profile: /tmp/code-oss-dev-20260920-201733-48778-chGgv6
+
+## 1. 安装（sharedprocess.log，首轮分支构建）
+2026-09-20 20:25:17.615 [info] Getting Manifest... redhat.vscode-yaml
+2026-09-20 20:25:18.974 [info] Installing extension: redhat.vscode-yaml {"isMachineScoped":false,"installPreReleaseVersion":false,"pinned":false,"profileLocation":{"$mid":1,"external":"vscode-userdata:/tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/extensions.json","path":"/tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/extensions.json","scheme":"vscode-userdata"},"isBuiltin":false,"isApplicationScoped":false,"productVersion":{"version":"1.139.0"}}
+2026-09-20 20:25:20.412 [error] Could not load vsce-sign module Cannot find package '@vscode/vsce-sign' imported from /Users/jiafan/Desktop/poc/vscode/.build/worktrees/d15x/out/vs/platform/extensionManagement/node/extensionSignatureVerificationService.js
+2026-09-20 20:25:20.412 [info] Extension signature verification is not done: redhat.vscode-yaml
+2026-09-20 20:25:20.438 [info] Extracted extension to file:///tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/redhat.vscode-yaml-1.24.0-universal: redhat.vscode-yaml
+2026-09-20 20:25:20.445 [info] Renamed to /tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/redhat.vscode-yaml-1.24.0-universal
+2026-09-20 20:25:20.456 [info] Extension installed successfully: redhat.vscode-yaml vscode-userdata:/tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/extensions.json
+
+## 2. 常规窗口激活（exthost.log，同一 profile）
+2026-09-20 20:29:54.481 [info] ExtensionService#_doActivateExtension redhat.vscode-yaml, startup: false, activationEvent: 'onLanguage:yaml'
+
+## 3. 重启后再激活（exthost.log，第二会话 20260920T203134）
+2026-09-20 20:31:38.475 [info] ExtensionService#_doActivateExtension redhat.vscode-yaml, startup: false, activationEvent: 'onLanguage:yaml'
+
+## 4. Agents 窗口对照（exthost.log，会话 20260920T203313）：无 redhat.vscode-yaml 激活记录
+激活记录全量（仅内置扩展）:
+  vscode.debug-auto-launch, startup: false, activationEvent: 'onStartupFinished'
+  vscode.emmet, startup: false, activationEvent: 'onLanguage'
+  vscode.git, startup: true, activationEvent: '*'
+  vscode.git-base, startup: true, activationEvent: '*', root cause: vscode.git
+  vscode.github, startup: true, activationEvent: '*'
+  vscode.github-authentication, startup: false, activationEvent: 'onAuthenticationRequest:github'
+  vscode.merge-conflict, startup: false, activationEvent: 'onStartupFinished'
+redhat 命中数: 0
+
+## 5. 安装后 extensions.json（gallery 来源元数据）
+[{"identifier":{"id":"redhat.vscode-yaml"},"version":"1.24.0","location":{"$mid":1,"fsPath":"/tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/redhat.vscode-yaml-1.24.0-universal","external":"file:///tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/redhat.vscode-yaml-1.24.0-universal","path":"/tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/redhat.vscode-yaml-1.24.0-universal","scheme":"file"},"relativeLocation":"redhat.vscode-yaml-1.24.0-universal","metadata":{"installedTimestamp":1789907119021,"pinned":false,"source":"gallery","id":"2061917f-f76a-458a-8da9-f162de22b97e","publisherId":"1deab481-4801-4170-8a64-801999f5ee73","publisherDisplayName":"Red Hat","targetPlatform":"universal","updated":false,"private":false,"isPreReleaseVersion":false,"hasPreReleaseVersion":false}}]

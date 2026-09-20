@@ -16,9 +16,12 @@
   "extensionsGallery": {
       "serviceUrl": "https://open-vsx.org/vscode/gallery",
       "itemUrl": "https://open-vsx.org/vscode/item",
+      "publisherUrl": "https://open-vsx.org/namespace",
       "resourceUrlTemplate": "https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}"
   }
   ```
+
+  （`publisherUrl` 由补充 PR 增补，见附录 B.7。）
 
 - **字段核实**（对照 VSCodium 与线上服务实测，2026-09-20）：
   - `serviceUrl` + `itemUrl`：VSCodium 同款最小集；`extensionquery`、
@@ -74,7 +77,7 @@
 
 ## D15-06 VSIX 本地安装兜底
 
-- Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键）后回到"无市场"状态，
+- Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键——自补充 PR 起还须同删 `scripts/audit-network-egress.sh` 与 `scripts/verify-beta-gates.sh` 中的 gallery 存在性断言，否则 CI/打包门禁红，属有意的显式回滚门）后回到"无市场"状态，
   仍可通过 `--install-extension <path-to.vsix>` 或 GUI "Install from VSIX" 安装。
   该路径不依赖 gallery 配置。
 
@@ -102,8 +105,8 @@
 ## D10 checklist 勾销支持（AC8）
 
 - `LICENSE-CLEARANCE.md` §10「Marketplace / Open VSX」条目由本 issue 落地：
-  出厂 gallery = Open VSX（D15-01），无 MS Marketplace 指向（D15-02 门禁 + 实测），
-  owner 可据此勾销。
+  出厂 gallery = Open VSX（D15-01），无 MS Marketplace 指向（D15-02 门禁 + 实测）。
+- `PRE-RELEASE-CHECKLIST.md` E1/E2/E3 已由补充 PR 勾销（含证据指针与 G 段状态记录）。
 
 ## AC 映射
 
@@ -116,7 +119,7 @@
 | AC5 sessions 白名单 | D15-03（D07 断言复核通过） |
 | AC6 workspace trust | D15-05 |
 | AC7 builtInExtensions | D15-04 |
-| AC8 D10 checklist 勾销 | 上文「D10 checklist 勾销支持」 |
+| AC8 D10 checklist 勾销 | 上文「D10 checklist 勾销支持」；`PRE-RELEASE-CHECKLIST.md` E1/E2/E3 已勾销（补充 PR） |
 
 ---
 
@@ -138,6 +141,8 @@
 - 安装日志含 `Could not load vsce-sign module … Extension signature verification is not done`：
   OSS 构建无 `@vscode/vsce-sign`（MS 专有模块），签名验证不可用——与 VSCodium 同形态，
   如实登记；缓解 = Open VSX 发布侧审核 + namespace 所有权 + builtInExtensions sha256 pin。
+- 日志工件：`evidence/d15-second-round-logs.txt` §1（安装序列原文）/ §2（激活记录）/
+  §5（`extensions.json` 的 `metadata.source: "gallery"`）。
 
 ### B.2 重启持久（AC4，两轮重启）
 
@@ -146,13 +151,16 @@
 `extensions/redhat.vscode-yaml-1.24.0-universal/` 在盘持久
 （截图 `evidence/d15-extensions-installed-after-restart.png`）。
 后续在本 PR 基底（main 合并态）上再次复验：已装扩展在列、搜索实时返回（netlog4 抓包）。
+日志工件：`evidence/d15-second-round-logs.txt` §3（第二会话 exthost 再激活记录）。
 
 ### B.3 Agents 窗口不激活未列入扩展（AC5 运行时证据）
 
 同一 profile（已装 redhat.vscode-yaml）以 Agents 窗口打开 `test.yaml`：文件正常打开，
 但该窗口 exthost 日志**无** `redhat.vscode-yaml` 激活记录（对照：常规窗口同操作有）。
 激活的仅有内置扩展（vscode.git、vscode.emmet 等）。
-截图 `evidence/d15-agents-window-yaml-not-activated.png`。
+对照工件：`evidence/d15-second-round-logs.txt` §4（Agents 窗口会话激活全量列表 +
+redhat 命中数 0；与 §2 常规窗口激活记录对照）。截图
+`evidence/d15-agents-window-yaml-not-activated.png`（窗口形态佐证）。
 静态断言：`agentsWindowStartup.test.ts` "sessionsWindowAllowedExtensions is an
 explicitly empty allow-list"（首轮已挂）。
 
@@ -194,6 +202,8 @@ explicitly empty allow-list"（首轮已挂）。
 （`extensionGalleryManifestService.ts` 的 `PublisherViewUri`）。
 
 ### B.8 本轮 netlog 主机聚合（AC2/AC3 复测）
+
+工件：`evidence/d15-netlog-hosts.txt`（四轮 `--log-net-log` 抓包的按主机计数全量）。
 
 | 运行 | open-vsx.org | openvsx.eclipsecontent.org | MS Marketplace 主机 | 备注 |
 |---|---|---|---|---|

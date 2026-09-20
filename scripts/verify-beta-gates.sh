@@ -114,7 +114,15 @@ if (msGallery.test(text)) {
 	process.exit(1);
 }
 const gallery = merged.extensionsGallery;
-console.log(`    extensionsGallery: ${gallery ? JSON.stringify(gallery.serviceUrl ?? gallery) : '(absent — extension gallery disabled)'}`);
+if (!gallery?.serviceUrl) {
+	// Aligned with scripts/audit-network-egress.sh (G9 regression gate, D15):
+	// the shipped product ships the Open VSX gallery; a beta built without it
+	// is a regression, not a supported configuration. A deliberate rollback
+	// removes this assertion together with the one in audit-network-egress.sh.
+	console.error('GATE FAILED: effective product.json has no extensionsGallery — D15 configured Open VSX; a beta without the marketplace regresses G9.');
+	process.exit(1);
+}
+console.log(`    extensionsGallery: ${JSON.stringify(gallery.serviceUrl)}`);
 NODE_EOF
 
 echo "==> [5/8] SBOM generator runs (AC13)"

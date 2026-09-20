@@ -246,7 +246,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `product/branding/win32/inno-small-250.bmp` | A | bin | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/default-settings.json` | A | +4/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/extensions.json` | A | +5/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
-| `product/product.json` | A | +41/-0 | D06,D07,D08 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
+| `product/product.json` | A | +48/-0 | D06,D07,D08,D15 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `scripts/apply-mixin.sh` | A | +188/-0 | D06,D08,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/audit-network-egress.sh` | A | +137/-0 | D08 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/check-branding-identity.sh` | A | +86/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |

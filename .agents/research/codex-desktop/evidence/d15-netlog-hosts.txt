@@ -1,0 +1,31 @@
+# D15 第二轮 netlog 主机聚合（--log-net-log 抓包，按 "url" host 计数）
+
+## 搜索+安装（首轮分支构建）（/tmp/d15-netlog.json）
+    201  open-vsx.org
+    101  openvsx.eclipsecontent.org
+     34  img.shields.io
+     21  wpad
+      7  raw.githubusercontent.com
+      4  main.vscode-cdn.net
+      1  a.nel.cloudflare.com
+  MS Marketplace 主机（marketplace.visualstudio.com / *.vsassets.io / gallerycdn）请求数: 0
+
+## 重启（常规窗口）（/tmp/d15-netlog2.json）
+     12  wpad
+     10  open-vsx.org
+      4  main.vscode-cdn.net
+      1  openvsx.eclipsecontent.org
+  MS Marketplace 主机（marketplace.visualstudio.com / *.vsassets.io / gallerycdn）请求数: 0
+
+## Agents 窗口（/tmp/d15-netlog3.json）
+      6  wpad
+  MS Marketplace 主机（marketplace.visualstudio.com / *.vsassets.io / gallerycdn）请求数: 0
+
+## main 合并态复验（/tmp/d15-netlog4.json）
+     49  open-vsx.org
+     17  openvsx.eclipsecontent.org
+     15  wpad
+      4  main.vscode-cdn.net
+  MS Marketplace 主机（marketplace.visualstudio.com / *.vsassets.io / gallerycdn）请求数: 0
+
+备注：wpad 为 Chromium 本机代理发现探测（非外发）；main.vscode-cdn.net 命中来自 dev 形态在仓 extensions/copilot（byokContribution.ts:111 硬编码），D08 门禁其不进产物；img.shields.io / raw.githubusercontent.com 为扩展 readme 内容渲染。

@@ -49,6 +49,7 @@ suite('extension gallery (D15)', () => {
 		assert.deepStrictEqual(overlay.extensionsGallery, {
 			serviceUrl: 'https://open-vsx.org/vscode/gallery',
 			itemUrl: 'https://open-vsx.org/vscode/item',
+			publisherUrl: 'https://open-vsx.org/namespace',
 			resourceUrlTemplate: 'https://open-vsx.org/vscode/unpkg/{publisher}/{name}/{version}/{path}',
 		});
 	});
@@ -66,6 +67,16 @@ suite('extension gallery (D15)', () => {
 		for (const host of ['marketplace.visualstudio.com', 'vsassets.io', 'gallerycdn', 'vscode.blob.core.windows.net']) {
 			assert.ok(!text.includes(host), `merged product.json contains MS Marketplace host '${host}'`);
 		}
+	});
+
+	test('the egress audit fails when the gallery is removed from the mixin', () => {
+		// G9 regression gate: scripts/audit-network-egress.sh must contain the
+		// gallery-presence assertion (the `else` branch that errors when the
+		// merged configuration has no extensionsGallery). Deleting the mixin
+		// key without deleting that assertion must stay a CI failure.
+		const audit = readFileSync(join(repoRoot, 'scripts', 'audit-network-egress.sh'), 'utf8');
+		assert.ok(audit.includes('merged product.json has no extensionsGallery'),
+			'audit-network-egress.sh must fail when the merged product.json has no extensionsGallery (G9 regression gate)');
 	});
 
 	test('Open VSX is not on the network-egress denylist', () => {

@@ -112,9 +112,9 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 
 | 区域 | 自有改动 | 备注 |
 |---|---|---|
-| `src/vs/platform/agentHost/`（common/node/test） | 16 M + 大量 A | 最高重叠区；`codexAgent.ts` +173/-16 是最大单文件改动 |
-| `src/vs/sessions/` | 4 M + 2 A | 账号菜单、键位 |
-| `src/vs/workbench/contrib/chat/` | 6 M + 2 A | `chat.shared.contribution.ts` 已被 `sync-upstream.sh --dry-run` 实测预报冲突（2026-09-20 vs upstream/main） |
+| `src/vs/platform/agentHost/`（common/node/test） | 27 M + 13 A（按 §4.1 实测重算） | 最高重叠区；`codexAgent.ts` 为最大单文件改动（行数见 §4.1） |
+| `src/vs/sessions/` | 5 M + 2 A（按 §4.1 实测重算） | 账号菜单、键位 |
+| `src/vs/workbench/contrib/chat/` | 6 M + 3 A（按 §4.1 实测重算） | `chat.shared.contribution.ts` 已被 `sync-upstream.sh --dry-run` 实测预报冲突（2026-09-20 vs upstream/main） |
 | `product.json`（根） | 0 M | D06 mixin 保护：根 product.json 保持 0 diff（`check-product-json-pristine.sh` 把关） |
 | `package.json`（根） | 1 M（D14 的 1 行 script alias）+ devDependencies pin | Codex 升级必碰；上游也频繁动 devDependencies |
 

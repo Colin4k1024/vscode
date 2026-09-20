@@ -1523,7 +1523,9 @@ export class CodexAgent extends Disposable implements IAgent {
 		const copilotResource = this._gitHubEndpointService.getCopilotResource();
 		return [
 			{ ...copilotResource, required: false },
-			this._gitHubEndpointService.getRepoResource(),
+			// D04: the repo resource unlocks GitHub workspace features only; it must
+			// not gate the window for users running purely on OpenAI credentials.
+			{ ...this._gitHubEndpointService.getRepoResource(), required: false },
 		];
 	}
 

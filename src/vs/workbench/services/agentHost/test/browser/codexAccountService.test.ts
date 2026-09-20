@@ -10,29 +10,35 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { NullAgentHostService } from '../../../../../platform/agentHost/browser/nullAgentHostService.js';
-import { CODEX_ACCOUNT_META_KEY } from '../../../../../platform/agentHost/common/codexAccount.js';
+import { CODEX_ACCOUNT_META_KEY, CODEX_ACCOUNT_SIGN_IN_CANCEL_REQUEST_KEY, CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY } from '../../../../../platform/agentHost/common/codexAccount.js';
 import { AgentHostCodexAgentEnabledSettingId, CodexPreferAgentHostEditorSettingId } from '../../../../../platform/agentHost/common/agentService.js';
 import { CODEX_AGENT_PROVIDER_ID } from '../../../../../platform/agentHost/common/agent.js';
 import type { IAgentSubscription } from '../../../../../platform/agentHost/common/state/agentSubscription.js';
+import { ActionType } from '../../../../../platform/agentHost/common/state/sessionActions.js';
 import type { RootState } from '../../../../../platform/agentHost/common/state/protocol/state.js';
 import { ChatAIDisabledSettingId } from '../../../../../platform/chat/common/chatSettings.js';
 import { OpenOptions } from '../../../../../platform/opener/common/opener.js';
 import { NullOpenerService } from '../../../../../platform/opener/test/common/nullOpenerService.js';
 import { ContentEncoding } from '../../../../../platform/agentHost/common/state/sessionProtocol.js';
-import { CodexAccountService, ICodexAccountService, createCodexAccountMenuActions, hasSignedInCodexChatGPTAccount, openCodexAuthUrl, readCodexProfileImageDataUri, shouldShowCodexAccount } from '../../browser/codexAccountService.js';
+import { CodexAccountService, ICodexAccountService, createCodexAccountMenuActions, hasSignedInCodexChatGPTAccount, hasSignedInCodexOpenAIAccount, openCodexAuthUrl, readCodexProfileImageDataUri, shouldShowCodexAccount } from '../../browser/codexAccountService.js';
 
 suite('CodexAccountService', () => {
 	const disposables = ensureNoDisposablesAreLeakedInTestSuite();
 
-	function service(status: ICodexAccountService['account']['status'], email?: string): ICodexAccountService & { signInCalls: number; signOutCalls: number } {
+	function service(status: ICodexAccountService['account']['status'], email?: string, account: Partial<ICodexAccountService['account']> = {}): ICodexAccountService & { signInCalls: number; signInWithDeviceCodeCalls: number; cancelSignInCalls: number; signOutCalls: number } {
 		return {
 			_serviceBrand: undefined,
 			agent: CODEX_AGENT_PROVIDER_ID,
-			account: { status, email },
+			account: { status, authType: status === 'signedIn' ? 'chatgpt' : undefined, email, ...account },
 			onDidChangeAccount: Event.None,
+			openerService: NullOpenerService,
 			signInCalls: 0,
+			signInWithDeviceCodeCalls: 0,
+			cancelSignInCalls: 0,
 			signOutCalls: 0,
 			signIn() { this.signInCalls++; },
+			signInWithDeviceCode() { this.signInWithDeviceCodeCalls++; },
+			cancelSignIn() { this.cancelSignInCalls++; },
 			signOut() { this.signOutCalls++; },
 		};
 	}
@@ -68,11 +74,72 @@ suite('CodexAccountService', () => {
 		assert.strictEqual(hasSignedInCodexChatGPTAccount(service('error').account), false);
 	});
 
+	test('keeps the shared account chrome ChatGPT-only for API key accounts', () => {
+		assert.strictEqual(hasSignedInCodexChatGPTAccount(service('signedIn', undefined, { authType: 'apiKey' }).account), false);
+		assert.strictEqual(hasSignedInCodexOpenAIAccount(service('signedIn', undefined, { authType: 'apiKey' }).account), true);
+		assert.strictEqual(hasSignedInCodexOpenAIAccount(service('signedOut').account), false);
+	});
+
+	test('labels an API key account without claiming a ChatGPT identity', async () => {
+		const accountService = service('signedIn', undefined, { authType: 'apiKey' });
+		const actions = createCodexAccountMenuActions(accountService);
+		const accountAction = actions[0] as SubmenuAction;
+		await accountAction.actions[0].run();
+		assert.deepStrictEqual({
+			label: accountAction.label,
+			submenu: accountAction.actions.map(action => action.label),
+			signOutCalls: accountService.signOutCalls,
+		}, {
+			label: 'OpenAI API Key',
+			submenu: ['Sign Out'],
+			signOutCalls: 1,
+		});
+	});
+
+	test('offers cancel while a sign-in attempt is pending', async () => {
+		const accountService = service('signedOut', undefined, { authType: undefined, authUrlNonce: 'request-1', authUrl: 'https://auth.openai.com/oauth/authorize' });
+		const actions = createCodexAccountMenuActions(accountService);
+		assert.deepStrictEqual(actions.map(action => action.id), ['codex.cancelChatGPTSignIn']);
+		disposables.add(actions[0] as Action);
+		await actions[0].run();
+		assert.strictEqual(accountService.cancelSignInCalls, 1);
+	});
+
+	test('shows the one-time device code while a device-code sign-in is pending', async () => {
+		const accountService = service('signedOut', undefined, {
+			authType: undefined,
+			authUrlNonce: 'deviceCode:request-2',
+			deviceVerificationUrl: 'https://auth.openai.com/codex/device',
+			deviceUserCode: 'ABCD-EFGH',
+		});
+		const actions = createCodexAccountMenuActions(accountService);
+		assert.deepStrictEqual(actions.map(action => action.id), ['codex.chatGPTDeviceCodeSignIn', 'codex.cancelChatGPTSignIn']);
+		for (const action of actions) {
+			disposables.add(action as Action);
+		}
+		assert.strictEqual(actions[0].label, 'Enter Code ABCD-EFGH to Finish Signing In');
+		await actions[1].run();
+		assert.strictEqual(accountService.cancelSignInCalls, 1);
+	});
+
+	test('offers the device-code fallback next to browser sign-in', async () => {
+		const accountService = service('signedOut');
+		const actions = createCodexAccountMenuActions(accountService);
+		assert.deepStrictEqual(actions.map(action => action.id), ['codex.signInToChatGPT', 'codex.signInToChatGPTWithDeviceCode']);
+		for (const action of actions) {
+			disposables.add(action as Action);
+		}
+		await actions[1].run();
+		assert.strictEqual(accountService.signInWithDeviceCodeCalls, 1);
+	});
+
 	test('offers sign-in without claiming an unknown account is signed out', async () => {
 		const accountService = service('unknown');
 		const actions = createCodexAccountMenuActions(accountService);
 		assert.ok(actions[0] instanceof Action);
-		disposables.add(actions[0] as Action);
+		for (const action of actions) {
+			disposables.add(action as Action);
+		}
 		assert.strictEqual(actions[0].label, 'Sign in to ChatGPT');
 		await actions[0].run();
 		assert.strictEqual(accountService.signInCalls, 1);
@@ -173,6 +240,65 @@ suite('CodexAccountService', () => {
 			resourceRead: async () => ({ data: 'AQID', encoding: ContentEncoding.Base64, contentType: 'image/png' }),
 		}, reference);
 		assert.strictEqual(invalidDataUri, undefined);
+	});
+
+	test('cancelSignIn dispatches the pending nonce as a cancel request', () => {
+		const state: RootState = {
+			agents: [],
+			_meta: { [CODEX_ACCOUNT_META_KEY]: { status: 'signedOut', authUrlNonce: 'request-9', authUrl: 'https://auth.openai.com/oauth/authorize' } },
+		};
+		const dispatched: unknown[] = [];
+		const agentHostService = new class extends NullAgentHostService {
+			override get rootState(): IAgentSubscription<RootState> {
+				return {
+					value: state,
+					verifiedValue: state,
+					onDidChange: Event.None,
+					onWillApplyAction: Event.None,
+					onDidApplyAction: Event.None,
+				};
+			}
+
+			override dispatch(_uri: string, action: unknown): void {
+				dispatched.push(action);
+			}
+		}();
+		const accountService = disposables.add(new CodexAccountService(agentHostService, NullOpenerService));
+
+		accountService.cancelSignIn();
+
+		assert.deepStrictEqual(dispatched, [{
+			type: ActionType.RootConfigChanged,
+			config: { [CODEX_ACCOUNT_SIGN_IN_CANCEL_REQUEST_KEY]: 'request-9' },
+		}]);
+	});
+
+	test('signInWithDeviceCode dispatches a device-code prefixed request', () => {
+		const state: RootState = { agents: [], _meta: { [CODEX_ACCOUNT_META_KEY]: { status: 'signedOut' } } };
+		const dispatched: Array<{ type: string; config: Record<string, string> }> = [];
+		const agentHostService = new class extends NullAgentHostService {
+			override get rootState(): IAgentSubscription<RootState> {
+				return {
+					value: state,
+					verifiedValue: state,
+					onDidChange: Event.None,
+					onWillApplyAction: Event.None,
+					onDidApplyAction: Event.None,
+				};
+			}
+
+			override dispatch(_uri: string, action: unknown): void {
+				dispatched.push(action as { type: string; config: Record<string, string> });
+			}
+		}();
+		const accountService = disposables.add(new CodexAccountService(agentHostService, NullOpenerService));
+
+		accountService.signInWithDeviceCode();
+
+		assert.strictEqual(dispatched.length, 1);
+		assert.strictEqual(dispatched[0].type, ActionType.RootConfigChanged);
+		const request = dispatched[0].config[CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY];
+		assert.ok(request.startsWith('deviceCode:'), `expected a deviceCode: prefix, got ${request}`);
 	});
 
 	test('retries a failed profile-image read for the same reference', async () => {

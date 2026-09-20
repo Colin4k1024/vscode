@@ -996,11 +996,14 @@ class TitleBarAccountWidget extends BaseActionViewItem {
 
 function hasCodexAccountPanelContentChanged(previous: ICodexAccountViewInfo, current: ICodexAccountViewInfo): boolean {
 	return previous.status !== current.status
+		|| previous.authType !== current.authType
 		|| previous.email !== current.email
 		|| previous.planType !== current.planType
 		|| previous.requiresOpenaiAuth !== current.requiresOpenaiAuth
 		|| previous.authUrl !== current.authUrl
 		|| previous.authUrlNonce !== current.authUrlNonce
+		|| previous.deviceVerificationUrl !== current.deviceVerificationUrl
+		|| previous.deviceUserCode !== current.deviceUserCode
 		|| previous.rateLimit?.usedPercent !== current.rateLimit?.usedPercent
 		|| previous.rateLimit?.windowDurationMins !== current.rateLimit?.windowDurationMins
 		|| previous.rateLimit?.resetsAt !== current.rateLimit?.resetsAt;

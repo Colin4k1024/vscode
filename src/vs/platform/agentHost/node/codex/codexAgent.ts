@@ -5970,10 +5970,10 @@ export class CodexAgent extends Disposable implements IAgent {
 		// Residual race, documented and accepted: two sends that both pass the
 		// entry check write shared session fields (`agentMergeTurn` here,
 		// `workingDirectories` below) during preparation, before the claim-site
-		// assertion rejects the loser. The loser's writes land after the
-		// winner's but the winner only reads them during prep, so the window is
-		// bounded by prep duration; closing it would require deferring these
-		// writes past the claim, which the prep consumers currently depend on.
+		// assertion rejects the loser. The clobbered value persists until the
+		// active turn completes; impact is confined to merge-flag /
+		// tool-restriction reads of the in-flight turn. Closing it would require
+		// deferring these writes past the claim, which prep consumers depend on.
 		session.agentMergeTurn = operationContext?.agentMergeTurn === true;
 		this._ensureModelProviderAuthenticated(session.model);
 		// The host hands us the complete resolved snapshot (index 0 = the process
@@ -6173,7 +6173,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			// A concurrent send that lost the claim race owns nothing: no session
 			// mutation, no stopwatch/merge-flag cleanup (those belong to the
 			// active turn's owner). Surface the same refusal shape as the
-			// entry-level check so UI/telemetry see one CodexTurnConflict语义.
+			// entry-level check so UI/telemetry see a single CodexTurnConflict shape.
 			if (err instanceof CodexTurnConflictError) {
 				this._logService.warn(`[Codex:${sessionId}] ${err.message}`);
 				this._fire(sessionUri, {

@@ -7,7 +7,8 @@ import assert from 'assert';
 import { URI } from '../../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { readAgentMessageDelegationMeta } from '../../../common/meta/agentMessageDelegationMeta.js';
-import { createCodexSessionMapState, extractUserInputText, finalizeCodexTurnMapState, mapAgentMessageDelta, mapCommandExecutionOutputDelta, mapFileChangePatchUpdated, mapItemCompleted, mapItemStarted, mapMcpToolCallProgress, mapReasoningSummaryPartAdded, mapReasoningSummaryTextDelta, mapReasoningTextDelta, mapTokenUsageModelCallCompleted, mapTokenUsageUpdated, mapTurnCompleted, mapTurnStarted, resetCodexTurnMapState, turnStateFromStatus, type ICodexSessionMapState } from '../../../node/codex/codexMapAppServerEvents.js';
+import { createCodexSessionMapState, extractUserInputText, finalizeCodexTurnMapState, mapAgentMessageDelta, mapCodexRequestError, mapCommandExecutionOutputDelta, mapFileChangePatchUpdated, mapItemCompleted, mapItemStarted, mapMcpToolCallProgress, mapReasoningSummaryPartAdded, mapReasoningSummaryTextDelta, mapReasoningTextDelta, mapTokenUsageModelCallCompleted, mapTokenUsageUpdated, mapTurnCompleted, mapTurnStarted, resetCodexTurnMapState, turnStateFromStatus, type ICodexSessionMapState } from '../../../node/codex/codexMapAppServerEvents.js';
+import { JsonRpcError } from '../../../node/codex/codexAppServerClient.js';
 import { ActionType, type ChatAction, type SessionAction } from '../../../common/state/sessionActions.js';
 import { chatReducer } from '../../../common/state/protocol/reducers.js';
 import { ChatOriginKind, MessageKind, ResponsePartKind, SessionStatus, ToolCallConfirmationReason, ToolCallContributorKind, ToolResultContentType, TurnState, type ChatState } from '../../../common/state/sessionState.js';
@@ -1500,5 +1501,29 @@ suite('codexMapAppServerEvents', () => {
 			reasoning: state.itemToReasoningPartId.size,
 			declined: state.declinedToolCalls.size,
 		}, { currentTurnId: 'turn_a', parts: 0, toolCalls: 0, reasoning: 0, declined: 0 });
+	});
+
+	test('mapCodexRequestError maps an exhausted -32001 to a user-actionable busy message (issue #31)', () => {
+		const info = mapCodexRequestError(new JsonRpcError(-32001, 'Server overloaded; retry later.'), 'CodexTurnError');
+		assert.strictEqual(info.errorType, 'CodexServerOverloaded');
+		assert.match(info.message, /temporarily busy/);
+		// The forwarded chat error uses the rateLimited fetch type so core
+		// renders the localized transient message at Info level.
+		const chatError = (info._meta as { chatError: { fetchError: { type: string; reason?: string } } }).chatError;
+		assert.strictEqual(chatError.fetchError.type, 'rateLimited');
+		assert.match(chatError.fetchError.reason ?? '', /Server overloaded/);
+	});
+
+	test('mapCodexRequestError keeps other failures verbatim under the fallback error type', () => {
+		const info = mapCodexRequestError(new JsonRpcError(-32603, 'boom'), 'CodexTurnError');
+		assert.deepStrictEqual(info, { errorType: 'CodexTurnError', message: 'boom' });
+
+		const nonJsonRpc = mapCodexRequestError(new Error('socket hangup'), 'CodexCompactionError');
+		assert.deepStrictEqual(nonJsonRpc, { errorType: 'CodexCompactionError', message: 'socket hangup' });
+
+		// -32001 on the AHP transport (SessionNotFound) is a different
+		// protocol; a plain Error carrying the text is not remapped.
+		const lookalike = mapCodexRequestError(new Error('-32001'), 'CodexTurnError');
+		assert.strictEqual(lookalike.errorType, 'CodexTurnError');
 	});
 });

@@ -10,6 +10,7 @@ import { Emitter } from '../../../../../base/common/event.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import {
 	CodexAppServerClient,
+	DEFAULT_CODEX_OVERLOADED_RETRY_POLICY,
 	JsonRpcError,
 	JsonRpcErrorCode,
 	type ICodexAppServerTransport,
@@ -179,11 +180,11 @@ suite('CodexAppServerClient', () => {
 		try {
 			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
 			const sent = await readNextMessage(peer.outbound) as { id: number };
-			peer.push({ id: sent.id, error: { code: -32001, message: 'overloaded' } });
+			peer.push({ id: sent.id, error: { code: JsonRpcErrorCode.InternalError, message: 'boom' } });
 			await assert.rejects(responsePromise, (err: unknown) => {
 				assert.ok(err instanceof JsonRpcError, 'expected JsonRpcError');
-				assert.strictEqual(err.code, -32001);
-				assert.match(err.message, /overloaded/);
+				assert.strictEqual(err.code, JsonRpcErrorCode.InternalError);
+				assert.match(err.message, /boom/);
 				return true;
 			});
 		} finally {
@@ -475,7 +476,302 @@ suite('CodexAppServerClient', () => {
 		}
 	});
 
-	test('a -32001 overloaded rejection surfaces verbatim and triggers no automatic retry (B8/R8)', async () => {
+	// #region Overloaded (-32001) bounded retry (issue #31, D13/B8 positive half)
+
+	/**
+	 * Attach a raw wire listener and return helpers to inspect every
+	 * request the client has written so far.
+	 */
+	function watchWire(peer: IFakePeer) {
+		let wire = '';
+		peer.outbound.on('data', chunk => { wire += typeof chunk === 'string' ? chunk : chunk.toString('utf8'); });
+		const requests = () => wire.split('\n')
+			.filter(line => line.trim().length > 0)
+			.map(line => JSON.parse(line) as { id: number; method?: string })
+			.filter(msg => typeof msg.id === 'number' && typeof msg.method === 'string');
+		return { requests };
+	}
+
+	/**
+	 * Auto-respond to every request the client writes with a -32001
+	 * overloaded error. Returns the recorded request ids in arrival order.
+	 */
+	function autoRespondOverloaded(peer: IFakePeer): { readonly ids: number[]; readonly times: number[] } {
+		const ids: number[] = [];
+		const times: number[] = [];
+		let buf = '';
+		peer.outbound.on('data', chunk => {
+			buf += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+			let nl: number;
+			while ((nl = buf.indexOf('\n')) >= 0) {
+				const line = buf.slice(0, nl).trim();
+				buf = buf.slice(nl + 1);
+				if (line.length === 0) {
+					continue;
+				}
+				const msg = JSON.parse(line) as { id?: number; method?: string };
+				if (typeof msg.id === 'number' && typeof msg.method === 'string') {
+					ids.push(msg.id);
+					times.push(Date.now());
+					peer.push({ id: msg.id, error: { code: -32001, message: 'Server overloaded; retry later.' } });
+				}
+			}
+		});
+		return { ids, times };
+	}
+
+	test('a -32001 on a retryable read is retried with backoff and resolves once the server recovers', async () => {
+		const peer = makeFakePeer();
+		const client = new CodexAppServerClient(peer.transport, undefined, undefined, {
+			initialDelayMs: 20,
+			backoffFactor: 2,
+			jitterRatio: 0,
+			maxRetries: 3,
+			totalBudgetMs: 5_000,
+			random: () => 0.5,
+		});
+		const { requests } = watchWire(peer);
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			await new Promise(r => setImmediate(r));
+			assert.strictEqual(requests().length, 1);
+
+			// First attempt overloaded → client waits, then retries on its own.
+			peer.push({ id: requests()[0].id, error: { code: -32001, message: 'Server overloaded; retry later.' } });
+			await new Promise(resolve => setTimeout(resolve, 150));
+			assert.strictEqual(requests().length, 2, 'exactly one automatic retry was sent');
+			assert.notStrictEqual(requests()[1].id, requests()[0].id, 'the retry uses a fresh request id');
+
+			// Server recovers: the retry resolves the original caller promise.
+			peer.push({ id: requests()[1].id, result: { authMode: 'apikey' } });
+			assert.deepStrictEqual(await responsePromise, { authMode: 'apikey' });
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	test('overloaded retries are bounded and the final -32001 surfaces verbatim', async () => {
+		const peer = makeFakePeer();
+		const logs: { level: string; message: string }[] = [];
+		const client = new CodexAppServerClient(peer.transport, (level, message) => logs.push({ level, message }), undefined, {
+			initialDelayMs: 10,
+			backoffFactor: 2,
+			jitterRatio: 0,
+			maxRetries: 2,
+			totalBudgetMs: 5_000,
+			random: () => 0.5,
+		});
+		const traffic = autoRespondOverloaded(peer);
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			await assert.rejects(responsePromise, (err: unknown) => {
+				assert.ok(err instanceof JsonRpcError, 'expected JsonRpcError');
+				assert.strictEqual(err.code, -32001);
+				assert.match(err.message, /Server overloaded; retry later\./);
+				return true;
+			});
+			assert.strictEqual(traffic.ids.length, 3, 'initial attempt + exactly 2 bounded retries reached the wire');
+			assert.ok(logs.some(l => l.level === 'warn' && /retry 1\/2/.test(l.message)), 'a retry warning is logged');
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	test('overloaded retry delays grow exponentially and stay within jitter bounds', async () => {
+		const peer = makeFakePeer();
+		// random() === 1 → maximum jitter multiplier (1 + jitterRatio).
+		const client = new CodexAppServerClient(peer.transport, undefined, undefined, {
+			initialDelayMs: 40,
+			backoffFactor: 2,
+			jitterRatio: 0.5,
+			maxRetries: 2,
+			totalBudgetMs: 10_000,
+			random: () => 0.999, // top of Math.random's range: the production supremum
+		});
+		const traffic = autoRespondOverloaded(peer);
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			await assert.rejects(responsePromise);
+			assert.strictEqual(traffic.times.length, 3);
+			const gap1 = traffic.times[1] - traffic.times[0];
+			const gap2 = traffic.times[2] - traffic.times[1];
+			// Expected: 40 * 1.5 = 60ms, then 80 * 1.5 = 120ms. Generous
+			// tolerances for slow CI, but the 2x growth must be visible.
+			assert.ok(gap1 >= 50 && gap1 <= 250, `first gap ${gap1}ms within [50, 250]`);
+			assert.ok(gap2 >= 100 && gap2 <= 500, `second gap ${gap2}ms within [100, 500]`);
+			assert.ok(gap2 > gap1, `delays grow: ${gap1}ms < ${gap2}ms`);
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	test('dispose during a backoff sleep rejects the pending request promptly', async () => {
+		const peer = makeFakePeer();
+		const client = new CodexAppServerClient(peer.transport, undefined, undefined, {
+			initialDelayMs: 5_000, // long enough that without cancellation the test would hang
+			backoffFactor: 2,
+			jitterRatio: 0,
+			maxRetries: 4,
+			totalBudgetMs: 60_000,
+			random: () => 0.5,
+		});
+		autoRespondOverloaded(peer);
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			// First attempt fails with -32001, the client enters the 5s backoff.
+			await new Promise(resolve => setTimeout(resolve, 100));
+			const started = Date.now();
+			client.dispose();
+			await assert.rejects(responsePromise, (err: unknown) => err instanceof CancellationError);
+			assert.ok(Date.now() - started < 2_000, 'dispose must interrupt the backoff sleep promptly');
+		} finally {
+			peer.dispose();
+		}
+	});
+
+	test('the default retry policy mathematically cannot fire more than one retry within 100ms (B8)', () => {
+		// Pure-math pin for the shipped policy: the minimum possible delay is
+		// initialDelayMs * (1 - jitterRatio) = 500 * 0.5 = 250ms > 100ms, so at
+		// most one retry can land in any 100ms window regardless of random().
+		const policy = DEFAULT_CODEX_OVERLOADED_RETRY_POLICY;
+		const minDelay = policy.initialDelayMs * (1 - policy.jitterRatio);
+		assert.ok(minDelay > 100, `default policy min delay ${minDelay}ms must exceed the 100ms density window`);
+		assert.ok(policy.maxRetries <= 4 && policy.totalBudgetMs <= 30_000, 'default policy stays bounded');
+	});
+
+	test('overloaded retry fires at most 3 retries within 100ms even with an aggressive policy (B8: no dense retry storm)', async () => {
+		const peer = makeFakePeer();
+		// Worst-case jitter (random() === 0 → multiplier 1 - jitterRatio)
+		// with the smallest policy the tests use: 25ms * 2^n, jittered down
+		// to [12.5, 25, 50, 100, ...]ms → cumulative retry times 12.5, 37.5,
+		// 87.5, 187.5, ... → at most 3 retries land inside any 100ms window.
+		const client = new CodexAppServerClient(peer.transport, undefined, undefined, {
+			initialDelayMs: 25,
+			backoffFactor: 2,
+			jitterRatio: 0.5,
+			maxRetries: 10,
+			totalBudgetMs: 60_000,
+			random: () => 0,
+		});
+		const traffic = autoRespondOverloaded(peer);
+		const t0 = Date.now();
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			await new Promise(resolve => setTimeout(resolve, 100));
+			const withinWindow = traffic.times.filter(t => t - t0 <= 100);
+			// The first entry is the initial attempt, not a retry.
+			assert.ok(withinWindow.length - 1 <= 3, `at most 3 retries within 100ms (got ${withinWindow.length - 1})`);
+			// The remaining backoff delays would exceed the test timeout;
+			// dispose to settle the loop instead of waiting out the policy.
+			client.dispose();
+			await assert.rejects(responsePromise);
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	test('overloaded retry stops when the total budget would be exceeded', async () => {
+		const peer = makeFakePeer();
+		const client = new CodexAppServerClient(peer.transport, undefined, undefined, {
+			initialDelayMs: 20,
+			backoffFactor: 10,
+			jitterRatio: 0,
+			maxRetries: 10,
+			totalBudgetMs: 100,
+			random: () => 0.5,
+		});
+		const traffic = autoRespondOverloaded(peer);
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			await assert.rejects(responsePromise, (err: unknown) => {
+				assert.ok(err instanceof JsonRpcError && err.code === -32001);
+				return true;
+			});
+			// First retry after 20ms fits the budget; the next delay (200ms)
+			// would overshoot the 100ms budget and is never started.
+			assert.strictEqual(traffic.ids.length, 2, 'only the retry that fits the budget is sent');
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	test('a -32001 on a side-effecting method (turn/start) is not auto-retried (B8/R8 idempotency ruling)', async () => {
+		const peer = makeFakePeer();
+		const client = new CodexAppServerClient(peer.transport, undefined, undefined, {
+			initialDelayMs: 10,
+			backoffFactor: 2,
+			jitterRatio: 0,
+			maxRetries: 4,
+			totalBudgetMs: 5_000,
+			random: () => 0.5,
+		});
+		const { requests } = watchWire(peer);
+		try {
+			const responsePromise = client.request('turn/start', { threadId: 't1', input: [] } as never);
+			const responseRejection = assert.rejects(responsePromise, (err: unknown) => {
+				assert.ok(err instanceof JsonRpcError, 'expected JsonRpcError');
+				assert.strictEqual(err.code, -32001);
+				assert.match(err.message, /Server overloaded; retry later\./);
+				return true;
+			});
+			await new Promise(r => setImmediate(r));
+			assert.strictEqual(requests().length, 1, 'exactly one request reaches the wire');
+			peer.push({ id: requests()[0].id, error: { code: -32001, message: 'Server overloaded; retry later.' } });
+			await responseRejection;
+
+			// No automatic retry for a non-idempotent method, even though the
+			// policy allows retries: nothing more is written on its own.
+			await new Promise(resolve => setTimeout(resolve, 150));
+			assert.strictEqual(requests().length, 1, 'the client must not auto-retry turn/start');
+
+			// Nor is the failure sticky: the caller decides when to retry.
+			const retryPromise = client.request('turn/start', { threadId: 't1', input: [] } as never);
+			await new Promise(r => setImmediate(r));
+			assert.strictEqual(requests().length, 2, 'a caller-driven retry reaches the wire');
+			peer.push({ id: requests()[1].id, result: {} });
+			await assert.doesNotReject(retryPromise);
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	test('non-overloaded error codes are not retried even for retryable reads', async () => {
+		const peer = makeFakePeer();
+		const client = new CodexAppServerClient(peer.transport, undefined, undefined, {
+			initialDelayMs: 10,
+			backoffFactor: 2,
+			jitterRatio: 0,
+			maxRetries: 4,
+			totalBudgetMs: 5_000,
+			random: () => 0.5,
+		});
+		const { requests } = watchWire(peer);
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			const responseRejection = assert.rejects(responsePromise, (err: unknown) => {
+				assert.ok(err instanceof JsonRpcError && err.code === JsonRpcErrorCode.InternalError);
+				return true;
+			});
+			await new Promise(r => setImmediate(r));
+			peer.push({ id: requests()[0].id, error: { code: JsonRpcErrorCode.InternalError, message: 'boom' } });
+			await responseRejection;
+			await new Promise(resolve => setTimeout(resolve, 150));
+			assert.strictEqual(requests().length, 1, 'permanent errors are not retried');
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	// #endregion
+
+	test('a -32001 overloaded rejection on a non-retryable path surfaces verbatim and triggers no automatic retry (B8/R8)', async () => {
 		const peer = makeFakePeer();
 		const client = new CodexAppServerClient(peer.transport);
 		// Collect raw wire traffic with a single stable listener; coalesced
@@ -484,7 +780,9 @@ suite('CodexAppServerClient', () => {
 		peer.outbound.on('data', chunk => { wire += typeof chunk === 'string' ? chunk : chunk.toString('utf8'); });
 		const sentLines = () => wire.split('\n').filter(line => line.trim().length > 0).map(line => JSON.parse(line) as { id: number; method?: string });
 		try {
-			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			// thread/archive is a side-effecting method outside the retry
+			// allowlist, so its -32001 rejection stays fail-fast.
+			const responsePromise = client.request('thread/archive', { threadId: 't1' } as never);
 			const responseRejection = assert.rejects(responsePromise, (err: unknown) => {
 				assert.ok(err instanceof JsonRpcError, 'expected JsonRpcError');
 				assert.strictEqual(err.code, -32001);

@@ -2039,13 +2039,17 @@ export class AgentHostSessionHandler extends Disposable implements IChatSessionC
 			return undefined;
 		}
 		const isExecutionInterrupted = error.errorType === 'executionInterrupted';
+		// Codex server overload carries a localized, product-correct message; the
+		// forwarded rate-limit meta would otherwise render Copilot-branded copy
+		// (getChatErrorDetailsFromMeta wins over error.message whenever present).
+		const isCodexServerOverloaded = error.errorType === 'CodexServerOverloaded';
 		const forwardedDetails = getChatErrorDetailsFromMeta(error, this._chatErrorContext());
-		const details: IChatResponseErrorDetails = isExecutionInterrupted
+		const details: IChatResponseErrorDetails = isExecutionInterrupted || isCodexServerOverloaded
 			? {
 				...forwardedDetails,
 				message: error.message,
 				isExpectedError: true,
-				level: ChatErrorLevel.Warning,
+				level: isExecutionInterrupted ? ChatErrorLevel.Warning : ChatErrorLevel.Info,
 			}
 			: forwardedDetails ?? { message: localize('agentHost.turnError', "Error: ({0}) {1}", error.errorType, error.message) };
 		if (!allowResume || errorPart?.resumable !== true || details.responseIsFiltered) {
@@ -3752,10 +3756,11 @@ export class AgentHostSessionHandler extends Disposable implements IChatSessionC
 			}
 			const turnError = getTurnError(lastTurn);
 			if (!opts.suppressErrorMarkdown && turnError) {
-				const forwarded = getChatErrorDetailsFromMeta(turnError, this._chatErrorContext());
-				const content = forwarded
-					? new MarkdownString(`\n\n${forwarded.message}`)
-					: new MarkdownString(`\n\nError: (${turnError.errorType}) ${turnError.message}`);
+				// Route through the shared error-details computation so
+				// CodexServerOverloaded keeps its own localized message instead
+				// of the forwarded Copilot-branded rate-limit copy.
+				const details = this._getTurnErrorDetails(lastTurn);
+				const content = new MarkdownString(`\n\n${details?.message ?? `Error: (${turnError.errorType}) ${turnError.message}`}`);
 				opts.sink([{ kind: 'markdownContent', content }]);
 			}
 			finish(lastTurn);

@@ -84,6 +84,28 @@ dataFolderName `.vscode-oss` → `.open-agents` 后：
 | `src/vs/platform/agentHost/node/codex/codexAgent.ts` | `CLIENT_INFO_NAME='openagents_desktop'`、`CLIENT_INFO_TITLE='OpenAgents Desktop'`（snake_case 产品代号，见 D10 §3） |
 | `src/vs/platform/agentHost/test/node/productIdentity.test.ts` | 断言中的同名常量 |
 | `.agents/skills/launch/{SKILL.md,scripts/*}` | `~/.open-agents-dev` 默认源 |
+| `scripts/generate-icons.sh` | `ICNS_NAME` / `ICO_NAME` / `LINUX_PNG_NAME` 三个输出名 |
 
 替换后运行：`node scripts/apply-mixin.mjs && npm run compile`，单测
 `productIdentity.test.ts` 会强制各处一致。
+
+## 残留白名单（issue #8 验收 8，source 层）
+
+动态取名的用户可见面（窗口标题、About、`--version`/help、issue reporter 主选项）
+都从 `product.nameShort/nameLong` 读，mixin 后自动是 OpenAgents，无需改源码。
+D06 直接修掉的静态面：Welcome onboarding 文案（`onboardingVariationA.ts`）与
+Editor Playground walkthrough 正文（`vs_code_editor_walkthrough.ts`）里的
+"Visual Studio Code / VS Code" 字样。
+
+以下残留**有意保留**（记录在案，逐条理由）：
+
+| 残留 | 位置 | 保留理由 / 后续 owner |
+|---|---|---|
+| "Please reload Visual Studio Code to complete…"（2 处 alert/notification） | `extensionsActions.ts:944`、`extensions.contribution.ts:992-993` | issue #8 范围只点名 About/Welcome/Walkthrough；低频 toast。→ D08 文案清扫 |
+| "…incompatible with this version of Visual Studio Code."（2 处） | `sessionRemoteConnection.ts:285`、`cloudSandboxAgentHostContribution.ts:90` | 字符串被 `chatGroupsView.test.ts` / `cloudSandboxAgentHostContribution.test.ts` 断言字面量，改动会连带 3 个测试文件的 fork churn。→ D08/D11 一并处理 |
+| issue reporter 源选项 "Visual Studio Code" | `baseIssueReporterService.ts:1056` | 该选项指"上游核心 bug"来源语义（fork 的 issue 应报回本仓库 `reportIssueUrl`，report 流程本身待 D08 复核）；overlay 路径已是动态 `product.nameLong` |
+| `<title>Visual Studio Code</title>` 回调页 | `src/vs/code/browser/workbench/callback.html` | web(serverless) 专属面，desktop fork 不打包该入口。→ D09 打包清单确认剔除或替换 |
+| `code.visualstudio.com` / `go.microsoft.com/fwlink` 文档链接 | walkthrough 正文等 | 指向公开文档站描述编辑器内核功能，非商标性自称；替换属内容运营，非 D06 身份层 |
+| 版权头 `Copyright (c) Microsoft Corporation`、第三方许可文本 | 全仓库 | MIT 义务要求的上游署名，必须保留（LICENSE-CLEARANCE §2） |
+
+打包产物级扫描（应用包内容）归 **D09**（本 issue 范围外）；本表覆盖 source 层。

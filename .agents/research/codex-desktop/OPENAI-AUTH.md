@@ -38,6 +38,7 @@
 
 - **真·API Key 冷启动 UI**：用真 API Key 在无 ChatGPT 凭据的 profile 走完登录→目录→turn（需一次性 key 交互）
 - **Device code / B12 实机**
+- **rateLimits/updated 稀疏更新**（实现从未读取 spendControlReached；需实测 sparse 通知不清除上次观测——本轮无头环境不可演示）
 - **中断+恢复的 live 半段**（与 D13 C3 段联合验收亦可）
 
 ## 4. D10 裁定联动（本 issue 的产品定位）

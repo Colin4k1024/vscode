@@ -94,10 +94,10 @@
       "deps": [
         "D02"
       ],
-      "state": "in_progress",
-      "branch": "codex-desktop/d04-decouple-github",
+      "state": "closed",
       "pr": 23,
-      "note": "默认值翻转+测试；实测墙解除；pi 审查中"
+      "merged": "9fbec1615cf",
+      "sha": "1b4e9353567"
     },
     "#7": {
       "d": "D05",
@@ -305,6 +305,10 @@
     {
       "ts": "2026-09-19T23:00+08:00",
       "event": "D17 CLOSED: pi r3 APPROVE 8.6 → merged 567ebe16ed7; D06/D07/D08/D09 unlocked; D04 review running; D11 subagent running"
+    },
+    {
+      "ts": "2026-09-20T08:25+08:00",
+      "event": "D04 审查循环: r2 4.8(注册测试恒败) → 修复(副作用import) → r3 4.2(import 致全量套件崩溃+lint违规, pi 实测抓出) → 常量方案重写(ProductDefault 单一事实点) → 全量套件 38966/13既有=基线 + eslint 0 + 单文件6/6 + node 6492 → r4 终审中 (HEAD 1b4e9353567)。教训: goal state 曾随分支重写短暂丢失, 已从 goal-state-backup 恢复; 之后 goal state 只放备份分支或独立跟踪, 不再寄生 feature 分支"
     },
     {
       "ts": "2026-09-20T07:05+08:00",

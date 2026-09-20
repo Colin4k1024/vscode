@@ -283,7 +283,7 @@ function main() {
 	if (!fs.existsSync(TYPES_DIR)) {
 		console.error(`ERROR: Cannot find ${TYPES_DIR}`);
 		console.error('Clone agent-host-protocol as a sibling of the VS Code repo:');
-		console.error('  git clone git@github.com:microsoft/agent-host-protocol.git ../agent-host-protocol');
+		console.error('  git clone git@github.com:Colin4k1024/agent-host-protocol.git ../agent-host-protocol');
 		process.exit(1);
 	}
 

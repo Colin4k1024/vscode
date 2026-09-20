@@ -1288,6 +1288,11 @@ export function turnStateFromStatus(status: string): TurnState {
 			return TurnState.Cancelled;
 		case 'failed':
 			return TurnState.Error;
+		case 'inProgress':
+			// A turn read back as still in progress was never finalized —
+			// the process was lost between `turn/start` and its result. Its
+			// outcome is unknown (issue #34): it must not default to Complete.
+			return TurnState.Uncertain;
 		default:
 			return TurnState.Complete;
 	}

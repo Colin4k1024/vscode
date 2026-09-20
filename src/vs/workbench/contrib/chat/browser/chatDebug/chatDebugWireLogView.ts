@@ -985,7 +985,8 @@ function isErrorEntry(entry: IWireEntry): boolean {
 	const frame = entry.frame;
 	return !!entry.response?.error
 		|| (frame.kind === 'response' && !!frame.error)
-		|| frame.actionType === ActionType.ChatError;
+		|| frame.actionType === ActionType.ChatError
+		|| frame.actionType === ActionType.ChatTurnUncertain;
 }
 
 /** True when an entry's method, action type, id, or response error matches the filter. */

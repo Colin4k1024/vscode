@@ -3857,11 +3857,16 @@ suite('CodexAgent chat backing durability', () => {
 				listener.dispose();
 			}
 
+			// issue #34: a turn whose turn/start reached the wire but whose
+			// result was never observed terminates as exactly one `uncertain`
+			// action — never an error+complete pair (no phantom completion).
 			assert.deepStrictEqual(signals.flatMap(signal => signal.kind === 'action'
-				? [{ type: signal.action.type, errorType: signal.action.type === ActionType.ChatError ? signal.action.part.error.errorType : undefined }]
+				? [{
+					type: signal.action.type,
+					errorType: (signal.action.type === ActionType.ChatError || signal.action.type === ActionType.ChatTurnUncertain) ? signal.action.part.error.errorType : undefined,
+				}]
 				: []), [
-				{ type: ActionType.ChatError, errorType: 'CodexDisconnected' },
-				{ type: ActionType.ChatTurnComplete, errorType: undefined },
+				{ type: ActionType.ChatTurnUncertain, errorType: 'CodexTurnUncertain' },
 			]);
 		} finally {
 			peer.dispose();

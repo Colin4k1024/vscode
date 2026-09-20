@@ -337,6 +337,7 @@ export class AgentSideEffects extends Disposable {
 					case ActionType.ChatTurnComplete:
 					case ActionType.ChatTurnCancelled:
 					case ActionType.ChatError:
+					case ActionType.ChatTurnUncertain:
 						this._inputRequestTracker.clearTurn(envelope.channel, action.turnId);
 						break;
 					case ActionType.ChatTruncated:
@@ -762,7 +763,7 @@ export class AgentSideEffects extends Disposable {
 		if (resumedExecution) {
 			if (action.type === ActionType.ChatUsage) {
 				action = { ...action, usage: mergeLogicalTurnUsage(resumedExecution.usage, action.usage) ?? action.usage };
-			} else if (action.type === ActionType.ChatTurnComplete || action.type === ActionType.ChatTurnCancelled || action.type === ActionType.ChatError) {
+			} else if (action.type === ActionType.ChatTurnComplete || action.type === ActionType.ChatTurnCancelled || action.type === ActionType.ChatError || action.type === ActionType.ChatTurnUncertain) {
 				action = { ...action, duration: resumedExecution.duration + action.duration };
 			}
 		}
@@ -915,7 +916,23 @@ export class AgentSideEffects extends Disposable {
 				clientContext
 			});
 		}
-		if (action.type === ActionType.ChatTurnComplete || action.type === ActionType.ChatTurnCancelled || action.type === ActionType.ChatError) {
+		if (action.type === ActionType.ChatTurnUncertain) {
+			// The turn's outcome was never observed (issue #34): report it as
+			// an error-shaped terminal so telemetry/contributions never count
+			// it as success, and never offer resume (re-running could duplicate
+			// side effects the unobserved execution may have performed).
+			const clientContext = this._turnTracker.getClientTelemetryContext(sessionKey, turnId);
+			this._completeTurn(sessionKey, turnId, 'error', { stage: 'provider', error: action.part.error });
+			this._toolCallTracker.clearSession(sessionKey);
+			this._chatContributions.turnEnd({
+				session: sessionUri,
+				channel: sessionKey,
+				turnId,
+				reason: { kind: 'error', error: action.part.error, resumable: false },
+				clientContext
+			});
+		}
+		if (action.type === ActionType.ChatTurnComplete || action.type === ActionType.ChatTurnCancelled || action.type === ActionType.ChatError || action.type === ActionType.ChatTurnUncertain) {
 			this._resumedTurnExecutions.delete(this._resumedTurnExecutionKey(sessionKey, turnId));
 		}
 	}

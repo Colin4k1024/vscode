@@ -154,6 +154,33 @@ suite('chatReducer – summaryStatus with tool call confirmations and input requ
 		});
 	});
 
+	test('ChatTurnUncertain finalizes the turn as Uncertain, flags the chat as error, and refuses resume (issue #34)', () => {
+		let state = chatReducer(makeChat(), {
+			type: ActionType.ChatTurnStarted,
+			turnId: 'turn-1',
+			startedAt: '2025-01-01T00:00:00.000Z',
+			message: { text: 'hello', origin: { kind: MessageKind.User } },
+		});
+		state = chatReducer(state, {
+			type: ActionType.ChatTurnUncertain,
+			turnId: 'turn-1',
+			duration: 42,
+			part: { kind: ResponsePartKind.Error, error: { errorType: 'CodexTurnUncertain', message: 'outcome unknown' } },
+		});
+
+		assert.strictEqual(state.activeTurn, undefined);
+		assert.strictEqual(state.turns.length, 1);
+		assert.strictEqual(state.turns[0].state, TurnState.Uncertain, 'the turn is uncertain — never complete');
+		assert.strictEqual(state.turns[0].responseParts.at(-1)?.kind, ResponsePartKind.Error, 'the explanatory error part is appended');
+		assert.strictEqual(state.status, SessionStatus.Error, 'the chat is flagged for attention');
+
+		// Resume only reopens `error` turns with a resumable error — an
+		// uncertain turn must stay terminal (re-running could duplicate side
+		// effects the unobserved execution may already have performed).
+		const resumed = chatReducer(state, { type: ActionType.ChatTurnResume, turnId: 'turn-1' });
+		assert.strictEqual(resumed, state, 'an uncertain turn is not resumable');
+	});
+
 	test('Chat status is InputNeeded when a tool call is PendingConfirmation', () => {
 		let state = withActiveTurnAndToolCall(makeChat());
 

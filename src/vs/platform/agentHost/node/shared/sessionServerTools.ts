@@ -1267,6 +1267,7 @@ function describeTurnState(state: TurnState | 'inProgress'): string {
 		case TurnState.Complete: return 'complete';
 		case TurnState.Cancelled: return 'cancelled';
 		case TurnState.Error: return 'error';
+		case TurnState.Uncertain: return 'uncertain';
 		default: return 'inProgress';
 	}
 }

@@ -4256,8 +4256,12 @@ export class CodexAgent extends Disposable implements IAgent {
 			this._disposeConnectionResources(connection);
 			return;
 		}
-		// Notify every known session with a single ChatError + complete
-		// pair so the UI surfaces "agent disconnected" cleanly.
+		// Notify every known session with a single uncertain terminal action
+		// so the UI surfaces "agent disconnected" cleanly. A turn whose
+		// `turn/start` reached the wire but whose result was never observed is
+		// uncertain — neither succeeded nor never-happened (issue #34) — so it
+		// finalizes as `uncertain`, not as an ordinary error (which would claim
+		// a definitive failure) and never as complete.
 		for (const session of this._sessions.values()) {
 			this._workingDirectoryMutations.get(session)?.updated.cancel();
 			// A replacement app-server has no in-memory copy of any thread that
@@ -4285,12 +4289,11 @@ export class CodexAgent extends Disposable implements IAgent {
 			if (turnId) {
 				const duration = this._clearTurnStopWatch(session);
 				this._fire(session.sessionUri, {
-					type: ActionType.ChatError,
+					type: ActionType.ChatTurnUncertain,
 					turnId,
 					duration,
-					part: createErrorResponsePart({ errorType: 'CodexDisconnected', message: 'Codex app-server disconnected; session must restart.' }),
+					part: createErrorResponsePart({ errorType: 'CodexTurnUncertain', message: 'Codex app-server disconnected mid-turn; the turn outcome is unknown — it may or may not have completed. Review the session before relying on its results.' }),
 				});
-				this._fire(session.sessionUri, { type: ActionType.ChatTurnComplete, turnId, duration });
 			}
 		}
 		for (const subagent of this._subagentsByThreadId.values()) {

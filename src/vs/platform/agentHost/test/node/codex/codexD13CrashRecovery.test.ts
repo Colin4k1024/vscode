@@ -359,12 +359,17 @@ suite('CodexAgent D13 crash / concurrency / recovery negatives (issue #15)', () 
 			// (d) streamed content was dispatched before the crash
 			const deltaIndex = actions.findIndex(a => a.type === ActionType.ChatDelta && (a as { content?: string }).content === 'partial answer');
 			assert.ok(deltaIndex >= 0, 'streamed delta must have been dispatched before the crash');
-			// (a) the turn reaches a terminal state — as an error, never as a success (C2.4: not treated as succeeded)
-			const errorIndex = actions.findIndex(a => a.type === ActionType.ChatError);
-			assert.ok(errorIndex > deltaIndex, 'ChatError must follow the streamed content');
-			assert.match((actions[errorIndex] as { part?: { error?: { message?: string } } }).part?.error?.message ?? JSON.stringify(actions[errorIndex]), /disconnected|exited/i);
-			const completeIndex = actions.findIndex(a => a.type === ActionType.ChatTurnComplete);
-			assert.ok(completeIndex > errorIndex, 'ChatTurnComplete must follow the ChatError');
+			// (a) the turn reaches a terminal state — uncertain, never a success
+			// (C2.4: not treated as succeeded; issue #34: the outcome was never
+			// observed, so it terminates as `uncertain` rather than claiming a
+			// definitive error or — critically — completing).
+			const uncertainIndex = actions.findIndex(a => a.type === ActionType.ChatTurnUncertain);
+			assert.ok(uncertainIndex > deltaIndex, 'ChatTurnUncertain must follow the streamed content');
+			const uncertainAction = actions[uncertainIndex] as { part?: { error?: { message?: string; errorType?: string } } };
+			assert.match(uncertainAction.part?.error?.message ?? JSON.stringify(uncertainAction), /disconnected/i);
+			assert.strictEqual(uncertainAction.part?.error?.errorType, 'CodexTurnUncertain');
+			assert.ok(actions.every(a => !(a.type === ActionType.ChatTurnComplete && (a as { turnId?: string }).turnId === 'turn-1')),
+				'no phantom ChatTurnComplete may follow a crashed turn');
 			// (b) active turn bookkeeping is cleared
 			assert.strictEqual(sessionEntry.currentTurnId, undefined, 'currentTurnId must be cleared');
 			assert.strictEqual(sessionEntry.currentAppTurnId, undefined, 'currentAppTurnId must be cleared');
@@ -416,10 +421,53 @@ suite('CodexAgent D13 crash / concurrency / recovery negatives (issue #15)', () 
 			// The turn did not complete successfully: the send promise rejects or the
 			// session surfaces an error action — never a silent success.
 			const actions = actionSignals(signals);
-			const sawErrorAction = actions.some(a => a.type === ActionType.ChatError);
+			// issue #34: the turn's outcome is unknown — it terminates as
+			// `uncertain`, a failure-shaped terminal that is not a success.
+			const sawUncertainAction = actions.some(a => a.type === ActionType.ChatTurnUncertain && (a as { turnId?: string }).turnId === 'turn-1');
 			assert.ok(sendSettled, 'send must settle after the crash');
-			assert.ok(sendSettled.ok === false || sawErrorAction, 'a crashed turn/start must surface as a failure, not a success');
+			assert.ok(sendSettled.ok === false || sawUncertainAction, 'a crashed turn/start must surface as a failure, not a success');
+			assert.ok(actions.every(a => !(a.type === ActionType.ChatTurnComplete && (a as { turnId?: string }).turnId === 'turn-1')),
+				'a crashed turn/start must never complete');
 			const sessionEntry = agent['_sessions'].get(AgentSession.id(session))!;
+			assert.strictEqual(sessionEntry.currentTurnId, undefined);
+			assert.strictEqual(sessionEntry.currentAppTurnId, undefined);
+		} finally {
+			disposables.dispose();
+		}
+	});
+
+	test('issue #34: a crashed in-flight turn terminates as uncertain — discernible, not succeeded, not resumable', async () => {
+		const disposables = new DisposableStore();
+		try {
+			const agent = await createAgent(disposables);
+			const peer = new WirePeer(disposables);
+			await connectAgent(agent, peer);
+			const { session } = await createSession(agent, { workingDirectories: [URI.file('/repo')], model: { id: COPILOT_TEST_MODEL } });
+			const signals: AgentSignal[] = [];
+			disposables.add(agent.onDidChatProgress(signal => signals.push(signal)));
+
+			await startTurn(peer, agent, session);
+			peer.push({ method: 'turn/started', params: { threadId: 'thread-1', turn: { id: 'appTurn-1', items: [] } } });
+			await new Promise(r => setImmediate(r));
+
+			// Crash the app-server mid-turn: turn/start was accepted but no
+			// result will ever arrive.
+			peer.exit();
+			await new Promise(r => setImmediate(r));
+			await new Promise(r => setImmediate(r));
+
+			const turnActions = actionSignals(signals).filter(a => (a as { turnId?: string }).turnId === 'turn-1');
+			const terminals = turnActions.filter(a => a.type === ActionType.ChatTurnComplete || a.type === ActionType.ChatTurnCancelled || a.type === ActionType.ChatError || a.type === ActionType.ChatTurnUncertain);
+			assert.deepStrictEqual(terminals.map(a => a.type), [ActionType.ChatTurnUncertain],
+				'the crashed turn has exactly one terminal action: uncertain (not complete, not cancelled, not a definitive error)');
+			const terminal = terminals[0] as { part: { error: { errorType: string; message: string }; resumable?: boolean } };
+			assert.strictEqual(terminal.part.error.errorType, 'CodexTurnUncertain', 'the uncertainty is discernible by error type');
+			assert.match(terminal.part.error.message, /outcome is unknown/i);
+			assert.strictEqual(terminal.part.resumable, undefined, 'an uncertain turn is never resumable: re-running could duplicate unobserved side effects');
+
+			// The session stays recoverable: the next operation resumes the thread.
+			const sessionEntry = agent['_sessions'].get(AgentSession.id(session))!;
+			assert.strictEqual(sessionEntry.needsResume, true);
 			assert.strictEqual(sessionEntry.currentTurnId, undefined);
 			assert.strictEqual(sessionEntry.currentAppTurnId, undefined);
 		} finally {

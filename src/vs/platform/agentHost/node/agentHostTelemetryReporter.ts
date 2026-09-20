@@ -461,6 +461,7 @@ const turnActivityKindsByActionType = {
 	[ActionType.ChatTurnComplete]: 'chat.turnComplete',
 	[ActionType.ChatTurnCancelled]: 'chat.turnCancelled',
 	[ActionType.ChatError]: 'chat.error',
+	[ActionType.ChatTurnUncertain]: 'chat.turnUncertain',
 	[ActionType.ChatActivityChanged]: 'chat.activityChanged',
 	[ActionType.ChatWorkingDirectorySet]: 'chat.workingDirectorySet',
 	[ActionType.ChatWorkingDirectoryRemoved]: 'chat.workingDirectoryRemoved',

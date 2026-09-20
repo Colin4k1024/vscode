@@ -520,6 +520,14 @@ export const enum TurnState {
 	Complete = 'complete',
 	Cancelled = 'cancelled',
 	Error = 'error',
+	/**
+	 * The turn's request reached the wire (e.g. `turn/start` was dispatched)
+	 * but its outcome was never observed: the connection or process was lost
+	 * before a result arrived. The turn may or may not have executed — it MUST
+	 * NOT be presented as succeeded, MUST NOT be treated as never-happened,
+	 * and MUST NOT be auto-resumed (re-running could duplicate side effects).
+	 */
+	Uncertain = 'uncertain',
 }
 
 /**

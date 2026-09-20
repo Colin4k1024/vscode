@@ -399,6 +399,12 @@ export function chatReducer(state: ChatState, action: ChatAction, log?: (msg: st
 		case ActionType.ChatError:
 			return endTurn(state, action.turnId, TurnState.Error, action.duration, SessionStatus.Error, action.part);
 
+		case ActionType.ChatTurnUncertain:
+			// The turn reached the wire but its outcome was never observed.
+			// Finalize as Uncertain (flagging the chat for attention like an
+			// error) — never as Complete, and not resumable.
+			return endTurn(state, action.turnId, TurnState.Uncertain, action.duration, SessionStatus.Error, action.part);
+
 		case ActionType.ChatTurnResume: {
 			if (state.activeTurn) {
 				return state;

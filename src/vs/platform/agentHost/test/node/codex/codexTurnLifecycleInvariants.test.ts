@@ -106,13 +106,14 @@ function turnCompletedParams(turnId: string, status: 'completed' | 'failed' | 'i
 }
 
 /**
- * `TurnState` is a terminal-only enum (`Complete` / `Cancelled` / `Error`) — a
- * turn still in flight is represented by `activeTurn`, never by an entry in
- * `turns[]`. Pin the full terminal set so "no non-terminal turn" assertions
- * compare against real values (a mistyped member such as `TurnState.InProgress`
- * would compile to `undefined` and make the assertion vacuous).
+ * `TurnState` is a terminal-only enum (`Complete` / `Cancelled` / `Error` /
+ * `Uncertain`) — a turn still in flight is represented by `activeTurn`, never
+ * by an entry in `turns[]`. Pin the full terminal set so "no non-terminal turn"
+ * assertions compare against real values (a mistyped member such as
+ * `TurnState.InProgress` would compile to `undefined` and make the assertion
+ * vacuous).
  */
-const TERMINAL_TURN_STATES: readonly TurnState[] = [TurnState.Complete, TurnState.Cancelled, TurnState.Error];
+const TERMINAL_TURN_STATES: readonly TurnState[] = [TurnState.Complete, TurnState.Cancelled, TurnState.Error, TurnState.Uncertain];
 
 /**
  * Non-terminal `ToolCallStatus` values. Terminal statuses are `Completed` and

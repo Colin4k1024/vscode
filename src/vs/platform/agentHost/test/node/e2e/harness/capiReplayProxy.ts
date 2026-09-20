@@ -465,6 +465,17 @@ export class CapiReplayProxy {
 	// -- request handling -----------------------------------------------------
 
 	private _handle(req: http.IncomingMessage, res: http.ServerResponse): void {
+		// WebSocket upgrade probes are transport negotiation, not model traffic:
+		// the Codex `openai` provider probes `GET /responses` with an Upgrade
+		// header before falling back to the recordable HTTP SSE transport (a 426
+		// makes it fall back immediately instead of exhausting its retry budget).
+		// Strictness is unaffected: the recorded POST exchanges stay asserted and
+		// a provider that switched to websocket-only would leave them unconsumed.
+		if (req.headers.upgrade?.toLowerCase() === 'websocket') {
+			res.writeHead(426, { 'content-type': 'text/plain' });
+			res.end('upgrade required');
+			return;
+		}
 		const chunks: Buffer[] = [];
 		req.on('data', chunk => chunks.push(chunk));
 		req.on('end', () => {

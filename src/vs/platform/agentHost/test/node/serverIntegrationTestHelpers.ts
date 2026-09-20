@@ -901,7 +901,14 @@ export async function startRealServer(options: { readonly homeDir: string; reado
 			// codex SDK root is supplied so the provider actually registers.
 			...(options.codexSdkRoot ? { [AgentHostCodexAgentEnabledEnvVar]: String(options.codexAgentEnabled ?? true) } : {}),
 			// Fixtures use Codex's unified exec tool, so keep record and replay on the same shell protocol.
-			...(options.codexSdkRoot && options.capiReplay ? { [AgentHostCodexAgentBinaryArgsEnvVar]: JSON.stringify(['-c', 'features.unified_exec=true']) } : {}),
+			// `openai_base_url` routes the app-server's built-in `openai` provider (used when an
+			// OpenAI credential, not a GitHub token, drives the session — D03/D04/D05) at the
+			// replay proxy; otherwise it would talk to real api.openai.com. The built-in provider
+			// is not overridable via `model_providers.openai` (codex keeps the built-in entry), so
+			// this top-level config key is the only reroute knob. The provider's websocket
+			// transport probe is answered 426 by the proxy, which makes codex fall back to the
+			// recordable HTTP SSE transport immediately.
+			...(options.codexSdkRoot && options.capiReplay ? { [AgentHostCodexAgentBinaryArgsEnvVar]: JSON.stringify(['-c', 'features.unified_exec=true', '-c', `openai_base_url="${capiUrl}"`]) } : {}),
 			...(realCapture ? {
 				// Real-CAPI capture/replay: route all CAPI + GitHub-API traffic through
 				// the proxy. The real GitHub token flows via the `authenticate`

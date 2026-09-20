@@ -125,8 +125,14 @@ TGZ="$TARBALLS_DIR/$SDK-$SDK_VERSION-$TARGET.tgz"
 # copies and re-pack with the same node-tar portable settings package.ts
 # uses. If a future SDK version starts shipping its own license, that also
 # satisfies the obligation — skip the injection then.
-if tar -tzf "$TGZ" | grep -qiE 'license|notice'; then
-	echo "    tarball already carries LICENSE/NOTICE — injection not needed"
+#
+# L4: the guard is anchored at the SDK package's own directory
+# (node_modules/<dep>/(LICENSE|NOTICE)), not the whole tree — a transitive
+# dependency's license file must not satisfy the SDK's own obligation.
+SDK_DEP_NAME="$(node -p "Object.keys(JSON.parse(require('fs').readFileSync('build/agent-sdk/agents/$SDK/package.json','utf8')).dependencies)[0]")"
+SDK_LICENSE_RE="(^|/)node_modules/$(printf '%s' "$SDK_DEP_NAME" | sed 's/[.[\*^$]/\\&/g')/[^/]*license|(^|/)node_modules/$(printf '%s' "$SDK_DEP_NAME" | sed 's/[.[\*^$]/\\&/g')/[^/]*notice"
+if tar -tzf "$TGZ" | grep -qiE "$SDK_LICENSE_RE"; then
+	echo "    tarball already carries the SDK's own LICENSE/NOTICE — injection not needed"
 else
 	LICENSE_DIR="$REPO_ROOT/build/agent-sdk/licenses/$SDK"
 	[ -f "$LICENSE_DIR/LICENSE" ] || fail "$SDK tarball ships no license and no vendored copy exists at $LICENSE_DIR — Apache-2.0 obligations unmet"
@@ -162,7 +168,7 @@ try {
 }
 NODE_EOF
 	# Re-check: the repacked tarball MUST carry the license now.
-	tar -tzf "$TGZ" | grep -qiE 'license' || fail "license injection did not take effect in $TGZ"
+	tar -tzf "$TGZ" | grep -qiE "$SDK_LICENSE_RE" || fail "license injection did not take effect in $TGZ"
 fi
 
 # HIGH-1 integrity chain: results.json must carry the sha256 of the FINAL

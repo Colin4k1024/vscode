@@ -26,6 +26,15 @@
 # KNOWN LIMITATION (D06 follow-up): upstream NLS user-visible strings (e.g.
 # "Welcome to Visual Studio Code") still ship — same posture as VSCodium;
 # tightening is a product-branding decision, not a packaging bug.
+# KNOWN LIMITATION (D66 / issue #66 L1): the out/** and node_modules/ entries
+# exempt all four scanned tokens for those bundled trees — for those trees the
+# gate is metadata-only (it would only catch a NEW first-party surface
+# appearing under them). Tightening requires patching the NLS tables out of
+# the bundles first (a product-branding decision, as above); doing it the
+# other way round would fail the gate on every known-good build. The
+# node_modules.asar half is additionally invisible to grep — that tree is
+# covered for the D10 package block list by check-no-copilot-artifacts.sh's
+# asar scan instead.
 
 # Bundled app code (esbuild output), NLS tables, sourcemaps, shell scripts:
 # upstream dev fallbacks (`Code - OSS Dev`, `code-oss`, `.vscode-oss`) and

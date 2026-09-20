@@ -204,6 +204,12 @@ export function buildCLIDownloadUrl(os: string, arch: string, quality: string, c
 	// Known limitation (recorded in scripts/package.sh): the fork does not
 	// publish CLI artifacts yet, so remote agent-host bootstrap 404s
 	// (fail loud) instead of silently using Microsoft's CDN.
+	// Known limitation (issue #66 L11): unlike the agent-SDK tarballs (sha256
+	// verified by agentSdkDownloader before extraction), the CLI tarball
+	// install path (`curl | tar`) has no digest check — there is no published
+	// digest to check against while the CLI artifacts themselves are
+	// unpublished. When the fork starts publishing them, publish a
+	// `<asset>.sha256` sidecar per artifact and verify before extraction.
 	const override = process.env.AGENT_HOST_CLI_DOWNLOAD_BASE?.trim();
 	const base = (override || 'https://github.com/Colin4k1024/vscode/releases/download').replace(/\/+$/, '');
 	if (override && !/^https?:\/\//i.test(override)) {

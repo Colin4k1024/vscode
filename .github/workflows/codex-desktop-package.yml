@@ -24,14 +24,33 @@ on:
   # build + beta gates are proven green BEFORE merge, not only after a
   # manual dispatch. Publishing to Releases stays dispatch-only (see the
   # publish-sdk job's `if`).
+  #
+  # L9 (#66): path-scoped — a docs-only PR must not burn a ~2h macos-15
+  # build. The list covers every input the packaging chain consumes: the
+  # workflow itself, the build system, the mixin, the gate scripts, the
+  # agent host, and the Copilot extension the packaging excludes.
   pull_request:
+    paths:
+      - '.github/workflows/codex-desktop-package.yml'
+      - 'build/**'
+      - 'extensions/copilot/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'product/**'
+      - 'scripts/**'
+      - 'src/vs/base/common/product.ts'
+      - 'src/vs/platform/agentHost/**'
 
 permissions:
   contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel superseded PR runs (a fresh push makes the in-flight one moot),
+  # but NEVER cancel a dispatch run: the publish-sdk job uploads release
+  # assets non-atomically, and an interrupt mid-upload leaves a partial
+  # release behind (L9).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   darwin-arm64:

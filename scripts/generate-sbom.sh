@@ -32,6 +32,8 @@ command -v node >/dev/null 2>&1 || { echo "ERROR: node not found on PATH" >&2; e
 node - "$REPO_ROOT" "$OUT_DIR" <<'NODE_EOF'
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { execSync } = require('child_process');
 const [root, outDir] = process.argv.slice(2);
 
 function readJson(p) {
@@ -64,6 +66,38 @@ function readJsonc(p) {
 const pkg = readJson(path.join(root, 'package.json'));
 const cgmanifest = readJson(path.join(root, 'cgmanifest.json'));
 const cglicenses = readJsonc(path.join(root, 'cglicenses.json'));
+
+// name → version index from EVERY package-lock.json in the repo (root,
+// extensions/*, remote/, build/...), used to give cglicenses entries their
+// real version instead of 'unknown' (L5). Cargo-side entries (no npm package
+// of that name in any lockfile) keep the 'unknown' fallback.
+const lockPkgVersion = (() => {
+	const index = new Map();
+	const walk = (dir, depth) => {
+		if (depth > 4) { return; }
+		let entries;
+		try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+		for (const e of entries) {
+			if (e.name === 'node_modules' || e.name === '.git' || e.name === 'out' || e.name === '.build' || e.name.startsWith('.')) { continue; }
+			const p = path.join(dir, e.name);
+			if (e.isDirectory()) {
+				walk(p, depth + 1);
+			} else if (e.name === 'package-lock.json') {
+				try {
+					const lock = readJson(p);
+					for (const [key, value] of Object.entries(lock.packages ?? {})) {
+						const m = /(?:^|\/)node_modules\/((?:@[^/]+\/)?[^/]+)$/.exec(key);
+						if (m && value && typeof value.version === 'string' && !index.has(m[1])) {
+							index.set(m[1], value.version);
+						}
+					}
+				} catch { /* an unparseable lockfile just contributes nothing */ }
+			}
+		}
+	};
+	try { walk(root, 0); } catch { /* no lockfiles readable */ }
+	return (name) => index.get(name);
+})();
 
 const components = [];
 
@@ -112,11 +146,12 @@ for (const reg of cgmanifest.registrations ?? []) {
 // 2. cglicenses overrides (components detected from lockfiles).
 for (const entry of cglicenses) {
 	if (!entry.name) { continue; }
+	const lockVersion = lockPkgVersion(entry.name);
 	components.push({
-		'bom-ref': `pkg:npm/${entry.name}@unknown(cglicenses)`,
+		'bom-ref': `pkg:npm/${entry.name}@${lockVersion ?? 'unknown(cglicenses)'}`,
 		type: 'library',
 		name: entry.name,
-		version: 'unknown',
+		version: lockVersion ?? 'unknown',
 		description: 'License override entry from cglicenses.json (component detected from package-lock/Cargo.lock)',
 		licenses: [{ license: { name: 'See cglicenses.json (prependLicenseText)' } }],
 	});
@@ -155,14 +190,55 @@ try {
 	}
 } catch { /* .npmrc absent — record nothing */ }
 
+// L5: the SBOM must be REPRODUCIBLE — same tree in, same document out.
+// serialNumber: deterministic UUID (v5-shaped) over the sorted bom-refs
+// instead of a random UUID; timestamp: SOURCE_DATE_EPOCH (reproducible-build
+// convention), else the HEAD commit time, else now (last resort, and the
+// doc is then not reproducible — the release flow always has a git HEAD).
+const contentDigest = crypto.createHash('sha256')
+	.update(components.map(c => String(c['bom-ref'])).sort().join('\n'))
+	.digest('hex');
+const deterministicUuid = [
+	contentDigest.slice(0, 8),
+	contentDigest.slice(8, 12),
+	'5' + contentDigest.slice(13, 16),
+	((parseInt(contentDigest.slice(16, 18), 16) & 0x3f) | 0x80).toString(16) + contentDigest.slice(18, 20),
+	contentDigest.slice(20, 32),
+].join('-');
+
+let timestamp;
+if (process.env.SOURCE_DATE_EPOCH && /^\d+$/.test(process.env.SOURCE_DATE_EPOCH)) {
+	timestamp = new Date(Number(process.env.SOURCE_DATE_EPOCH) * 1000).toISOString();
+} else {
+	try {
+		const headEpoch = execSync('git log -1 --format=%ct', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+		timestamp = new Date(Number(headEpoch) * 1000).toISOString();
+	} catch {
+		timestamp = new Date().toISOString();
+	}
+}
+
+// L5: a merged SBOM with implausibly few components means a source read
+// silently produced nothing — fail loud instead of shipping an empty
+// manifest. The upstream cgmanifest alone registers hundreds of components;
+// 50 is a conservative floor. The fork-specific agent SDK pin must be
+// present by construction (the loop above throws when the agents dir is
+// unreadable), so assert it explicitly.
+if (components.length < 50) {
+	throw new Error(`SBOM has only ${components.length} components — a source merge must have failed (cgmanifest.json alone registers hundreds). Refusing to write an empty manifest.`);
+}
+if (!components.some(c => c.description && String(c.description).includes("Agent SDK '"))) {
+	throw new Error('SBOM is missing the agent SDK pin components (build/agent-sdk/agents/*) — the D02/D09 supply-chain entries must be present.');
+}
+
 const sbom = {
 	$schema: 'http://cyclonedx.org/schema/bom-1.5.schema.json',
 	bomFormat: 'CycloneDX',
 	specVersion: '1.5',
-	serialNumber: `urn:uuid:${require('crypto').randomUUID()}`,
+	serialNumber: `urn:uuid:${deterministicUuid}`,
 	version: 1,
 	metadata: {
-		timestamp: new Date().toISOString(),
+		timestamp,
 		tools: [{ vendor: 'ColinCode', name: 'scripts/generate-sbom.sh', version: '1.0.0' }],
 		component: components[0],
 	},
@@ -173,4 +249,6 @@ const out = path.join(outDir, 'sbom.cdx.json');
 fs.writeFileSync(out, JSON.stringify(sbom, null, 2) + '\n');
 console.log(`SBOM written: ${out}`);
 console.log(`  components: ${sbom.components.length} (+1 application)`);
+console.log(`  serialNumber: ${sbom.serialNumber} (deterministic over component bom-refs)`);
+console.log(`  timestamp: ${timestamp} (${process.env.SOURCE_DATE_EPOCH ? 'SOURCE_DATE_EPOCH' : 'HEAD commit time'})`);
 NODE_EOF

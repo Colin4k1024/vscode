@@ -1,0 +1,338 @@
+{
+  "goal": "关闭 Colin4k1024/vscode 全部 open issue（codex-desktop Epic）",
+  "scope": {
+    "repository": "Colin4k1024/vscode",
+    "query": "is:issue is:open label:codex-desktop",
+    "base_branch": "main",
+    "exclusions": [
+      "不改 /poc/codex 业务代码",
+      "不做生产发布/签名/公证（D09 首版明确不做）",
+      "归档/删除仓库需用户显式授权"
+    ]
+  },
+  "total": 18,
+  "closed": 4,
+  "closed_issues": {
+    "#3": {
+      "d": "D01",
+      "merged": "02730414e48",
+      "closed_at": "2026-09-19T20:35+08:00",
+      "review": "pi r3 APPROVE 8.0"
+    },
+    "#12": {
+      "d": "D10",
+      "merged": "cb9b6e568bd",
+      "closed_at": "2026-09-19T20:35+08:00",
+      "review": "pi r4 APPROVE 8.4"
+    },
+    "#4": {
+      "d": "D02",
+      "merged": "c3511d4d7c2",
+      "closed_at": "2026-09-19T22:10+08:00",
+      "review": "pi r2 APPROVE 8.2"
+    },
+    "#2": {
+      "d": "D17",
+      "merged": "567ebe16ed7",
+      "closed_at": "2026-09-19T23:00+08:00",
+      "review": "pi r3 APPROVE 8.6"
+    }
+  },
+  "issues": {
+    "#1": {
+      "d": "D00",
+      "title": "Epic",
+      "state": "open",
+      "note": "全部子 issue 关闭后关"
+    },
+    "#2": {
+      "d": "D17",
+      "pri": "P0",
+      "wave": 2,
+      "deps": [
+        "D01"
+      ],
+      "state": "closed",
+      "pr": 22,
+      "merged": "567ebe16ed7"
+    },
+    "#3": {
+      "d": "D01",
+      "pri": "P0",
+      "wave": 1,
+      "deps": [],
+      "state": "closed",
+      "pr": 19,
+      "merged": "02730414e48"
+    },
+    "#4": {
+      "d": "D02",
+      "pri": "P0",
+      "wave": 2,
+      "deps": [
+        "D01"
+      ],
+      "state": "closed",
+      "branch": "codex-desktop/d02-sdk-supply",
+      "note": "主 agent 实施中",
+      "merged": "c3511d4d7c2"
+    },
+    "#5": {
+      "d": "D03",
+      "pri": "P0",
+      "wave": 3,
+      "deps": [
+        "D02"
+      ],
+      "state": "open",
+      "note": "D10 裁定输入：API Key 一等化必须，ChatGPT 登录标注个人自用"
+    },
+    "#6": {
+      "d": "D04",
+      "pri": "P0",
+      "wave": 3,
+      "deps": [
+        "D02"
+      ],
+      "state": "in_progress",
+      "branch": "codex-desktop/d04-decouple-github",
+      "pr": 23,
+      "note": "默认值翻转+测试；实测墙解除；pi 审查中",
+      "sha": "1b4e9353567"
+    },
+    "#7": {
+      "d": "D05",
+      "pri": "P1",
+      "wave": 4,
+      "deps": [
+        "D03",
+        "D04"
+      ],
+      "state": "open",
+      "note": "D10 裁定输入：对外分发默认 API Key（BYOK）"
+    },
+    "#8": {
+      "d": "D06",
+      "pri": "P1",
+      "wave": 3,
+      "deps": [
+        "D01",
+        "D17"
+      ],
+      "state": "open",
+      "note": "WIP 已推送（占位名 OpenAgents）；续作排队（等 D11 完成后重启以省配额）",
+      "deps_ok": true
+    },
+    "#9": {
+      "d": "D07",
+      "pri": "P2",
+      "wave": 4,
+      "deps": [
+        "D04",
+        "D17"
+      ],
+      "state": "open",
+      "deps_ok": true,
+      "note": "D17 已裁定：28 项差距表为验收基准"
+    },
+    "#10": {
+      "d": "D08",
+      "pri": "P1",
+      "wave": 3,
+      "deps": [
+        "D01",
+        "D17"
+      ],
+      "state": "open",
+      "note": "D17 已裁定：移植脚本清单就绪",
+      "deps_ok": true
+    },
+    "#11": {
+      "d": "D09",
+      "pri": "P1",
+      "wave": 5,
+      "deps": [
+        "D02",
+        "D06",
+        "D08",
+        "D17"
+      ],
+      "gated_by": "D10",
+      "state": "open",
+      "note": "D17 已裁定：0-patch 目标确认",
+      "deps_ok": true
+    },
+    "#12": {
+      "d": "D10",
+      "pri": "P1",
+      "wave": 1,
+      "deps": [],
+      "state": "closed",
+      "pr": 20,
+      "merged": "cb9b6e568bd"
+    },
+    "#13": {
+      "d": "D11",
+      "pri": "P0",
+      "wave": 2,
+      "deps": [
+        "D01",
+        "D02"
+      ],
+      "state": "in_progress",
+      "note": "续作子代理运行中（分支 -cont，基于 WIP）"
+    },
+    "#14": {
+      "d": "D12",
+      "pri": "P0",
+      "wave": 2,
+      "deps": [
+        "D01",
+        "D02"
+      ],
+      "state": "open"
+    },
+    "#15": {
+      "d": "D13",
+      "pri": "P0",
+      "wave": 2,
+      "deps": [
+        "D01",
+        "D02"
+      ],
+      "state": "open"
+    },
+    "#16": {
+      "d": "D14",
+      "pri": "P2",
+      "wave": 4,
+      "deps": [
+        "D02",
+        "D11"
+      ],
+      "state": "open"
+    },
+    "#17": {
+      "d": "D15",
+      "pri": "P2",
+      "wave": 6,
+      "deps": [
+        "D09",
+        "D10"
+      ],
+      "state": "open",
+      "note": "D10 输入：只能 Open VSX 或私有 registry"
+    },
+    "#18": {
+      "d": "D16",
+      "pri": "P2",
+      "wave": 6,
+      "deps": [
+        "D03",
+        "D05"
+      ],
+      "state": "open"
+    }
+  },
+  "audit_log": [
+    {
+      "ts": "2026-09-19T16:20+08:00",
+      "event": "goal start; scope inferred from repo remotes (placeholders unfilled); 18 open issues, all codex-desktop epic"
+    },
+    {
+      "ts": "2026-09-19T16:30+08:00",
+      "event": "D01: local baseline verified (6492 unit tests, protocol sync green, agents window launch + codex provider registration); branch pushed; PR #19; CI pending"
+    },
+    {
+      "ts": "2026-09-19T16:32+08:00",
+      "event": "D10: research subagent dispatched in parallel"
+    },
+    {
+      "ts": "2026-09-19T16:45+08:00",
+      "event": "D01 CI green (run 35431682621, 1 flaky-timeout rerun); evidence posted to #3"
+    },
+    {
+      "ts": "2026-09-19T16:55+08:00",
+      "event": "D10 subagent done: PR #20 (LICENSE-CLEARANCE 11项 + checklist), issue #12 evidence posted. Key: extensions/copilot = redistribution hard blocker (D08); ChatGPT subscription = personal-use only, external default must be API Key (feeds D03/D05); clientInfo.name=vscode_agent_host must change (D06)"
+    },
+    {
+      "ts": "2026-09-19T17:05+08:00",
+      "event": "Codex ask failed (workdir was D10 worktree, no codex session); USER DIRECTIVE: use pi agent for review instead. pi review launched (cc-switch-bailian/qwen3.8-max-0902) for PR #19+#20"
+    },
+    {
+      "ts": "2026-09-19T19:05+08:00",
+      "event": "pi round1: #19 CHANGES_REQUESTED 6.6 (8条: n守卫/幂等/验收7字面/失败模式/PNG重复/文档漂移/workflow加固/范围nit); #20 APPROVE 7.4 + 4处事实错误(假引文/seti矛盾/H.264截断/§11计数)"
+    },
+    {
+      "ts": "2026-09-19T19:35+08:00",
+      "event": "#19 fixes pushed e259d268a1d (all 8 items; scope-nit deferred); #20 fixes pushed 3a37b2ec778 (6 factual + §15 recipe + §16 unmet-items); Epic #1 gate comment posted (issuecomment-5741296098); hardened CI green on new HEAD (run 35438882885, 4m46s)"
+    },
+    {
+      "ts": "2026-09-19T20:15+08:00",
+      "event": "pi round2: #20 APPROVE 7.8 (7/7 verified; 3 nits); #19 CHANGES_REQUESTED 6.3 — pi A/B stub-tree test caught REAL regression (ls-glob + set -euo pipefail aborts on clean checkout); Electron source description wrong (OSS=GitHub releases)"
+    },
+    {
+      "ts": "2026-09-19T20:45+08:00",
+      "event": "#19 round3 fixes pushed 671e7fe13c6 (find-based count + shellcheck CI step + doc fixes); #20 nits pushed 80a03a0e3ef; clean-checkout bootstrap evidence captured (real network failure + recovery)"
+    },
+    {
+      "ts": "2026-09-19T20:55+08:00",
+      "event": "pi round3: #19 APPROVE 8.0; #20 CHANGES_REQUESTED 6.6 (seti 溯源错误 — 上游四源一致 MIT)"
+    },
+    {
+      "ts": "2026-09-19T21:00+08:00",
+      "event": "#20 seti fixes pushed 2ef2af1fb38; pi round4: #20 APPROVE 8.4; Actions 一度被禁用(疑似账单) → admin API 恢复; PR #19/#20 MERGED (02730414e48 / cb9b6e568bd); issues #3/#12 CLOSED (closed=2/18); workflow_dispatch on main run 35443061044 success"
+    },
+    {
+      "ts": "2026-09-19T21:00+08:00",
+      "event": "D02 PR #21 + D17 PR #22 created; D02 CI green; both pi reviews launched in parallel"
+    },
+    {
+      "ts": "2026-09-19T21:20+08:00",
+      "event": "D02 pi r1: CHANGES_REQUESTED 6.6 (3 blocking: sha256 声明不实→完整性模型重写+显式偏差登记; cdnBase 静默回退→fail-loud+大小写不敏感; runbook 行号/计数/注册语义订正) — 全部修复推送 39b68246e52, CI 绿, 测试 5/5; r2 复审中"
+    },
+    {
+      "ts": "2026-09-19T21:25+08:00",
+      "event": "D17 交付完成: PR #22 (ROUTE-DECISION 296行), 关键纠错 grok-build ACP 连 x.ai Grok 而非 codex; D06/D07/D09 issue 描述已追加裁定输入; pi r1 审查中"
+    },
+    {
+      "ts": "2026-09-19T22:10+08:00",
+      "event": "D02 CLOSED: pi r2 APPROVE 8.2 → merged c3511d4d7c2; unlocked D03/D04/D11/D12/D13; D17 r2 review running; dispatching D11 subagent, main agent takes D04"
+    },
+    {
+      "ts": "2026-09-19T22:20+08:00",
+      "event": "D17 r2 6.8 四条一致性修复推送 8ac1bc1d9ec（28 项口径/算术/模块数/目录数，issue#9 与 PR#22 描述同步），r3 复审中；D04 PR #23 创建（默认值翻转+isWeb 测试，live 墙解除证据），pi 审查中；D11 子代理运行中"
+    },
+    {
+      "ts": "2026-09-19T23:00+08:00",
+      "event": "D17 CLOSED: pi r3 APPROVE 8.6 → merged 567ebe16ed7; D06/D07/D08/D09 unlocked; D04 review running; D11 subagent running"
+    },
+    {
+      "ts": "2026-09-20T07:05+08:00",
+      "event": "USER DIRECTIVE: commit+push all local code. Executed: D04 r1 fixes (97e0040f31c, 物化回退+注释路线+注册默认断言测试, 6492 全绿) + goal-state snapshot (ca8a5d31d45) pushed; D11 WIP branch pushed (captures/harness/matrix partial); D06 WIP branch pushed (product/ mixin+clientInfo+placeholder OpenAgents partial). Both subagents died on 5h usage limit at 22:32; limit reset, D11 continuation agent relaunched on codex-desktop/d11-replay-matrix-cont; D06 continuation queued. D04 pi r2 review launched."
+    },
+    {
+      "ts": "2026-09-20T08:05+08:00",
+      "event": "D04 审查循环: r2 4.8(注册测试恒败) → 修复(副作用import) → r3 4.2(import 致全量套件崩溃+lint违规, pi 实测抓出) → 常量方案重写(ProductDefault 单一事实点) → 全量套件 38966/13既有=基线 + eslint 0 + 单文件6/6 + node 6492 → r4 终审中 (HEAD 1b4e9353567)。教训: goal state 曾随分支重写短暂丢失, 已从 goal-state-backup 恢复; 之后 goal state 只放备份分支或独立跟踪, 不再寄生 feature 分支"
+    }
+  ],
+  "review_state": {
+    "current_issues": [
+      "#4",
+      "#2"
+    ],
+    "shas": {
+      "#4": "39b68246e52",
+      "#2": "5ccb2fe6bc8"
+    },
+    "reviewer": "pi",
+    "status": "d02_r2_and_d17_r1_in_progress",
+    "rounds": {
+      "D02": [
+        "r1 6.6 CHANGES_REQUESTED"
+      ],
+      "D17": []
+    }
+  },
+  "blockers": []
+}

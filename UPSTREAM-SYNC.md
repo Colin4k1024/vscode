@@ -113,6 +113,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | 区域 | 自有改动 | 备注 |
 |---|---|---|
 | `src/vs/platform/agentHost/`（common/node/test） | 15 M + 大量 A | 最高重叠区；`codexAgent.ts` +173/-16 是最大单文件改动 |
+| `src/vs/platform/agentHost/test/node/e2e/suites/copilotCoverageSuite.ts` | M | +4/-1 | D15 | 源码改动 | D15 评审发现：scratch 目录清理断言的 retry 预算过紧（CI flake）；e2e 时序断言只能改在测试本体 |
 | `src/vs/sessions/` | 4 M + 2 A | 账号菜单、键位 |
 | `src/vs/workbench/contrib/chat/` | 6 M + 2 A | `chat.shared.contribution.ts` 已被 `sync-upstream.sh --dry-run` 实测预报冲突（2026-09-20 vs upstream/main） |
 | `product.json`（根） | 0 M | D06 mixin 保护：根 product.json 保持 0 diff（`check-product-json-pristine.sh` 把关） |
@@ -121,8 +122,9 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 ## 4. 薄覆盖层清单（对齐 R2 / D09 AC12）
 
 口径：`git diff fb20064c0f4..HEAD`（fork 相对上游基线的全部自有改动）。
-当前总计：**191 文件**（行数差口径 +15580/-984 为 D14 合入时点快照；文件数为 §4.1 表实测值）；
-其中新增（覆盖层）134、修改（源码改动）57（含 24 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
+当前总计：**192 文件**（静态快照：§4.1 为手工维护清单，数字为表实测值；行数差口径 +15580/-984 为 D14 合入时点快照。
+全量实时口径以 `scripts/own-change-surface.sh` 输出为准，该脚本含生成目录等本清单声明排除项）；
+其中新增（覆盖层）134、修改（源码改动）58（含 25 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
 `scripts/own-change-surface.sh` 断言）。上游协议生成目录
 （`protocol/generated/` 828 文件）与 `build/codex/` 在基线中已存在（上游 in-tree），
 不计入自有改动面。
@@ -133,14 +135,13 @@ bash scripts/sync-upstream.sh [--ref <ref>]
   文档、新增测试/模块）。新增文件在 merge 时天然不与上游冲突。
 - **源码改动**：修改上游既有文件（M）。每项必须回答"为什么不能走覆盖层"。
 
-57 个源码改动文件的理由汇总（逐文件全表见 §4.1，由
-`git diff --name-status fb20064c0f4 HEAD` 实时生成）：
+58 个源码改动文件的理由汇总（逐文件全表见 §4.1；清单为手工维护的快照，非实时生成——生成时点见本节顶部口径行）：
 
 - **类型/枚举/接口契约本体**（4 个）：`base/common/product.ts`、`platform/window/common/window.ts`、`agentHostSchema.ts`、`meta/codexAccount.ts`——类型成员必须改在定义处，无覆盖层概念。
 - **行为逻辑/策略裁决**（11 个）：`agentService.ts`、`codexAgent.ts`、`codexAccountState.ts`、`agentHostCustomizationConfig.ts`、`codexAccountService.ts`、`defaultAccount.ts`、`telemetryService.ts`、`extensionGalleryService.ts`、`agentSessionsWelcome.ts`、`sessionsActions.ts`、`account.contribution.ts`——fork 改变的是运行时行为，不是数据；上游无对应扩展点。
 - **上游内嵌默认值的空值守卫/移除**（5 个）：`platform/product/common/product.ts`（移除 `defaultChatAgent`）、`abstractExtensionManagementService.ts`、`extensionsWorkbenchService.ts`、`chatStatusEntry.ts`、`chatWidget.ts`（各 1 行空值守卫）——上游假设 `defaultChatAgent` 必存在，守卫只能写在判读处。
 - **入口/contribution 注册**（5 个）：`app.ts`、`agentHostStarter.config.contribution.ts`、`agentHost.contribution.ts`、`chat.shared.contribution.ts`、`chatStatusDashboard.ts`——注册点本体。
-- **测试文件**（24 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。
+- **测试文件**（25 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。
 - **构建/工具链/配置**（8 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免）、`build/hygiene.ts`（D15 extensionsGallery 检查 mixin 感知豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）。
 
 注：fork 自有的 CI workflow（baseline/drift）、`scripts/*.sh`、`product/`、文档等均为
@@ -162,9 +163,9 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `.agents/research/codex-desktop/D07-FORM-DECISION.md` | A | +167/-0 | D07 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/D08-DECISIONS.md` | A | +130/-0 | D08 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/D15-GALLERY.md` | A | +220/-0 | D15 | 覆盖层 | **覆盖层**：D15 裁定与两轮实测证据文档 |
-| `.agents/research/codex-desktop/LICENSE-CLEARANCE.md` | A | +350/-0 | D10 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
+| `.agents/research/codex-desktop/LICENSE-CLEARANCE.md` | A | +352/-0 | D10 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/LIVE-ONLY.md` | A | +54/-0 | D11 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
-| `.agents/research/codex-desktop/PRE-RELEASE-CHECKLIST.md` | A | +58/-0 | D10 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
+| `.agents/research/codex-desktop/PRE-RELEASE-CHECKLIST.md` | A | +59/-0 | D10 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/README.md` | A | +78/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/ROUTE-DECISION.md` | A | +307/-0 | D17 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/bootstrap.sh` | A | +100/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
@@ -174,17 +175,17 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `.agents/research/codex-desktop/evidence/d15-agents-window-yaml-not-activated.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：Agents 窗口不激活未列入扩展（截图） |
 | `.agents/research/codex-desktop/evidence/d15-extensions-installed-after-restart.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：重启后 @installed 仍在列（截图） |
 | `.agents/research/codex-desktop/evidence/d15-extensions-search-yaml.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：Extensions 视图搜索 yaml（截图） |
-| `.agents/research/codex-desktop/evidence/d15-workspace-trust-restricted-mode.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：Restricted Mode 默认出现（截图） |
-| `.agents/research/codex-desktop/evidence/d15-netlog-hosts.txt` | A | txt | D15 | 覆盖层 | **覆盖层**：第二轮：四轮 netlog 按主机聚合 |
-| `.agents/research/codex-desktop/evidence/d15-second-round-logs.txt` | A | txt | D15 | 覆盖层 | **覆盖层**：第二轮：安装/激活/重启/Agents 对照日志摘录 |
 | `.agents/research/codex-desktop/evidence/d15-gui-extensions-view.txt` | A | txt | D15 | 覆盖层 | **覆盖层**：首轮：Extensions 视图 GUI 记录 |
 | `.agents/research/codex-desktop/evidence/d15-installed-extensions.json` | A | txt | D15 | 覆盖层 | **覆盖层**：首轮：安装后扩展清单 |
+| `.agents/research/codex-desktop/evidence/d15-netlog-hosts.txt` | A | txt | D15 | 覆盖层 | **覆盖层**：第二轮：四轮 netlog 按主机聚合 |
 | `.agents/research/codex-desktop/evidence/d15-openvsx-gallery-trace-cli.log` | A | txt | D15 | 覆盖层 | **覆盖层**：首轮：Open VSX 请求 trace |
+| `.agents/research/codex-desktop/evidence/d15-second-round-logs.txt` | A | txt | D15 | 覆盖层 | **覆盖层**：第二轮：安装/激活/重启/Agents 对照日志摘录 |
+| `.agents/research/codex-desktop/evidence/d15-workspace-trust-restricted-mode.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：Restricted Mode 默认出现（截图） |
 | `.agents/research/codex-desktop/submit.sh` | A | +263/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/skills/launch/SKILL.md` | M | +4/-4 | D06 | 源码改动 | Dev-tool 文档，引用产品名/数据目录；随 D06 品牌更新（非发布运行时） |
 | `.agents/skills/launch/scripts/launch.ps1` | M | +32/-10 | D06 | 源码改动 | 开发启动脚本须传入 mixin 的 dataFolderName/应用名；shell 脚本无覆盖层挂点 |
 | `.agents/skills/launch/scripts/launch.sh` | M | +27/-3 | D06 | 源码改动 | 同上（POSIX 版） |
-| `.github/workflows/codex-desktop-baseline.yml` | A | +231/-0 | D01,D06,D08,D11,D14 | 覆盖层 | **覆盖层**：fork 自有 CI（新增文件，不与上游 workflow 同名） |
+| `.github/workflows/codex-desktop-baseline.yml` | A | +253/-0 | D01,D06,D08,D11,D14 | 覆盖层 | **覆盖层**：fork 自有 CI（新增文件，不与上游 workflow 同名） |
 | `.github/workflows/codex-upstream-drift.yml` | A | +40/-0 | D14 | 覆盖层 | **覆盖层**：D14 漂移监控 workflow（新文件，不与上游同名） |
 | `.goal-state/STATE.md` | A | +33/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
 | `.goal-state/d03-spec.md` | A | +73/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
@@ -208,7 +209,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `.goal-state/issues/7.md` | A | +51/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
 | `.goal-state/issues/8.md` | A | +64/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
 | `.goal-state/issues/9.md` | A | +73/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
-| `UPSTREAM-SYNC.md` | A | +252/-0 | D14 | 覆盖层 | **覆盖层**：D14 本手册（新增文档） |
+| `UPSTREAM-SYNC.md` | A | +450/-0（自引用行，随本文件编辑固有漂移） | D14,D15 | 覆盖层 | **覆盖层**：D14 本手册（新增文档） |
 | `UPSTREAM_COMMIT` | A | +1/-0 | D14 | 覆盖层 | **覆盖层**：D14 上游 pin（grok-code-product 格式，裸 SHA） |
 | `VERSION` | A | +1/-0 | D14 | 覆盖层 | **覆盖层**：D14 fork 发行版本 pin（grok-code-product 格式） |
 | `build/agent-sdk/README.md` | M | +31/-0 | D02 | 源码改动 | agent-sdk pin 机制文档（构建期，非运行时） |
@@ -343,7 +344,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/workbench/services/agentHost/browser/codexAccountService.ts` | M | +70/-3 | D03 | 源码改动 | D03：OpenAI 原生账号服务（+70/-3）；服务行为 |
 | `src/vs/workbench/services/agentHost/test/browser/codexAccountService.test.ts` | M | +131/-5 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 
-共 191 文件：覆盖层(新增) 134、源码改动 33、源码改动(测试) 24。
+共 192 文件：覆盖层(新增) 134、源码改动 33、源码改动(测试) 25。
 
 ## 5. 漂移监控
 

@@ -147,9 +147,20 @@ jobs:
             npm run codex:check-protocol-sync -- --if-changed --base "$BASE"
           fi
 
-      - name: Agent Host unit tests
+      - name: Agent Host + product-config unit tests
         timeout-minutes: 20
-        run: npm run test-node -- --runGlob "vs/platform/agentHost/test/node/**/*.test.js"
+        # D15 (#17): also run the fork's product-configuration pin tests
+        # (extensionGallery Open VSX ruling + G9 presence gate,
+        # agentsWindowStartup empty sessions allow-list) — pr.yml runs the full
+        # suite on Microsoft's 1ES pool and never schedules on this fork, so
+        # baseline is the only gate that can hold these pins. `--run` with the
+        # source path (not --runGlob): the runner resolves the file directly
+        # and fails loudly when it is missing, while an unmatched glob passes
+        # silently with 0 tests.
+        run: |
+          npm run test-node -- --runGlob "vs/platform/agentHost/test/node/**/*.test.js"
+          npm run test-node -- --run src/vs/code/test/node/extensionGallery.test.ts
+          npm run test-node -- --run src/vs/code/test/node/agentsWindowStartup.test.ts
 
   agent-host-e2e:
     name: Agent Host E2E (deterministic replay)

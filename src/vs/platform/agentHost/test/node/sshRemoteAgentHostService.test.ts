@@ -1483,8 +1483,10 @@ suite('SSHRemoteAgentHostMainService - connect flow', () => {
 			const execCalls = pinnedService.mockClients[0].execCalls;
 			const installCall = execCalls.find(c => c.includes('curl'));
 			assert.ok(installCall, `should have run curl install; saw: ${JSON.stringify(execCalls)}`);
-			assert.ok(installCall!.includes(`commit:${commit}`),
-				`install URL should be commit-pinned; got: ${installCall}`);
+			// D09: the commit is encoded in the release tag (`cli-<sha>`), since
+			// GitHub Releases only serves flat assets under one tag.
+			assert.ok(installCall!.includes(`cli-${commit}`),
+				`install URL should be commit-pinned via the release tag; got: ${installCall}`);
 			assert.ok(installCall!.includes(`mv `) && installCall!.includes(cliBin),
 				`install should atomic-mv into commit-keyed path; got: ${installCall}`);
 		});

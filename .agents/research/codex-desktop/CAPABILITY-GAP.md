@@ -20,7 +20,7 @@
 2. **协议语义**：`protocol/generated/InitializeCapabilities.ts` — `requestAttestation` 注释为 "Opt into `attestation/generate` requests for upstream `x-oai-attestation`"；`v2/AttestationGenerateParams.ts`（空参）、`v2/AttestationGenerateResponse.ts`（`{ token: string }`，"Opaque client attestation token"）。
 3. **app-server 行为**（codex-rs，一手实现）：
    - `app-server/src/thread_state.rs:358 first_attestation_capable_connection_for_thread` — 只在 `request_attestation == true` 的连接中选 attestation 来源；**无 opt-in 连接 → 返回 `None`**。
-   - `app-server/src/attestation.rs:42 header_for_request` — connection 为 `None` 时整个 future 产出 `None`（100ms 超时；失败时降级为 `{v:1, s:<code>}` 无 `t` 的信封）。
+   - `app-server/src/attestation.rs:45 header_for_request` — connection 为 `None` 时整个 future 产出 `None`（100ms 超时；失败时降级为 `{v:1, s:<code>}` 无 `t` 的信封）。
    - `app-server/README.md:2047`（协议文档原话）："**If no initialized client opted into attestation, app-server omits `x-oai-attestation` for that upstream request.**" —— 省略是协议定义的合法状态，不是错误路径。
 4. **核心客户端行为**：`core/src/client.rs:839 generate_attestation_header_for` — `include_attestation == false` 或 provider 返回 `None` 时不加头；`client.rs:658/700/725/1256` — 仅在 Responses / compaction / realtime setup 等 ChatGPT Codex 请求路径附加 `X_OAI_ATTESTATION_HEADER`。
 5. **作用范围收窄**：`model-provider/src/provider.rs:392 supports_attestation()` — 仅当 `auth.is_chatgpt_auth()` 时为 true。**API key / 第三方 provider / Copilot CAPI 代理路径（`codexProxyService.ts`）完全不经 attestation**。
@@ -100,6 +100,8 @@
 
 ### 6. Attestation — 不做（见文首显著结论）
 
+- **价值/依赖/风险**：N/A（不接入）；风险即文首所述未来政策收紧，由观测项覆盖。
+
 - **裁定：不做**。合法 DeviceCheck token 只能由 OpenAI 官方签名 app 生成（上游 PR `5f4d0ec34` + 闭源 `openai/openai#878649`），fork 无实现路径；协议允许省略头部。以观测项回灌 D03/D05。
 
 ### 7. `currentTime/read` — 接入 P2（防御性）
@@ -114,12 +116,16 @@
 
 ### 8. Dynamic tools — 已接入（保留增量项）
 
+- **价值**：`deferLoading` 降低大工具集 schema 开销；**依赖**：无；**风险**：低（透传一层，不改时序约束）。
+
 - **codex 侧**：`item/tool/call`（`v2/DynamicToolCallParams.ts`）+ `thread/start.dynamicTools`。
 - **VS Code 侧现状**：`codexAgent.ts:947 dynamicToolResponseFromResult`、`:2819 _handleDynamicToolCallRpc`、`:2964 _buildDynamicTools`（"Codex only accepts `dynamicTools` at `thread/start`" 注释说明已处理时序约束）。
 - **覆盖度缺口**：`deferLoading`（`v2/DynamicToolFunctionSpec.ts:11`）未从 AHP 侧透传（`agentServerTools.ts:19` 有字段）。
 - **裁定：已接入**（本行关闭）；增量 `deferLoading` 透传 0.5–1 人日（`codexAgent.ts` `_buildDynamicTools` ≈20 LOC + 类型），并入第 5 行 code-mode 延后可选项。
 
 ### 9. Worktree（codex 侧）— 不做
+
+- **价值/依赖/风险**：N/A（不接入）；风险为零（保留 host 层闭环，避免双重 worktree 冲突）。
 
 - **codex 侧**：`codex-rs/worktree`（`src/lib.rs`："A Desktop-compatible checkout and the cwd that should be used to start its thread"），上游提交 `f6976ab03`（TUI session commands 的 managed worktree 创建）。
 - **VS Code 侧现状**：已有 host 层隔离 `IAgentHostWorktreeIsolation` / `IAgentHostWorktreePendingState`（`codexAgent.ts:75/1322/5787`，`../shared/worktreeIsolation.ts`），在 `thread/start` 前完成 cwd 替换。
@@ -128,14 +134,18 @@
 
 ### 10. Skills 生态 — 已接入（保留增量项）
 
+- **价值**：用户可启停单个 skill；**依赖**：无；**风险**：低（配置写回 + UI 入口）。
+
 - **VS Code 侧现状**（已接线，证据）：
   - `skills/extraRoots/set`：`codexAgent.ts:7680`（client-plugin skills 推送）
   - `skills/changed` 失效信号：`codexAgent.ts:2766` → `_queueSkillHookCustomizationRefresh`
-  - `skills/list`（cwd-scoped）：`codexAgent.ts:7635` 注释、`:7721-7731` 与 workspace 发现去重（`codexCustomizations.ts:49 excludeCodexWorkspaceSkillDuplicates`）
+  - `skills/list`（cwd-scoped）：`codexAgent.ts:7635` 注释、`:7721-7731` 与 workspace 发现去重（`codexCustomizations.ts:156 excludeCodexWorkspaceSkillDuplicates`）
 - **缺口**：`skills/config/write`（`v2/SkillsConfigWriteParams.ts`）未接——用户无法在 UI 中启停单个 skill。
 - **裁定：已接入**（核心闭环完成）；增量 `skills/config/write` 接入 P2，≈1 人日（`codexAgent.ts` ≈40 LOC + session 配置键 + 设置 UI 入口 ≈80 LOC）。
 
 ### 11. Hooks — 已接入（保留 UI 增量）
+
+- **价值**：用户可见 hook trust 状态与来源；**依赖**：无；**风险**：低（只读展示 + 既有写回路径）。
 
 - **VS Code 侧现状**（已接线，证据）：
   - `hooks/list`：`codexAgent.ts:7766/7790`（cwd-scoped）
@@ -146,11 +156,15 @@
 
 ### 12. Plugins / Marketplace — 不做
 
+- **价值/依赖/风险**：N/A（不接入官方 marketplace）；风险为零（client-pushed 通路已满足分发）。
+
 - **codex 侧**：`codex-rs/plugin`、`core-plugins`；协议 `v2/PluginListParams.ts`、`PluginInstalledParams.ts`、`Marketplace*Params.ts`、`PluginShare*` 等 40+ 类型。
 - **VS Code 侧现状**：`codexClientCustomizations.ts:32-42` 走的是 **client-pushed** 通路（VS Code 自有 "Open Plugins" 体系投影给 codex，含 per-thread MCP 启动），非 codex `plugin/list` / marketplace API。
 - **裁定：不做**（不接官方 marketplace）。理由：D06 已定自有品牌身份，官方 marketplace 携带 OpenAI 品牌与账号体系；现有 client-pushed 通路已满足插件分发。关联 D15（扩展市场生态）统一决策。
 
 ### 13. Guardian / auto-review — 已接入（保留设置项增量）
+
+- **价值**：auto-review 策略用户可见可控；**依赖**：无；**风险**：低（设置项透传既有配置键）。
 
 - **VS Code 侧现状**（证据）：
   - `approvalsReviewer` 透传：`codexAgent.ts:2021-2045`（`_turnStartOptions`）
@@ -162,12 +176,16 @@
 
 ### 14. Otel trace websocket — 不做
 
+- **价值/依赖/风险**：N/A（不接入）；自有 OTel 服务为功能超集，风险为零。
+
 - **codex 侧**：`codex-rs/otel-trace-websocket`（"Forwards loopback OTLP trace batches to a separate WebSocket listener"，best-effort 转发桥）。
 - **VS Code 侧现状**：`codexLaunchConfig.ts:127-143 codexTelemetryOverrides` 把 codex 的 `otel.trace_exporter` / `otel.exporter` / `otel.metrics_exporter` 接到自有 `IAgentHostOTelService`（`node/otel/agentHostOTelService.ts:269 getNativeSdkTelemetryConfig`，支持外部 OTLP 端点与本地 SQLite span store loopback receiver）；`analytics.enabled=false`、`feedback.enabled=false` 属 D08 隔离决策。
 - **关系**：codex 的 websocket bridge 是给"无 OTLP 接收能力"的宿主用的妥协方案；本产品已有完整 OTel 服务（含 DB span store），功能上是其**超集**。
 - **裁定：不做**。
 
 ### 15. Responses API proxy — 不做
+
+- **价值/依赖/风险**：N/A（不接入）；codex 侧为调试工具，自有 proxy 为超集，风险为零。
 
 - **codex 侧**：`codex-rs/responses-api-proxy`（README：命令行调试代理，`--dump-dir` 落盘请求/响应对，面向开发调试）。
 - **VS Code 侧现状**：`codexProxyService.ts:165 CodexProxyService`（loopback 代理 + per-process nonce、CAPI token 热轮换 `setToken`、auto-review 模型重映射、`x-vscode-codex-portable-history` 头）。

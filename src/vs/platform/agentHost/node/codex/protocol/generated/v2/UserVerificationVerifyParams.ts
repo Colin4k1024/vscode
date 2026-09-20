@@ -11,11 +11,11 @@
  */
 export type UserVerificationVerifyParams = {
 	/**
-	 * Unpadded base64url encoding of 1–4096 challenge bytes.
+	 * Unpadded base64url encoding of 1-4096 challenge bytes.
 	 */
 	challenge: string,
 	/**
-	 * Display context already approved by the UI; 1–256 UTF-8 bytes.
+	 * Display context already approved by the UI; 1-256 UTF-8 bytes.
 	 */
 	title: string,
 	/**

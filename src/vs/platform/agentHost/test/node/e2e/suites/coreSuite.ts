@@ -401,6 +401,25 @@ export function defineCoreTests(context: IAgentHostE2ETestContext): void {
 				&& envelope.action.type === ActionType.ChatTurnCancelled
 				&& envelope.action.turnId === turnId;
 		}, 30_000);
+		// The turnCancelled notification is published when the cancel is applied
+		// to the protocol state, but the Codex provider only releases its
+		// per-session turn tracking when the app-server's turn/completed arrives
+		// (#30: a concurrent send before that point is refused with
+		// CodexTurnConflict). Wait for the true settle point — activeTurn cleared —
+		// before driving the replacement turn.
+		{
+			const deadline = Date.now() + 30_000;
+			let settled = false;
+			while (Date.now() < deadline) {
+				const snapshot = await fetchSessionWithChat(context.client, sessionUri);
+				if (snapshot.activeTurn === undefined) {
+					settled = true;
+					break;
+				}
+				await new Promise(resolve => setTimeout(resolve, 100));
+			}
+			assert.ok(settled, 'the cancelled turn must release the session (activeTurn cleared) before the replacement turn');
+		}
 		const replacement = await driveTurnToCompletion(
 			context.client,
 			sessionUri,

@@ -740,7 +740,7 @@ suite('Dev Container Agent Host Main Service', () => {
 		// D09: the CLI artifact comes from the fork's own release endpoint,
 		// never Microsoft's update CDN.
 		assert.ok(service.execCommands.some(command =>
-			command.includes('https://github.com/Colin4k1024/vscode/releases/download/cli/latest/cli-alpine-x64/insider')
+			command.includes('https://github.com/Colin4k1024/vscode/releases/download/cli-latest/cli-alpine-x64-insider.tar.gz')
 		));
 	});
 });

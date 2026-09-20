@@ -141,6 +141,22 @@ async function uploadOneAzure(args: IUploadArgs, sha256: string): Promise<IUploa
 	return { url: buildCdnUrl(args.sdk, args.sdkVersion, args.sdkTarget), sha256 };
 }
 
+/** Bound on any single HEAD/PUT so a hung endpoint fails the build instead
+ *  of stalling the release job forever (tarballs are 50-100MB; 5 minutes is
+ *  generous for the CDN-class endpoints this backend targets). */
+const UPLOAD_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** Loopback hosts (a local test/dev server) are the only legitimate
+ *  plaintext-http targets for a token-authenticated upload. */
+function isLoopbackHostname(hostname: string): boolean {
+	const h = hostname.toLowerCase().replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+	if (h === 'localhost' || h === '::1') {
+		return true;
+	}
+	// 127.0.0.0/8
+	return /^127(?:\.\d{1,3}){3}$/.test(h);
+}
+
 /**
  * Generic HTTP backend: PUT the tarball to its own download URL, with the
  * sha256 in `x-content-sha256`. HEAD first for the idempotency decision.
@@ -154,13 +170,24 @@ async function uploadOneHttp(args: IUploadArgs, sha256: string): Promise<IUpload
 	const headers: Record<string, string> = {};
 	const token = process.env.AGENT_SDK_UPLOAD_TOKEN?.trim();
 	if (token) {
+		// A bearer token over plaintext http to a routable host is a credential
+		// leak (review round-1, MEDIUM-3a). Loopback stays allowed: the test
+		// suite and local dry-runs against a dev server are legitimate.
+		const { protocol, hostname } = new URL(url);
+		if (protocol !== 'https:' && !isLoopbackHostname(hostname)) {
+			throw new Error(
+				`[${SCRIPT}] AGENT_SDK_UPLOAD_TOKEN is set but the upload URL is not https (${url}). ` +
+				`Refusing to send a bearer token over plaintext to a non-loopback host. ` +
+				`Use an https endpoint, or unset the token for an unauthenticated endpoint.`,
+			);
+		}
 		headers['authorization'] = `Bearer ${token}`;
 	}
 
 	console.log(`[${SCRIPT}] target: ${url}`);
 	console.log(`[${SCRIPT}] local sha256: ${sha256}`);
 
-	const head = await fetch(url, { method: 'HEAD', headers, redirect: 'follow' });
+	const head = await fetch(url, { method: 'HEAD', headers, redirect: 'follow', signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS) });
 	if (head.status === 200) {
 		const remoteSha = head.headers.get('x-content-sha256') ?? undefined;
 		if (remoteSha === sha256) {
@@ -191,7 +218,20 @@ async function uploadOneHttp(args: IUploadArgs, sha256: string): Promise<IUpload
 		// Node's fetch requires `duplex: 'half'` for stream bodies.
 		body: fs.createReadStream(args.tgzPath) as unknown as BodyInit,
 		duplex: 'half',
+		// Never auto-follow a PUT redirect (review round-1, MEDIUM-3b): the
+		// follow would re-send the bearer token and a 50-100MB body to an
+		// unvetted host, and undici would have to buffer or re-stream the
+		// body. Treat any 3xx as a failure and surface the Location so the
+		// endpoint URL can be fixed instead.
+		redirect: 'manual',
+		signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
 	} as RequestInit);
+	if (put.status >= 300 && put.status < 400) {
+		throw new Error(
+			`[${SCRIPT}] PUT ${url} was answered with a redirect (${put.status} → ${put.headers.get('location') ?? '<no Location header>'}). ` +
+			`Redirects are not followed for uploads — fix AGENT_SDK_CDN_BASE / AGENT_SDK_URL_TEMPLATE to point at the final URL.`,
+		);
+	}
 	if (!put.ok) {
 		throw new Error(`[${SCRIPT}] PUT ${url} failed with ${put.status}: ${(await put.text()).slice(0, 500)}`);
 	}

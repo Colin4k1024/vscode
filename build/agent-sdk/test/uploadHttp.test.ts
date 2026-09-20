@@ -29,12 +29,15 @@ import { uploadOne, selectBackend } from '../upload.ts';
 const SAVED_BACKEND = process.env.AGENT_SDK_UPLOAD_BACKEND;
 const SAVED_CDN_BASE = process.env.AGENT_SDK_CDN_BASE;
 const SAVED_TEMPLATE = process.env.AGENT_SDK_URL_TEMPLATE;
+const SAVED_TOKEN = process.env.AGENT_SDK_UPLOAD_TOKEN;
 
 interface IServerState {
-	readonly puts: { url: string; sha256: string | null; bytes: number }[];
+	readonly puts: { url: string; sha256: string | null; bytes: number; authorization: string | null }[];
 	readonly heads: string[];
 	/** Objects the server "already has": url → sha256 */
 	readonly objects: Map<string, string>;
+	/** When set, PUT is answered with `302 Location: <value>` (redirect trap). */
+	putRedirectLocation?: string;
 }
 
 async function withServer(fn: (baseUrl: string, state: IServerState) => Promise<void>): Promise<void> {
@@ -58,7 +61,11 @@ async function withServer(fn: (baseUrl: string, state: IServerState) => Promise<
 			req.on('data', c => chunks.push(c));
 			req.on('end', () => {
 				const body = Buffer.concat(chunks);
-				state.puts.push({ url, sha256: req.headers['x-content-sha256'] as string ?? null, bytes: body.length });
+				state.puts.push({ url, sha256: req.headers['x-content-sha256'] as string ?? null, bytes: body.length, authorization: req.headers['authorization'] as string ?? null });
+				if (state.putRedirectLocation !== undefined) {
+					res.writeHead(302, { location: state.putRedirectLocation }).end();
+					return;
+				}
 				res.writeHead(201).end();
 			});
 			return;
@@ -172,11 +179,65 @@ suite('uploadOne http backend (AC6 idempotency)', () => {
 		});
 	});
 
+	test('token over plaintext http to a non-loopback host fails loud before any request', async () => {
+		await withServer(async (_baseUrl, state) => {
+			process.env.AGENT_SDK_UPLOAD_BACKEND = 'http';
+			// A set URL template wins over CDN_BASE in buildCdnUrl — clear the
+			// one the template test above leaves behind.
+			delete process.env.AGENT_SDK_URL_TEMPLATE;
+			// Routable http host: never actually contacted — the guard must
+			// throw before the HEAD goes out.
+			process.env.AGENT_SDK_CDN_BASE = 'http://objects.example.invalid';
+			process.env.AGENT_SDK_UPLOAD_TOKEN = 'secret-token';
+			try {
+				await assert.rejects(
+					uploadOne({ ...ARGS, tgzPath: fixtureTarball('any bytes') }),
+					/not https|plaintext/,
+				);
+			} finally {
+				delete process.env.AGENT_SDK_UPLOAD_TOKEN;
+			}
+			assert.deepStrictEqual(state.heads, [], 'no HEAD may be sent once the token guard trips');
+			assert.deepStrictEqual(state.puts, [], 'no PUT may be sent once the token guard trips');
+		});
+	});
+
+	test('token over loopback http is allowed and sent as Bearer', async () => {
+		await withServer(async (baseUrl, state) => {
+			process.env.AGENT_SDK_UPLOAD_BACKEND = 'http';
+			delete process.env.AGENT_SDK_URL_TEMPLATE;
+			process.env.AGENT_SDK_CDN_BASE = baseUrl; // http://127.0.0.1:<port>
+			process.env.AGENT_SDK_UPLOAD_TOKEN = 'secret-token';
+			try {
+				await uploadOne({ ...ARGS, tgzPath: fixtureTarball('loopback bytes') });
+			} finally {
+				delete process.env.AGENT_SDK_UPLOAD_TOKEN;
+			}
+			assert.strictEqual(state.puts.length, 1);
+			assert.strictEqual(state.puts[0].authorization, 'Bearer secret-token');
+		});
+	});
+
+	test('PUT answered with a redirect fails loud and names the Location', async () => {
+		await withServer(async (baseUrl, state) => {
+			process.env.AGENT_SDK_UPLOAD_BACKEND = 'http';
+			delete process.env.AGENT_SDK_URL_TEMPLATE;
+			process.env.AGENT_SDK_CDN_BASE = baseUrl;
+			state.putRedirectLocation = 'https://elsewhere.example.net/target.tgz';
+			await assert.rejects(
+				uploadOne({ ...ARGS, tgzPath: fixtureTarball('redirected bytes') }),
+				err => /redirect/.test(String(err)) && /elsewhere\.example\.net/.test(String(err)),
+			);
+			assert.strictEqual(state.puts.length, 1, 'the PUT went out once; the rejection is about the 3xx response');
+		});
+	});
+
 	test.after(() => {
 		for (const [name, saved] of [
 			['AGENT_SDK_UPLOAD_BACKEND', SAVED_BACKEND],
 			['AGENT_SDK_CDN_BASE', SAVED_CDN_BASE],
 			['AGENT_SDK_URL_TEMPLATE', SAVED_TEMPLATE],
+			['AGENT_SDK_UPLOAD_TOKEN', SAVED_TOKEN],
 		] as const) {
 			if (saved === undefined) {
 				delete process.env[name];

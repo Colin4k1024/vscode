@@ -212,7 +212,7 @@ async function produceOne(
 			sha256: built.sha256,
 		});
 	}
-	return { version: built.sdkVersion, urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion) };
+	return { version: built.sdkVersion, urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion), sha256: built.sha256 };
 }
 
 main().catch(err => {

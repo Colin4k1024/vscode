@@ -33,7 +33,7 @@
 #
 # Outputs:
 #   .build/agent-sdk/tarballs/<sdk>-<version>-<target>.tgz
-#   .build/agent-sdk/results.json    { "<sdk>": { version, urlTemplate } }
+#   .build/agent-sdk/results.json    { "<sdk>": { version, urlTemplate, sha256 } }
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -119,15 +119,15 @@ else
 	LICENSE_DIR="$REPO_ROOT/build/agent-sdk/licenses/$SDK"
 	[ -f "$LICENSE_DIR/LICENSE" ] || fail "$SDK tarball ships no license and no vendored copy exists at $LICENSE_DIR — Apache-2.0 obligations unmet"
 	echo "    injecting LICENSE + NOTICE into $(basename "$TGZ") (Apache-2.0 §4)"
-	node --input-type=module - "$TGZ" "$LICENSE_DIR" "$REPO_ROOT" <<'NODE_EOF'
+	node --input-type=module - "$TGZ" "$LICENSE_DIR" "$REPO_ROOT" "$SDK" <<'NODE_EOF'
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as tar from 'tar';
 import { buildTarball } from './build/agent-sdk/package.ts';
 
-const [tgz, licenseDir, repoRoot] = process.argv.slice(2);
-const pkgName = JSON.parse(fs.readFileSync(path.join(repoRoot, 'build/agent-sdk/agents', 'codex', 'package.json'), 'utf8'));
+const [tgz, licenseDir, repoRoot, sdk] = process.argv.slice(2);
+const pkgName = JSON.parse(fs.readFileSync(path.join(repoRoot, 'build/agent-sdk/agents', sdk, 'package.json'), 'utf8'));
 const depName = Object.keys(pkgName.dependencies)[0]; // e.g. @openai/codex
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-license-inject-'));
@@ -152,6 +152,28 @@ NODE_EOF
 	# Re-check: the repacked tarball MUST carry the license now.
 	tar -tzf "$TGZ" | grep -qiE 'license' || fail "license injection did not take effect in $TGZ"
 fi
+
+# HIGH-1 integrity chain: results.json must carry the sha256 of the FINAL
+# tarball bytes — the license-injection repack above changes them, so the
+# hash produce.ts wrote (computed pre-injection) would be stale. Recompute
+# and restamp unconditionally; when no injection happened this rewrites the
+# same value. The runtime downloader verifies the download against this
+# hash before extracting, and publish-sdk-release.sh publishes exactly
+# these bytes — so product.json, the release asset digest, and the runtime
+# check all agree.
+FINAL_SHA="$(shasum -a 256 "$TGZ" | awk '{print $1}')"
+node - "$RESULTS_FILE" "$SDK" "$FINAL_SHA" <<'NODE_EOF'
+const fs = require('fs');
+const [resultsFile, sdk, sha] = process.argv.slice(2);
+const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+if (!results[sdk]) {
+	console.error(`ERROR: results file ${resultsFile} has no entry for sdk '${sdk}'`);
+	process.exit(1);
+}
+results[sdk].sha256 = sha;
+fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2) + '\n');
+console.log(`    results.json sha256 stamped: ${sha}`);
+NODE_EOF
 
 echo
 echo "==> SDK bundle ready:"

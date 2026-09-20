@@ -81,6 +81,18 @@ export type ExtensionVirtualWorkspaceSupport = {
 export interface IAgentSdkProductConfig {
 	readonly version: string;
 	readonly urlTemplate: string;
+	/**
+	 * sha256 of the tarball the urlTemplate resolves to (stamped from the
+	 * build pipeline's results file — the hash of the exact bytes that were
+	 * published). The downloader verifies the fetched bytes against it
+	 * before extracting; a mismatch discards the download and fails loud.
+	 *
+	 * Optional for backward compatibility: product.json files stamped
+	 * before this field existed carry no hash — the downloader logs a
+	 * warning and proceeds, matching the previous behavior for
+	 * already-distributed artifacts.
+	 */
+	readonly sha256?: string;
 }
 
 /**

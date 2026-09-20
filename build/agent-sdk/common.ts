@@ -300,15 +300,23 @@ export function parseFlags(argv: readonly string[]): Map<string, string> {
  * `src/vs/base/common/product.ts` so the values can be dropped straight
  * into `product.agentSdks`.
  *
- * Every platform job emits the SAME `{version, urlTemplate}` per SDK —
- * the `{sdkTarget}` placeholder is resolved at runtime per launch (see
- * `resolveSdkTarget` in `agentSdkDownloader.ts`). This is what lets a
+ * Every platform job emits the SAME `{version, urlTemplate, sha256}` per
+ * SDK — the `{sdkTarget}` placeholder is resolved at runtime per launch
+ * (see `resolveSdkTarget` in `agentSdkDownloader.ts`). This is what lets a
  * macOS Universal bundle share one `product.json` across arm64+x64.
+ *
+ * `sha256` is the hash of the tarball bytes the urlTemplate resolves to
+ * (every target's tarball under one SDK version share the version, but
+ * each platform job ships only its own target's tarball — the hash covers
+ * the bytes THAT job published). The runtime downloader verifies the
+ * downloaded bytes against it before extracting (HIGH-1 integrity chain:
+ * build computes → results.json → product.json → runtime verifies).
  */
 export interface IAgentSdkResults {
 	[packageId: string]: {
 		readonly version: string;
 		readonly urlTemplate: string;
+		readonly sha256: string;
 	};
 }
 

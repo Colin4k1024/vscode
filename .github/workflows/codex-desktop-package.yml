@@ -20,6 +20,11 @@ on:
         required: true
         type: boolean
         default: false
+  # Review round-1 (MEDIUM-1): run the packaging chain on PRs so the full
+  # build + beta gates are proven green BEFORE merge, not only after a
+  # manual dispatch. Publishing to Releases stays dispatch-only (see the
+  # publish-sdk job's `if`).
+  pull_request:
 
 permissions:
   contents: read
@@ -108,7 +113,8 @@ jobs:
     name: Publish SDK tarballs to GitHub Releases
     # Separate job so the GITHUB_TOKEN with contents:write never touches the
     # build job (least privilege); packaging itself runs with contents:read.
-    if: inputs.publish-sdk
+    # Dispatch-only: never publishes from a pull_request run.
+    if: github.event_name == 'workflow_dispatch' && inputs.publish-sdk
     needs: darwin-arm64
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -3,14 +3,20 @@
 Per-platform agent SDK production. Each VS Code build (`darwin-arm64`,
 `linux-x64`, Alpine REH, etc.) uploads its own platform's SDK tarballs
 to `main.vscode-cdn.net` and stamps `agentSdks` into the shipped
-`product.json` with a `{version, urlTemplate}` per SDK. Every platform
-job emits the same `urlTemplate` per SDK — the runtime substitutes
-`{sdkTarget}` per launch via `resolveSdkTarget()`, which is what lets
-macOS Universal bundles share one `product.json` across arm64 + x64.
+`product.json` with a `{version, urlTemplate, sha256}` per SDK. Every
+platform job emits the same `urlTemplate` per SDK — the runtime
+substitutes `{sdkTarget}` per launch via `resolveSdkTarget()`, which is
+what lets macOS Universal bundles share one `product.json` across
+arm64 + x64.
 
 The runtime side (`src/vs/platform/agentHost/`) downloads and caches
-the SDK tarball at first use. See `IAgentSdkProductConfig` in
-`src/vs/base/common/product.ts` for the contract.
+the SDK tarball at first use. Before extracting, the downloader verifies
+the fetched bytes against the stamped `sha256` — a mismatch fails loud
+and leaves no cache sentinel behind (the next launch retries).
+`sha256` absent (product.json stamped before the field existed) warns
+and proceeds, so already-distributed artifacts keep working. See
+`IAgentSdkProductConfig` in `src/vs/base/common/product.ts` for the
+contract.
 
 ## How the pipeline uses this
 

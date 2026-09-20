@@ -34,13 +34,30 @@ for dir in "$@"; do
 	#    node_modules: @vscode/copilot-api (GitHub npm Module Terms: Code-OSS
 	#    dev-only, no redistribution), @github/copilot (unmodified-only),
 	#    @github/blackbird-external-ingest-utils (same closure).
-	#    @github/copilot-sdk* is deliberately NOT blocked: MIT-licensed and
-	#    load-bearing — agentHostMain imports it statically (D09 verified
-	#    empirically: removing it crashes the agent host at startup).
+	#
+	#    FAIL-CLOSED shape (review round-1, MEDIUM-2): match the whole
+	#    @github/copilot* prefix first, then pass an exact allowlist. The
+	#    allowlist is evaluated against the path segment AFTER THE LAST
+	#    node_modules/ — so a @github/copilot nested inside an allowlisted
+	#    package's own node_modules is still blocked (a grep -v over the
+	#    full path would have let it through).
+	#
+	#    Allowlisted: @github/copilot-sdk and @github/copilot-sdk-* — MIT-
+	#    licensed and load-bearing (agentHostMain imports it statically;
+	#    D09 verified empirically: removing it crashes the agent host at
+	#    startup). Note the separator requirement: a hypothetical
+	#    "@github/copilot-sdkfoo" does NOT match and stays blocked.
 	while IFS= read -r hit; do
-		echo "BLOCKED: restricted redistributable package present: $hit" >&2
-		status=1
-	done < <(find "$dir" -type d \( -path '*node_modules/@vscode/copilot-api' -o -path '*node_modules/@vscode/copilot-api/*' -o -path '*node_modules/@github/copilot' -o -path '*node_modules/@github/copilot/*' -o -path '*node_modules/@github/blackbird-external-ingest-utils' \) 2>/dev/null | grep -v 'copilot-sdk' | head -50 || true)
+		rest="${hit##*/node_modules/}"
+		case "$rest" in
+			@github/copilot-sdk|@github/copilot-sdk/*|@github/copilot-sdk-*|@github/copilot-sdk-*/*)
+				;; # allowlisted (MIT, load-bearing)
+			*)
+				echo "BLOCKED: restricted redistributable package present: $hit" >&2
+				status=1
+				;;
+		esac
+	done < <(find "$dir" -type d \( -path '*node_modules/@vscode/copilot-api' -o -path '*node_modules/@vscode/copilot-api/*' -o -path '*node_modules/@github/copilot*' -o -path '*node_modules/@github/blackbird-external-ingest-utils' \) 2>/dev/null | head -50 || true)
 
 	# 3. The shipped product configuration must not reference the Copilot
 	#    default chat agent or vscode-cdn.net.

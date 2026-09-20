@@ -164,12 +164,16 @@ fi
 
 SUMS="$DIST_DIR/SHA256SUMS.txt"
 {
+	# Repo-root-relative paths (review round-1, LOW-2): absolute paths bake
+	# the builder's home directory into a published artifact and leak the
+	# machine layout. With relative paths the manifest is verifiable via
+	# `shasum -a 256 -c SHA256SUMS.txt` from the repo root.
 	if [ "$SKIP_ZIP" -eq 0 ]; then
-		shasum -a 256 "$ZIP"
+		(cd "$REPO_ROOT" && shasum -a 256 "${ZIP#"$REPO_ROOT"/}")
 	fi
 	for t in "$REPO_ROOT"/.build/agent-sdk/tarballs/*.tgz; do
 		if [ -e "$t" ]; then
-			shasum -a 256 "$t"
+			(cd "$REPO_ROOT" && shasum -a 256 "${t#"$REPO_ROOT"/}")
 		fi
 	done
 } > "$SUMS"

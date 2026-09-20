@@ -155,6 +155,39 @@ suite('CodexProxyService', () => {
 		}
 	}
 
+	// D08 / Issue #10 AC5: without a GitHub token the proxy must not exist as a
+	// listener. Binding is token-gated by construction — `start(githubToken)`
+	// takes the token as a mandatory argument, so no token means no `start()`
+	// call, and a never-started service must own no socket.
+	test('does not listen on any port until a token-backed start() is requested (D08 AC5)', async () => {
+		const net = await import('net');
+		const activeServers = () => (process as unknown as { _getActiveHandles(): unknown[] })._getActiveHandles()
+			.filter((h): h is net.Server => h instanceof net.Server && h.listening);
+
+		const fake = new FakeCopilotApiService();
+		const service = new CodexProxyService(undefined, new NullLogService(), fake);
+		try {
+			const baseline = activeServers().length;
+			// Constructed but never started (the no-token case): no listener.
+			assert.strictEqual(activeServers().length, baseline, 'constructing the proxy must not bind a port');
+
+			const handle = await service.start(TOKEN);
+			assert.strictEqual(activeServers().length, baseline + 1, 'start() binds exactly one loopback listener');
+			assert.strictEqual(new URL(handle.baseUrl).hostname, '127.0.0.1', 'the proxy must bind loopback only');
+
+			handle.dispose();
+			// server.close() is async — poll briefly for the listener to go away.
+			let closed = false;
+			for (let attempt = 0; attempt < 50 && !closed; attempt++) {
+				await new Promise(resolve => setTimeout(resolve, 20));
+				closed = activeServers().length === baseline;
+			}
+			assert.ok(closed, 'disposing the last handle must close the listener');
+		} finally {
+			service.dispose();
+		}
+	});
+
 	test('forwards transformed user-agent to CAPI responses', async () => {
 		await withProxy(async (handle, fake) => {
 			await postResponses(`${handle.baseUrl}/v1/responses`, {

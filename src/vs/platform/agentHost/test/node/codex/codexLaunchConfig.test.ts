@@ -5,7 +5,7 @@
 
 import * as assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
-import { buildCodexLaunchConfig, buildCodexResumeParams, codexPermissionProfile, codexPermissionProfileOverrides } from '../../../node/codex/codexLaunchConfig.js';
+import { buildCodexLaunchConfig, buildCodexResumeParams, codexPermissionProfile, codexPermissionProfileOverrides, codexTelemetryOverrides } from '../../../node/codex/codexLaunchConfig.js';
 
 suite('CodexLaunchConfig', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
@@ -150,6 +150,47 @@ suite('CodexLaunchConfig', () => {
 			approvalsReviewer: 'auto_review',
 			permissions: 'vscode-workspace',
 			config: { 'features.default_mode_request_user_input': true, 'features.image_generation': false },
+		});
+	});
+	suite('codexTelemetryOverrides (D08 / Issue #10)', () => {
+
+		test('AC2: analytics and feedback stay disabled even when Agent Host OTel is fully enabled', () => {
+			const overrides = codexTelemetryOverrides({
+				traces: { endpoint: 'http://127.0.0.1:4567/v1/traces', protocol: 'http/json' },
+				external: { endpoint: 'https://collector:4318', protocol: 'http/protobuf', headers: { authorization: 'Bearer test' } },
+				captureContent: true,
+				resourceAttributes: {},
+			});
+			assert.ok(overrides.includes('analytics.enabled=false'), 'analytics must always be disabled (Codex posts analytics to an OpenAI-owned endpoint)');
+			assert.ok(overrides.includes('feedback.enabled=false'), 'feedback must always be disabled (unused Sentry upload path)');
+			assert.ok(!overrides.some(value => value === 'analytics.enabled=true' || value === 'feedback.enabled=true'));
+		});
+
+		test('AC2: telemetry overrides are appended after user-supplied extra args so the user cannot re-enable them', () => {
+			const config = buildCodexLaunchConfig({}, { baseUrl: 'http://127.0.0.1:1234', nonce: 'nonce' }, ['-c', 'analytics.enabled=true', '-c', 'feedback.enabled=true'], {
+				traces: { endpoint: 'http://127.0.0.1:4567/v1/traces', protocol: 'http/json' },
+				captureContent: false,
+				resourceAttributes: {},
+			});
+			assert.ok(config.args.indexOf('analytics.enabled=true') < config.args.lastIndexOf('analytics.enabled=false'));
+			assert.ok(config.args.indexOf('feedback.enabled=true') < config.args.lastIndexOf('feedback.enabled=false'));
+		});
+
+		test('AC3: all OTel exporters default to "none" without OTel configuration', () => {
+			assert.deepStrictEqual(codexTelemetryOverrides(undefined), [
+				'analytics.enabled=false',
+				'feedback.enabled=false',
+				'otel.log_user_prompt=false',
+				'otel.trace_exporter="none"',
+				'otel.exporter="none"',
+				'otel.metrics_exporter="none"',
+			]);
+		});
+
+		test('AC3/AC4: otel.log_user_prompt follows captureContent and defaults to false', () => {
+			assert.ok(codexTelemetryOverrides(undefined).includes('otel.log_user_prompt=false'));
+			assert.ok(codexTelemetryOverrides({ captureContent: false, resourceAttributes: {} }).includes('otel.log_user_prompt=false'));
+			assert.ok(codexTelemetryOverrides({ captureContent: true, resourceAttributes: {} }).includes('otel.log_user_prompt=true'));
 		});
 	});
 });

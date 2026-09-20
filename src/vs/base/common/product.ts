@@ -283,7 +283,10 @@ export interface IProductConfiguration {
 	readonly commonlyUsedSettings?: string[];
 	readonly aiGeneratedWorkspaceTrust?: IAiGeneratedWorkspaceTrust;
 
-	readonly defaultChatAgent: IDefaultChatAgent;
+	// D08: optional — the ColinCode product mixin removes `defaultChatAgent`
+	// from the shipped product.json (no GitHub Copilot default chat agent).
+	// Consumers must tolerate its absence.
+	readonly defaultChatAgent?: IDefaultChatAgent;
 	readonly chatParticipantRegistry?: string;
 	readonly chatSessionRecommendations?: IChatSessionRecommendation[];
 	readonly emergencyAlertUrl?: string;

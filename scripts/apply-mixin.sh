@@ -65,6 +65,18 @@ if (overlay.quality === 'stable') {
 }
 
 let merged = { ...base, ...overlay };
+// D08: an overlay value of `null` DELETES the key from the shipped product.
+// Plain spread-merge cannot express deletion, and for some keys (e.g.
+// `defaultChatAgent`, `webviewContentExternalBaseUrlTemplate`) removal is the
+// only safe option — their in-code fallbacks still reference GitHub Copilot /
+// vscode-cdn.net. Deleting here keeps the key out of the merged artifact
+// entirely. Deletion is idempotent: deleting an already-absent key is a no-op,
+// so `--check` against an applied tree still converges.
+for (const [key, value] of Object.entries(overlay)) {
+	if (value === null) {
+		delete merged[key];
+	}
+}
 if (overlay.builtInExtensions !== undefined) {
 	if (Array.isArray(overlay.builtInExtensions)) {
 		console.error('ERROR: overlay builtInExtensions must be { include, exclude }, not an array (mixin-quality semantics).');

@@ -1,0 +1,140 @@
+name: Codex Desktop Package (D09)
+
+# D09 (#11): self-hosted packaging pipeline. First version ships
+# darwin-arm64 only (本机可验 target; the matrix leaves room for
+# darwin-x64 / linux-x64 / linux-arm64 / win32-* later). Unsigned and
+# un-notarized by design (裁定 3) — see the known-limitations note in
+# scripts/package.sh.
+#
+# Distribution endpoint 裁定 1: the Codex SDK tarballs are served from THIS
+# repo's GitHub Releases (tag agent-sdk-<sdk>-<version>, flat asset names).
+# bundle-codex-sdk.sh stamps that URL template into product.agentSdks via
+# AGENT_SDK_URL_TEMPLATE; override the env var to move to another
+# self-hosted endpoint — no code change needed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish-sdk:
+        description: 'Publish the SDK tarball(s) to GitHub Releases after packaging'
+        required: true
+        type: boolean
+        default: false
+  # Review round-1 (MEDIUM-1): run the packaging chain on PRs so the full
+  # build + beta gates are proven green BEFORE merge, not only after a
+  # manual dispatch. Publishing to Releases stays dispatch-only (see the
+  # publish-sdk job's `if`).
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  darwin-arm64:
+    name: Package darwin-arm64
+    runs-on: macos-15 # Apple Silicon runner → native arm64 build
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Restore node_modules cache
+        id: cache-node-modules
+        uses: ./.github/actions/restore-node-modules
+        with:
+          key-prefix: node_modules-codex-desktop
+          key-args: "compile $(node -p process.arch)"
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          for i in {1..5}; do # try 5 times
+            npm ci && break
+            if [ $i -eq 5 ]; then
+              echo "Npm install failed too many times" >&2
+              exit 1
+            fi
+            echo "Npm install failed $i, trying again..."
+          done
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save node_modules cache
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-node-modules
+
+      # Agent-SDK build pipeline unit tests (AC5/AC6/AC7): target matrix,
+      # upload idempotency, staged-tree verification. Cheap; run before the
+      # hour-long package step.
+      - name: Agent SDK pipeline unit tests
+        run: node --test build/agent-sdk/test/*.test.ts
+
+      # The full chain: pristine gate → apply-mixin → bundle-codex-sdk →
+      # gulp vscode-darwin-arm64-min → beta gates on the artifact →
+      # zip + SHA256SUMS.
+      - name: Package (apply-mixin + SDK bundle + gulp + gates + manifest)
+        timeout-minutes: 100
+        run: bash scripts/package.sh --platform=darwin --arch=arm64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload packaged app artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: colincode-darwin-arm64
+          path: |
+            .build/dist/
+          retention-days: 14
+
+      - name: Upload SDK tarballs artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: agent-sdk-tarballs
+          path: |
+            .build/agent-sdk/tarballs/
+            .build/agent-sdk/results.json
+            .build/sbom/sbom.cdx.json
+          retention-days: 14
+
+  publish-sdk:
+    name: Publish SDK tarballs to GitHub Releases
+    # Separate job so the GITHUB_TOKEN with contents:write never touches the
+    # build job (least privilege); packaging itself runs with contents:read.
+    # Dispatch-only: never publishes from a pull_request run.
+    if: github.event_name == 'workflow_dispatch' && inputs.publish-sdk
+    needs: darwin-arm64
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download SDK tarballs
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: agent-sdk-tarballs
+          # The upload step's path list has .build as least common ancestor,
+          # so the artifact restores exactly to .build/agent-sdk/tarballs/.
+          path: .build
+
+      # Idempotent publish: asset absent → upload; same sha256 → skip;
+      # different sha256 → fail loud, never overwrite (AC6 semantics).
+      - name: Publish to GitHub Releases
+        run: bash scripts/publish-sdk-release.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

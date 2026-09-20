@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import { createHash } from 'crypto';
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import type * as httpType from 'http';
@@ -18,13 +19,14 @@ import { TestConfigurationService } from '../../../configuration/test/common/tes
 import { FileService } from '../../../files/common/fileService.js';
 import type { IFileService } from '../../../files/common/files.js';
 import { DiskFileSystemProvider } from '../../../files/node/diskFileSystemProvider.js';
-import { NullLogService } from '../../../log/common/log.js';
+import { NullLogService, type ILogService } from '../../../log/common/log.js';
 import { NullTelemetryService, NullTelemetryServiceShape } from '../../../telemetry/common/telemetryUtils.js';
 import type { ITelemetryService } from '../../../telemetry/common/telemetry.js';
 import { RequestService } from '../../../request/node/requestService.js';
 import { AgentSdkDownloader, resolveSdkTarget, type IAgentSdkPackage, type IAgentSdkDownloadProgress } from '../../node/agentSdkDownloader.js';
 import { AgentHostStorageService, type IAgentHostStorageService } from '../../node/agentHostStorageService.js';
 import { ClaudeSdkPackage } from '../../node/claude/claudeAgentSdkService.js';
+import { CodexSdkPackage } from '../../node/codex/codexAgent.js';
 import { AgentHostClaudeSdkRootEnvVar } from '../../common/agentService.js';
 import type { INativeEnvironmentService } from '../../../environment/common/environment.js';
 import type { IProductService } from '../../../product/common/productService.js';
@@ -101,10 +103,22 @@ function makeEnvService(userDataPath: string): INativeEnvironmentService {
 	return { userDataPath, args: { 'force-disable-user-env': true } as never } as unknown as INativeEnvironmentService;
 }
 
-function makeProductService(config: { version: string; urlTemplate: string } | undefined): IProductService {
+function makeProductService(config: { version: string; urlTemplate: string; sha256?: string } | undefined): IProductService {
 	return {
 		agentSdks: config ? { claude: config } : undefined,
 	} as unknown as IProductService;
+}
+
+/** NullLogService that records warn() calls so tests can assert the
+ *  legacy-no-sha256 warning fires exactly on the unverified path. */
+class RecordingLogService extends NullLogService {
+	readonly warnings: string[] = [];
+
+	override warn(message: string | Error, ...args: unknown[]): void {
+		const text = typeof message === 'string' ? message : message.message;
+		this.warnings.push(text);
+		super.warn(text, ...args);
+	}
 }
 
 function makeRequestService(disposables: Pick<DisposableStore, 'add'>): RequestService {
@@ -184,6 +198,32 @@ suite('resolveSdkTarget', () => {
 		assert.strictEqual(resolveSdkTarget(fakePkg(true), { platform: 'freebsd' as NodeJS.Platform, arch: 'x64', libc: undefined }), undefined);
 		assert.strictEqual(resolveSdkTarget(fakePkg(false), { platform: 'darwin', arch: 'ia32', libc: undefined }), undefined);
 	});
+
+	test('AC5: real CodexSdkPackage — exhaustive {platform} × {arch} matrix', () => {
+		// The package the branded product actually ships must resolve every
+		// supported host and must NEVER emit a -musl suffix (its Linux binary
+		// is statically musl-linked; there is exactly one linux-<arch> SKU).
+		for (const arch of ['x64', 'arm64']) {
+			assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'darwin', arch, libc: undefined }), `darwin-${arch}`);
+			assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'win32', arch, libc: undefined }), `win32-${arch}`);
+			assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'linux', arch, libc: 'glibc' }), `linux-${arch}`);
+			assert.strictEqual(
+				resolveSdkTarget(CodexSdkPackage, { platform: 'linux', arch, libc: 'musl' }),
+				`linux-${arch}`,
+				`codex linux-${arch} on musl must stay on the single linux-* SKU`,
+			);
+		}
+		// armhf / web: no SDK → undefined → provider does not register.
+		assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'linux', arch: 'armhf', libc: 'glibc' }), undefined);
+		assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'web' as NodeJS.Platform, arch: 'x64', libc: undefined }), undefined);
+	});
+
+	test('AC5: real ClaudeSdkPackage — musl gets the -musl suffix', () => {
+		for (const arch of ['x64', 'arm64']) {
+			assert.strictEqual(resolveSdkTarget(ClaudeSdkPackage, { platform: 'linux', arch, libc: 'musl' }), `linux-${arch}-musl`);
+			assert.strictEqual(resolveSdkTarget(ClaudeSdkPackage, { platform: 'linux', arch, libc: 'glibc' }), `linux-${arch}`);
+		}
+	});
 });
 
 /**
@@ -247,13 +287,15 @@ suite('AgentSdkDownloader', () => {
 	 * entirely (the "no product config" case).
 	 */
 	function makeDownloader(
-		productConfig?: { version?: string; urlTemplate?: string } | null,
+		productConfig?: { version?: string; urlTemplate?: string; sha256?: string } | null,
 		telemetryService: ITelemetryService = NullTelemetryService,
 		storageService?: IAgentHostStorageService,
+		logService: ILogService = new NullLogService(),
 	) {
 		const config = productConfig === null ? undefined : {
 			version: productConfig?.version ?? '1.0.0',
 			urlTemplate: productConfig?.urlTemplate ?? `http://127.0.0.1:${server.port}/sdk-{sdkTarget}.tgz`,
+			...(productConfig?.sha256 !== undefined ? { sha256: productConfig.sha256 } : {}),
 		};
 		const storage = storageService ?? disposables.add(new AgentHostStorageService(undefined, new NullLogService()));
 		return disposables.add(new AgentSdkDownloader(
@@ -261,7 +303,7 @@ suite('AgentSdkDownloader', () => {
 			makeProductService(config),
 			makeRequestService(disposables),
 			makeFileService(disposables),
-			new NullLogService(),
+			logService,
 			telemetryService,
 			storage,
 		));
@@ -297,6 +339,42 @@ suite('AgentSdkDownloader', () => {
 		const extracted = await fsp.readFile(path.join(root, fixture.innerFile), 'utf8');
 		assert.strictEqual(extracted, fixture.innerContents);
 		assert.ok(fs.existsSync(path.join(root, '.complete')));
+	});
+
+	test('loadSdkRoot: correct sha256 in product config verifies and completes', async () => {
+		// HIGH-1 positive path: the hash of the exact bytes the server sends
+		// matches product.agentSdks.claude.sha256 → extract + sentinel as usual.
+		const sha256 = createHash('sha256').update(await fsp.readFile(fixture.tarballPath)).digest('hex');
+		const root = await makeDownloader({ sha256 }).loadSdkRoot(ClaudeSdkPackage, newToken());
+		const extracted = await fsp.readFile(path.join(root, fixture.innerFile), 'utf8');
+		assert.strictEqual(extracted, fixture.innerContents);
+		assert.ok(fs.existsSync(path.join(root, '.complete')));
+	});
+
+	test('loadSdkRoot: sha256 mismatch fails loud and leaves no sentinel behind', async () => {
+		// HIGH-1 negative path: bytes do not match the stamped hash → throw
+		// before extraction, delete the scratch dir, never write .complete.
+		// The next launch must retry the download rather than trusting a
+		// tampered cache.
+		await assert.rejects(
+			() => makeDownloader({ sha256: 'deadbeef'.repeat(8) }).loadSdkRoot(ClaudeSdkPackage, newToken()),
+			/sha256 mismatch/,
+		);
+		const cacheDir = path.join(userDataPath, 'agent-host', 'sdk-cache', 'claude', '1.0.0', hostSdkTarget);
+		assert.ok(!fs.existsSync(path.join(cacheDir, '.complete')), 'sentinel must not be written for a failed verification');
+		assert.ok(!fs.existsSync(`${cacheDir}.tmp.${process.pid}`), 'scratch dir must be deleted on verification failure');
+	});
+
+	test('loadSdkRoot: missing sha256 (legacy product.json) warns and proceeds', async () => {
+		// Backward-compat ruling (HIGH-1): artifacts stamped before the sha256
+		// field existed keep working — the downloader warns instead of failing.
+		const logService = new RecordingLogService();
+		const root = await makeDownloader(undefined, NullTelemetryService, undefined, logService).loadSdkRoot(ClaudeSdkPackage, newToken());
+		assert.ok(fs.existsSync(path.join(root, '.complete')));
+		assert.ok(
+			logService.warnings.some(w => /no sha256/.test(w)),
+			`expected a no-sha256 warning, got: ${JSON.stringify(logService.warnings)}`,
+		);
 	});
 
 	test('loadSdkRoot: reports monotonic download progress ending at totalBytes', async () => {

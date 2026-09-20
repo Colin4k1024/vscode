@@ -125,8 +125,16 @@ for host in "${DENYLIST_HOSTS[@]}"; do
 			echo "ERROR: unjustified egress host reference: $line" >&2
 			violations=$((violations + 1))
 		fi
+	# node_modules is excluded: it is build input (third-party dependency
+	# source), not fork code. dist/ and out/ are excluded: they are generated
+	# build outputs (bundled copies of dependencies), not source. Egress in
+	# the SHIPPED bits is covered by the artifact-level gates
+	# (check-no-copilot-artifacts / branding residue on the packaged app) and
+	# the D08 dynamic verification. CI runs this scan before npm ci/build, so
+	# the exclusions also keep local and CI results equal.
 	done < <(grep -rn --include='*.ts' --include='*.js' --include='*.json' \
-		--exclude-dir=test --exclude-dir=tests \
+		--exclude-dir=test --exclude-dir=tests --exclude-dir=node_modules \
+		--exclude-dir=dist --exclude-dir=out \
 		-F "$host" src build product product.json extensions 2>/dev/null || true)
 done
 

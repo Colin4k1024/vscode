@@ -204,6 +204,8 @@ export const copyrightFilter = Object.freeze<string[]>([
 	// scripts/sync-upstream.sh and scripts/upstream-drift-report.sh) — a comment
 	// header would corrupt parsing.
 	'!UPSTREAM_COMMIT',
+	// Vendored license texts are legal documents, not source: no copyright header.
+	'!build/agent-sdk/licenses/**',
 	'!VERSION',
 	'!build/**/*.init',
 	'!build/darwin/patch-dmg.py',

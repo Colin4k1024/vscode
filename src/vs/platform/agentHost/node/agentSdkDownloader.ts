@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as fs from 'fs';
+import { createHash } from 'crypto';
 import * as tar from 'tar';
 import { VSBuffer } from '../../../base/common/buffer.js';
 import { CancellationToken } from '../../../base/common/cancellation.js';
@@ -425,7 +426,7 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 		// as the dedup key without an extra string allocation.
 		let pending = this._pendingDownloads.get(cacheDir);
 		if (!pending) {
-			pending = this._download(pkg, url, cacheDir, sentinel, token).finally(() => {
+			pending = this._download(pkg, url, cacheDir, sentinel, token, config.sha256).finally(() => {
 				this._pendingDownloads.delete(cacheDir);
 			});
 			this._pendingDownloads.set(cacheDir, pending);
@@ -453,6 +454,7 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 		cacheDir: string,
 		sentinel: URI,
 		token: CancellationToken,
+		expectedSha256: string | undefined,
 	): Promise<string> {
 		this._logService.info(`[AgentSdkDownloader] ${pkg.id}: downloading from ${url}`);
 		const start = Date.now();
@@ -484,6 +486,28 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 				lastTotal = totalBytes;
 				this._fireProgress(pkg, downloadId, start, 'progress', receivedBytes, totalBytes);
 			});
+			// Integrity gate (HIGH-1): verify the downloaded bytes against the
+			// sha256 stamped into product.json BEFORE extracting — CDN/object-
+			// store corruption or a poisoned artifact must never reach the
+			// cache. A mismatch throws here; the catch below deletes the tmp
+			// dir and never writes the sentinel, so nothing half-verified is
+			// left behind and the next launch retries the download.
+			if (expectedSha256 !== undefined) {
+				const actualSha256 = await sha256OfFile(tarballPath);
+				if (actualSha256 !== expectedSha256.toLowerCase()) {
+					throw new Error(
+						`sha256 mismatch (expected ${expectedSha256.toLowerCase()}, got ${actualSha256}). ` +
+						`The downloaded artifact does not match the hash stamped into product.json — ` +
+						`discarding it instead of extracting.`,
+					);
+				}
+			} else {
+				// Backward compatibility: product.json stamped before the sha256
+				// field existed (or by an out-of-band publisher) carries no hash.
+				// Already-distributed artifacts keep working; the warning makes
+				// the missing integrity guarantee visible in logs.
+				this._logService.warn(`[AgentSdkDownloader] ${pkg.id}: product.agentSdks.${pkg.id} carries no sha256 — downloading ${url} without integrity verification`);
+			}
 			await this._extractTarGz(tarballPath, tmpDir);
 			await this._fileService.del(URI.file(tarballPath));
 
@@ -687,6 +711,20 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 			}
 		}
 	}
+}
+
+/** Streams `filePath` into a sha256 hasher — SDK tarballs are 70-95MB, so
+ *  never read them into memory whole. Mirrors `sha256OfFile` in
+ *  `build/agent-sdk/common.ts` (the build-side half of this integrity
+ *  chain). */
+function sha256OfFile(filePath: string): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const hash = createHash('sha256');
+		const stream = fs.createReadStream(filePath);
+		stream.on('error', reject);
+		stream.on('data', chunk => hash.update(chunk));
+		stream.on('end', () => resolve(hash.digest('hex')));
+	});
 }
 
 // #endregion

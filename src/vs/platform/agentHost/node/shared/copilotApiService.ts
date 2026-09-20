@@ -4,7 +4,36 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type Anthropic from '@anthropic-ai/sdk';
-import { CAPIClient, RequestType, type CCAModel, type IExtensionInformation } from '@vscode/copilot-api';
+// D09 (#11): TYPE-ONLY import. @vscode/copilot-api carries GitHub's npm
+// Module Terms (Code-OSS dev-only, no redistribution — D10 section 5 hard block),
+// so the branded build does not ship the package; every VALUE use below goes
+// through loadCopilotApi() so the agent host still starts without it and
+// only the CAPI-backed paths fail (loudly) when invoked.
+import type { CAPIClient, CCAModel, IExtensionInformation } from '@vscode/copilot-api';
+
+type CopilotApiModule = typeof import('@vscode/copilot-api');
+
+let _capiModule: Promise<CopilotApiModule> | undefined;
+
+/**
+ * Lazily resolve `@vscode/copilot-api`. The package is external to the
+ * esbuild bundle (`packages: 'external'` in build/next/bundle.ts), so a
+ * static value import would crash agentHostMain at startup in any build
+ * that does not ship it (D10 section 5). Fail loud — and only for the CAPI-backed
+ * code path being exercised — instead.
+ */
+function loadCopilotApi(): Promise<CopilotApiModule> {
+	if (!_capiModule) {
+		_capiModule = import('@vscode/copilot-api').catch(err => {
+			_capiModule = undefined; // allow retry (e.g. after a fix-up install)
+			throw new Error(
+				`@vscode/copilot-api is not shipped in this build (D10 section 5 redistribution block); ` +
+				`the requested CAPI-backed operation is unavailable. (${err instanceof Error ? err.message : String(err)})`
+			);
+		});
+	}
+	return _capiModule;
+}
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { getDevDeviceId, getMachineId } from '../../../../base/node/id.js';
 import { getInternalOrg, isInternalAccount } from '../../../assignment/common/assignment.js';
@@ -564,6 +593,7 @@ export class CopilotApiService implements ICopilotApiService {
 	}
 
 	async models(githubToken: string, options?: ICopilotApiServiceRequestOptions): Promise<CCAModel[]> {
+		const { RequestType } = await loadCopilotApi();
 		const capiClient = await this._getClientForToken(githubToken);
 
 		this._logService.debug('[CopilotApiService] GET models');
@@ -600,6 +630,7 @@ export class CopilotApiService implements ICopilotApiService {
 		body: string,
 		options?: ICopilotApiServiceRequestOptions,
 	): Promise<Response> {
+		const { RequestType } = await loadCopilotApi();
 		const capiClient = await this._getClientForToken(githubToken);
 		const requestId = generateUuid();
 
@@ -648,6 +679,7 @@ export class CopilotApiService implements ICopilotApiService {
 		request: ICopilotUtilityChatCompletionRequest,
 		options?: ICopilotApiServiceRequestOptions,
 	): Promise<string> {
+		const { RequestType } = await loadCopilotApi();
 		const capiClient = await this._getClientForToken(githubToken);
 		const modelId = await this._resolveUtilityModelId(githubToken, UTILITY_DEFAULT_MODEL_FAMILY);
 		const requestId = generateUuid();
@@ -777,6 +809,7 @@ export class CopilotApiService implements ICopilotApiService {
 		stream: boolean,
 		options?: ICopilotApiServiceRequestOptions,
 	): Promise<Response> {
+		const { RequestType } = await loadCopilotApi();
 		const capiClient = await this._getClientForToken(githubToken);
 		const requestId = generateUuid();
 
@@ -907,6 +940,7 @@ export class CopilotApiService implements ICopilotApiService {
 	}
 
 	private async _buildClientForToken(githubToken: string): Promise<ICachedClient> {
+		const { CAPIClient } = await loadCopilotApi();
 		const { extensionInfo, userUrl } = await this._getCapiBase();
 		const fetch = this._fetch;
 		const capiClient = new CAPIClient(extensionInfo, COPILOT_LICENSE_AGREEMENT, {

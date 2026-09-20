@@ -156,7 +156,7 @@ function subdirectories(dir: string, prefix = ''): string[] {
  * Returns nothing for an SDK with no entry above, which `verifyStagedTree`
  * turns into a build failure.
  */
-function listPlatformBinaries(nodeModulesDir: string, sdk: Sdk, sdkTarget: string): string[] {
+export function listPlatformBinaries(nodeModulesDir: string, sdk: Sdk, sdkTarget: string): string[] {
 	const exe = sdkTarget.startsWith('win32') ? '.exe' : '';
 	if (sdk === 'claude') {
 		return subdirectories(path.join(nodeModulesDir, '@anthropic-ai'), 'claude-agent-sdk-')
@@ -172,7 +172,7 @@ function listPlatformBinaries(nodeModulesDir: string, sdk: Sdk, sdkTarget: strin
 	return [];
 }
 
-function chmodPlatformBinaries(nodeModulesDir: string, sdk: Sdk, sdkTarget: string): void {
+export function chmodPlatformBinaries(nodeModulesDir: string, sdk: Sdk, sdkTarget: string): void {
 	for (const binary of listPlatformBinaries(nodeModulesDir, sdk, sdkTarget)) {
 		fs.chmodSync(binary, 0o755);
 	}
@@ -184,7 +184,7 @@ function chmodPlatformBinaries(nodeModulesDir: string, sdk: Sdk, sdkTarget: stri
  * conditioned on which one, so a new folder under `agents/` can't inherit
  * `--omit=peer` unchecked. See "Keeping the assumption honest" in README.md.
  */
-function verifyStagedTree(sdk: Sdk, stagingDir: string, sdkTarget: string, sdkVersion: string): void {
+export function verifyStagedTree(sdk: Sdk, stagingDir: string, sdkTarget: string, sdkVersion: string): void {
 	const nodeModulesDir = path.join(stagingDir, 'node_modules');
 	const { name: packageName } = getAgentMeta(sdk);
 	const context = `${packageName}@${sdkVersion} (${sdkTarget})`;
@@ -314,7 +314,7 @@ function npmCi(workDir: string, env: NodeJS.ProcessEnv): void {
  * output is consistent regardless of whether GNU/BSD/Windows tar is what
  * the host normally ships.
  */
-async function buildTarball(stagingDir: string, outTgz: string): Promise<void> {
+export async function buildTarball(stagingDir: string, outTgz: string): Promise<void> {
 	await tar.c(
 		{
 			file: outTgz,

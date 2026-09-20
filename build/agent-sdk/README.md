@@ -3,14 +3,20 @@
 Per-platform agent SDK production. Each VS Code build (`darwin-arm64`,
 `linux-x64`, Alpine REH, etc.) uploads its own platform's SDK tarballs
 to `main.vscode-cdn.net` and stamps `agentSdks` into the shipped
-`product.json` with a `{version, urlTemplate}` per SDK. Every platform
-job emits the same `urlTemplate` per SDK — the runtime substitutes
-`{sdkTarget}` per launch via `resolveSdkTarget()`, which is what lets
-macOS Universal bundles share one `product.json` across arm64 + x64.
+`product.json` with a `{version, urlTemplate, sha256}` per SDK. Every
+platform job emits the same `urlTemplate` per SDK — the runtime
+substitutes `{sdkTarget}` per launch via `resolveSdkTarget()`, which is
+what lets macOS Universal bundles share one `product.json` across
+arm64 + x64.
 
 The runtime side (`src/vs/platform/agentHost/`) downloads and caches
-the SDK tarball at first use. See `IAgentSdkProductConfig` in
-`src/vs/base/common/product.ts` for the contract.
+the SDK tarball at first use. Before extracting, the downloader verifies
+the fetched bytes against the stamped `sha256` — a mismatch fails loud
+and leaves no cache sentinel behind (the next launch retries).
+`sha256` absent (product.json stamped before the field existed) warns
+and proceeds, so already-distributed artifacts keep working. See
+`IAgentSdkProductConfig` in `src/vs/base/common/product.ts` for the
+contract.
 
 ## How the pipeline uses this
 
@@ -264,3 +270,52 @@ export AGENT_SDK_CDN_BASE=https://cdn.example.net   # default: https://main.vsco
   set-but-unusable `AGENT_SDK_CDN_BASE` value fails loud rather than
   falling back to the default, so a typo cannot silently stamp the
   Microsoft CDN into a fork's product.json.
+
+### D09: GitHub Releases endpoint + local/GHA packaging (ColinCode)
+
+The ColinCode fork's default self-hosted endpoint is **this repo's GitHub
+Releases** (D09 裁定 1: no new infrastructure, no Microsoft CDN dependency;
+an owner-controlled distribution surface). Release assets are flat files,
+so the path-shaped `AGENT_SDK_CDN_BASE` scheme does not fit — a full
+template override is used instead:
+
+```sh
+# Default set by scripts/bundle-codex-sdk.sh; shown here for documentation.
+export AGENT_SDK_URL_TEMPLATE='https://github.com/Colin4k1024/vscode/releases/download/agent-sdk-{sdk}-{sdkVersion}/{sdk}-{sdkVersion}-{sdkTarget}.tgz'
+```
+
+- Layout: release tag `agent-sdk-<sdk>-<version>`, one asset per target
+  named exactly like the tarball (`<sdk>-<version>-<sdkTarget>.tgz`).
+- `{sdk}` / `{sdkVersion}` are substituted at build time; `{sdkTarget}`
+  survives into `product.agentSdks.<sdk>.urlTemplate` and is substituted
+  per launch by the runtime downloader. A template without `{sdkTarget}`
+  fails loud (it would send every platform to the same file).
+- Upload: GitHub Releases does not speak plain HEAD/PUT per asset, so
+  publishing goes through `scripts/publish-sdk-release.sh` (gh CLI), which
+  applies the same idempotency semantics as `uploadOne`: absent → upload;
+  same sha256 (asset `digest`) → skip; different/missing digest → fail
+  loud, never overwrite content-addressed history.
+- For generic self-hosted object storage that DOES speak HEAD/PUT, set
+  `AGENT_SDK_UPLOAD_BACKEND=http` (plus `AGENT_SDK_CDN_BASE` or
+  `AGENT_SDK_URL_TEMPLATE`, optional `AGENT_SDK_UPLOAD_TOKEN`) and
+  `uploadOne` PUTs to the download URL with the sha256 in
+  `x-content-sha256`.
+
+Local / GitHub Actions results handoff (the equivalent of Azure's
+`##vso[task.setvariable variable=AGENT_SDK_RESULTS_FILE]`):
+
+```sh
+AGENT_SDK_UPLOAD=false AGENT_SDK_WRITE_RESULTS=true \
+AGENT_SDK_RESULTS_FILE=.build/agent-sdk/results.json \
+node build/agent-sdk/produce.ts --vscode-platform=darwin --arch=arm64 --sdks=codex
+# then, same shell:
+AGENT_SDK_RESULTS_FILE=.build/agent-sdk/results.json npx gulp vscode-darwin-arm64-min
+```
+
+`AGENT_SDK_UPLOAD` (true/false) overrides the `VSCODE_PUBLISH`-derived
+upload decision; `AGENT_SDK_WRITE_RESULTS=true` writes the results JSON
+without uploading (publishing is a separate, explicit step). Both fail
+loud on unparsable values.
+
+The full local pipeline is `scripts/package.sh` (pristine gate →
+apply-mixin → bundle-codex-sdk → gulp → beta gates → zip + SHA256SUMS).

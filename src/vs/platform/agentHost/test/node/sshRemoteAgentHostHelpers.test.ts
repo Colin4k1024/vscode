@@ -308,39 +308,56 @@ suite('SSH Remote Agent Host Helpers', () => {
 
 	suite('buildCLIDownloadUrl', () => {
 		const commit = 'abcdef0123456789abcdef0123456789abcdef01';
+		// D09: the default download endpoint is the fork's own release surface;
+		// Microsoft's update CDN must not appear in the branded product.
+		// Round-1 (MEDIUM-4): GitHub Releases serves one flat asset per tag,
+		// so the commit lives in the tag and the platform/quality in the asset.
+		const FORK_BASE = 'https://github.com/Colin4k1024/vscode/releases/download';
+
+		const savedEnv = process.env.AGENT_HOST_CLI_DOWNLOAD_BASE;
+		suiteSetup(() => {
+			delete process.env.AGENT_HOST_CLI_DOWNLOAD_BASE;
+		});
+		suiteTeardown(() => {
+			if (savedEnv === undefined) {
+				delete process.env.AGENT_HOST_CLI_DOWNLOAD_BASE;
+			} else {
+				process.env.AGENT_HOST_CLI_DOWNLOAD_BASE = savedEnv;
+			}
+		});
 
 		test('uses `latest` URL when commit is omitted', () => {
 			assert.strictEqual(
 				buildCLIDownloadUrl('linux', 'x64', 'insider'),
-				'https://update.code.visualstudio.com/latest/cli-linux-x64/insider'
+				`${FORK_BASE}/cli-latest/cli-linux-x64-insider.tar.gz`
 			);
 		});
 
 		test('works for darwin arm64 stable (no commit)', () => {
 			assert.strictEqual(
 				buildCLIDownloadUrl('darwin', 'arm64', 'stable'),
-				'https://update.code.visualstudio.com/latest/cli-darwin-arm64/stable'
+				`${FORK_BASE}/cli-latest/cli-darwin-arm64-stable.tar.gz`
 			);
 		});
 
 		test('uses the Alpine artifact for musl Linux', () => {
 			assert.strictEqual(
 				buildCLIDownloadUrl('alpine', 'x64', 'insider'),
-				'https://update.code.visualstudio.com/latest/cli-alpine-x64/insider'
+				`${FORK_BASE}/cli-latest/cli-alpine-x64-insider.tar.gz`
 			);
 		});
 
 		test('pins to commit when provided', () => {
 			assert.strictEqual(
 				buildCLIDownloadUrl('linux', 'x64', 'insider', commit),
-				`https://update.code.visualstudio.com/commit:${commit}/cli-linux-x64/insider`,
+				`${FORK_BASE}/cli-${commit}/cli-linux-x64-insider.tar.gz`,
 			);
 		});
 
 		test('pins to commit for darwin arm64 stable', () => {
 			assert.strictEqual(
 				buildCLIDownloadUrl('darwin', 'arm64', 'stable', commit),
-				`https://update.code.visualstudio.com/commit:${commit}/cli-darwin-arm64/stable`,
+				`${FORK_BASE}/cli-${commit}/cli-darwin-arm64-stable.tar.gz`,
 			);
 		});
 
@@ -352,8 +369,33 @@ suite('SSH Remote Agent Host Helpers', () => {
 			const upper = 'ABCDEF0123456789ABCDEF0123456789ABCDEF01';
 			assert.strictEqual(
 				buildCLIDownloadUrl('linux', 'x64', 'insider', upper),
-				`https://update.code.visualstudio.com/commit:abcdef0123456789abcdef0123456789abcdef01/cli-linux-x64/insider`,
+				`${FORK_BASE}/cli-abcdef0123456789abcdef0123456789abcdef01/cli-linux-x64-insider.tar.gz`,
 			);
+		});
+
+		test('AGENT_HOST_CLI_DOWNLOAD_BASE redirects the base (self-hosted mirror)', () => {
+			process.env.AGENT_HOST_CLI_DOWNLOAD_BASE = 'https://mirror.example.net/releases/download';
+			try {
+				assert.strictEqual(
+					buildCLIDownloadUrl('linux', 'x64', 'insider'),
+					'https://mirror.example.net/releases/download/cli-latest/cli-linux-x64-insider.tar.gz'
+				);
+			} finally {
+				delete process.env.AGENT_HOST_CLI_DOWNLOAD_BASE;
+			}
+		});
+
+		test('AGENT_HOST_CLI_DOWNLOAD_BASE fails loud on a non-URL value', () => {
+			process.env.AGENT_HOST_CLI_DOWNLOAD_BASE = 'not-a-url';
+			try {
+				assert.throws(() => buildCLIDownloadUrl('linux', 'x64', 'insider'), /must be an http\(s\) URL/);
+			} finally {
+				delete process.env.AGENT_HOST_CLI_DOWNLOAD_BASE;
+			}
+		});
+
+		test('never defaults to the Microsoft update CDN', () => {
+			assert.ok(!buildCLIDownloadUrl('linux', 'x64', 'insider', commit).includes('update.code.visualstudio.com'));
 		});
 	});
 

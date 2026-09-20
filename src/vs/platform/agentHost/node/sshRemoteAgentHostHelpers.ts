@@ -184,18 +184,43 @@ export function resolveRemotePlatform(unameS: string, unameM: string, libc = '')
  * When `commit` is provided, uses the commit-pinned URL form so we get
  * the exact CLI matching the current desktop build (mirrors Remote-SSH).
  * When `commit` is undefined (dev/OSS builds), falls back to `latest`.
+ *
+ * GitHub Releases serves assets as ONE flat file under ONE tag
+ * (`/releases/download/<tag>/<asset>`), so the upstream multi-segment
+ * shape (`commit:<sha>/<artifact>/<quality>`) can never resolve there
+ * (review round-1, MEDIUM-4). The commit is encoded in the TAG and
+ * everything else in the single-level asset name:
+ *
+ *   tag:   cli-<40-hex-commit>   (or `cli-latest` for dev builds)
+ *   asset: cli-<os>-<arch>-<quality>.tar.gz
  */
 export function buildCLIDownloadUrl(os: string, arch: string, quality: string, commit?: string): string {
-	const base = 'https://update.code.visualstudio.com';
-	const artifact = `cli-${os}-${arch}`;
+	// D09: the upstream default `https://update.code.visualstudio.com` serves
+	// Microsoft-branded CLI bits — the fork must not fetch them (branding
+	// residue gate + D08 egress policy). Default to this repo's own release
+	// endpoint instead; override with AGENT_HOST_CLI_DOWNLOAD_BASE for a
+	// self-hosted mirror (the value is the BASE the `cli-<tag>/<asset>`
+	// segments are appended to, e.g. `https://mirror.example.net/releases/download`).
+	// Known limitation (recorded in scripts/package.sh): the fork does not
+	// publish CLI artifacts yet, so remote agent-host bootstrap 404s
+	// (fail loud) instead of silently using Microsoft's CDN.
+	const override = process.env.AGENT_HOST_CLI_DOWNLOAD_BASE?.trim();
+	const base = (override || 'https://github.com/Colin4k1024/vscode/releases/download').replace(/\/+$/, '');
+	if (override && !/^https?:\/\//i.test(override)) {
+		throw new Error(`AGENT_HOST_CLI_DOWNLOAD_BASE must be an http(s) URL (got: ${JSON.stringify(override)})`);
+	}
+	// `quality` now lands in the asset name, so it gets the same shell-token
+	// validation the install-path helpers already apply to it.
+	const q = validateShellToken(quality, 'quality');
+	const artifact = `cli-${os}-${arch}-${q}.tar.gz`;
 	if (commit) {
 		// Defense-in-depth: same validation as getRemoteCLIBin so the URL
 		// can never be formed with a non-SHA commit (would 404) and stays
 		// consistent with the commit-keyed install path.
 		const c = validateCommit(commit);
-		return `${base}/commit:${c}/${artifact}/${quality}`;
+		return `${base}/cli-${c}/${artifact}`;
 	}
-	return `${base}/latest/${artifact}/${quality}`;
+	return `${base}/cli-latest/${artifact}`;
 }
 
 /**

@@ -36,6 +36,10 @@
       "merged": "567ebe16ed7",
       "closed_at": "2026-09-19T23:00+08:00",
       "review": "pi r3 APPROVE 8.6"
+    },
+    "#5": {
+      "d": "D03",
+      "note": "上游 PR #25 关闭代码面；本会话 PR #61（证据文档）合并 01fea4daa659；superseded PR #58 已关闭"
     }
   },
   "issues": {
@@ -313,6 +317,10 @@
     {
       "ts": "2026-09-20T23:50+08:00",
       "event": "#56/#54 round-2 4.0 → 修复(unicode/版权头/onboarding 真正实现/描述对齐)推送 adbfbd98420; PR #61 round-1 5.4 → 文档事实修正四件套推送 b89b1b338e6; 两者 r3/r2 复审中。D15 PR #67 已由另一会话提交, CI 失败全部基线既有(额度+chat-policy+浏览器 BAD 模块与 D15 改动无关)"
+    },
+    {
+      "ts": "2026-09-21T00:30+08:00",
+      "event": "PR #61 合并（pi r4 APPROVE 7.6）：D03 证据文档保留。合并 commit 01fea4daa659。"
     }
   ],
   "review_state": {

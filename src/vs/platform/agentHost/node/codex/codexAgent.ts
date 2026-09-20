@@ -1825,8 +1825,24 @@ export class CodexAgent extends Disposable implements IAgent {
 		return refreshPromise;
 	}
 
+	/**
+	 * The provider a session without an explicit model selection defaults to
+	 * (D05/#7): the OpenAI-native provider whenever the credential-aware policy
+	 * flag is on and the Codex account is signed in (ChatGPT subscription or API
+	 * key — both are complete OpenAI credentials); otherwise the Copilot
+	 * `vscode-proxy` provider, matching the legacy default. With neither
+	 * credential the legacy behavior stands: the picker / sign-in guidance owns
+	 * the empty state.
+	 */
+	private _defaultModelProvider(): string {
+		return this._configurationService.getRootValue(agentHostCustomizationConfigSchema, AgentHostConfigKey.CodexPreferOpenAIProvider) === true
+			&& this._openAIAccountState.status === 'signedIn'
+			? CODEX_OPENAI_MODEL_PROVIDER
+			: CODEX_COPILOT_MODEL_PROVIDER;
+	}
+
 	private _ensureModelProviderAuthenticated(model: ModelSelection | undefined): void {
-		const modelProvider = model ? parseCodexModelSelection(model).modelProvider : CODEX_COPILOT_MODEL_PROVIDER;
+		const modelProvider = model ? parseCodexModelSelection(model).modelProvider : this._defaultModelProvider();
 		if (modelProvider !== CODEX_COPILOT_MODEL_PROVIDER) {
 			return;
 		}
@@ -1848,7 +1864,14 @@ export class CodexAgent extends Disposable implements IAgent {
 
 	private _defaultModel(): ModelSelection | undefined {
 		const models = this._models.get();
-		const chosen = models[0];
+		// D05/#7: honor the default-provider policy — the first model of the
+		// credential-selected default provider wins over raw catalog order (which
+		// lists Copilot models first). When that provider has no catalog entry,
+		// or the policy flag is off (legacy: `_defaultModelProvider` answers
+		// `vscode-proxy`, i.e. the Copilot-first head of the catalog), this
+		// degenerates to `models[0]`, the historical default.
+		const defaultProvider = this._defaultModelProvider();
+		const chosen = models.find(candidate => parseCodexModelSelection(candidate).modelProvider === defaultProvider) ?? models[0];
 		return chosen ? { id: chosen.id } : undefined;
 	}
 

@@ -7,7 +7,7 @@ import { localize } from '../../../nls.js';
 import { createSchema, schemaProperty } from './agentHostSchema.js';
 import { CustomizationType, type Customization, type PluginCustomization } from './state/protocol/state.js';
 import { customizationId } from './state/sessionState.js';
-import { AgentHostAllowSignedOutWhenUsableProductDefault } from './agentService.js';
+import { AgentHostAllowSignedOutWhenUsableProductDefault, AgentHostCodexPreferOpenAIProviderProductDefault } from './agentService.js';
 
 /**
  * Well-known root-config keys used by the platform to configure agent-host
@@ -29,6 +29,15 @@ export const enum AgentHostConfigKey {
 	 * feature is dark (today's always-proxy behavior).
 	 */
 	AllowSignedOutWhenUsable = 'allowSignedOutWhenUsable',
+	/**
+	 * Codex default-provider policy (D05/#7). When true, Codex sessions without
+	 * an explicit model selection default to the OpenAI-native provider while
+	 * the Codex account is signed in, falling back to the Copilot `vscode-proxy`
+	 * provider otherwise. The workbench forwards it here from the
+	 * `chat.agentHost.codexPreferOpenAIProvider` VS Code setting; when unset the
+	 * legacy Copilot-first default applies.
+	 */
+	CodexPreferOpenAIProvider = 'codexPreferOpenAIProvider',
 	/** Controls whether session-scoped file customizations come from local scan or SDK discovery. */
 	SessionCustomizationDiscoveryMode = 'sessionCustomizationDiscoveryMode',
 	/**
@@ -104,6 +113,15 @@ export const agentHostCustomizationConfigSchema = createSchema({
 		// agent-host-config.json. `getRootValue` does not consult schema
 		// defaults. Upstream default: false, opt-in only.
 		default: AgentHostAllowSignedOutWhenUsableProductDefault,
+	}),
+	[AgentHostConfigKey.CodexPreferOpenAIProvider]: schemaProperty<boolean>({
+		type: 'boolean',
+		title: localize('agentHost.config.codexPreferOpenAIProvider.title', "Codex Prefers the OpenAI Provider by Default"),
+		description: localize('agentHost.config.codexPreferOpenAIProvider.description', "When enabled, Codex sessions without an explicit model selection default to the OpenAI-native provider while the Codex account is signed in (ChatGPT subscription or API key), and fall back to the Copilot proxy provider only when no OpenAI credential exists. When disabled, the legacy Copilot-first default applies."),
+		// Fork product default (D05/#7): metadata for the agent-host root-config
+		// protocol schema only — node-side readers see the value through the
+		// workbench forwarder; `getRootValue` does not consult schema defaults.
+		default: AgentHostCodexPreferOpenAIProviderProductDefault,
 	}),
 	[AgentHostConfigKey.SessionCustomizationDiscoveryMode]: schemaProperty<SessionCustomizationDiscoveryMode>({
 		type: 'string',

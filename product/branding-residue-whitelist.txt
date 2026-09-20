@@ -1,0 +1,16 @@
+# Branding residue whitelist (scripts/check-branding-residue.sh).
+#
+# Format, one entry per line:  <path-regex><TAB><content-regex>
+# A scan hit is exempt ONLY when BOTH match (grep -E syntax):
+#   * the hit's file path (relative to the scanned root) matches <path-regex>
+#   * the hit's line content matches <content-regex>
+# Lines without a TAB separator are malformed and fail the scan loudly.
+#
+# This whitelist exists ONLY for third-party license/copyright texts that
+# legitimately reference the upstream project — never first-party UI copy.
+# Path anchoring is deliberate (D06 round-1, M2): a content-only pattern like
+# "license.*Microsoft" would also exempt e.g. a README.txt shipping first-party
+# text that mentions "Visual Studio Code".
+(^|/)LICENSE(\.txt)?$	Microsoft|Visual Studio Code|MIT
+(^|/)ThirdPartyNotices[^/]*$	Microsoft|Visual Studio Code
+(^|/)[Ll]icenses?/	Microsoft|Visual Studio Code|Copyright

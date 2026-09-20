@@ -46,6 +46,17 @@ jobs:
           command -v shellcheck >/dev/null || sudo apt install -y shellcheck
           shellcheck .agents/research/codex-desktop/bootstrap.sh
 
+      # D06 product mixin guards — all three run on the pristine tree (before
+      # any apply-mixin), need only checkout + node, and are cheap. Keep them
+      # ahead of the heavy install/transpile steps for fast feedback.
+      # (check-branding-residue.sh is deliberately not here: it scans a
+      # packaged app directory, which this job does not produce.)
+      - name: D06 product mixin guards (pristine tree)
+        run: |
+          bash scripts/check-product-json-pristine.sh
+          bash scripts/check-branding-identity.sh
+          bash scripts/check-r12-guard.sh
+
       - name: Restore node_modules cache
         id: cache-node-modules
         uses: ./.github/actions/restore-node-modules

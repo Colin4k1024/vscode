@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E8E9EE"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7EB6FF"/>
+      <stop offset="1" stop-color="#3D7BFA"/>
+    </linearGradient>
+  </defs>
+  <!-- document page with folded corner -->
+  <path d="M 272 32 h 352 l 208 208 v 688 a 80 80 0 0 1 -80 80 h -480 a 80 80 0 0 1 -80 -80 v -816 a 80 80 0 0 1 80 -80 z"
+        fill="url(#page)" stroke="#C9CAD2" stroke-width="10"/>
+  <path d="M 624 32 l 208 208 h -176 a 32 32 0 0 1 -32 -32 z" fill="#C9CAD2"/>
+  <!-- brand mark centered on the page -->
+  <g transform="translate(512 580) scale(0.46) translate(-512 -512)">
+    <path d="M 792.7 231.3
+             A 336 336 0 1 0 792.7 792.7
+             L 682.6 682.6
+             A 212 212 0 1 1 682.6 341.4
+             Z"
+          fill="url(#mark)"/>
+    <circle cx="512" cy="512" r="72" fill="url(#mark)"/>
+  </g>
+</svg>

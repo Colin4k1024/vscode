@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Launch Code OSS (VS Code from sources) with:
 #   - a fresh, slimmed copy of the authenticated user-data-dir (so Copilot/GitHub auth works)
-#   - an isolated --shared-data-dir (otherwise two instances share ~/.vscode-oss-shared and crash each other)
+#   - an isolated --shared-data-dir (otherwise two instances share the product's
+#     shared-data dir, ~/<sharedDataFolderName>, and crash each other)
 #   - unique debug ports for renderer (CDP), extension host, main process, and agent host
 #
 # Auth on macOS comes from the OS keychain (per-app, shared automatically) plus
@@ -29,14 +30,17 @@
 #                       use with content you trust.
 #
 # Defaults:
-#   --source-user-data-dir  $CODE_OSS_DEV_AUTHED_USER_DATA_DIR  (else ~/.vscode-oss-dev)
+#   --source-user-data-dir  $CODE_OSS_DEV_AUTHED_USER_DATA_DIR  (else ~/<dataFolderName>-dev
+#                     of the effective product identity — product/product.json overlay
+#                     wins over the working-tree product.json, upstream value last)
 #   --repo                  $PWD if it looks like a vscode checkout; otherwise pass it explicitly
 
 set -euo pipefail
 umask 077
 
 AGENTS=0
-SOURCE_UDD="${CODE_OSS_DEV_AUTHED_USER_DATA_DIR:-$HOME/.vscode-oss-dev}"
+# Resolved after --repo is known: the default depends on the effective product identity.
+SOURCE_UDD="${CODE_OSS_DEV_AUTHED_USER_DATA_DIR:-}"
 REPO=""
 EXTRA_ARGS=()
 CLONE_EXTENSIONS=0
@@ -80,6 +84,26 @@ if [[ -z "$REPO" ]]; then
 		echo "Could not find a vscode checkout in $PWD. Pass --repo <path>." >&2
 		exit 2
 	fi
+fi
+
+# Effective product identity (D06 round-1, M3): the D06 mixin keeps the
+# working-tree product.json pristine and carries the branded dataFolderName in
+# the product/product.json overlay, so resolve in that order and fall back to
+# the upstream Code OSS value. Dev-mode profiles live in ~/<dataFolderName>-dev.
+if [[ -z "$SOURCE_UDD" ]]; then
+	DEV_FOLDER_NAME=$(node - "$REPO" <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const repo = process.argv[2];
+const read = p => { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch { return undefined; } };
+const overlay = read(path.join(repo, 'product', 'product.json'));
+const base = read(path.join(repo, 'product.json'));
+const dataFolderName = (overlay && overlay.dataFolderName) || (base && base.dataFolderName) || '.vscode-oss';
+process.stdout.write(`${dataFolderName}-dev`);
+NODE
+	)
+	SOURCE_UDD="$HOME/$DEV_FOLDER_NAME"
+	echo "[launch.sh] source user-data-dir default resolved from effective product identity: $SOURCE_UDD" >&2
 fi
 
 if [[ ! -d "$SOURCE_UDD" ]]; then

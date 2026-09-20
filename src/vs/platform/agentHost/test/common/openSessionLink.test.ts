@@ -52,6 +52,21 @@ suite('openSessionLink', () => {
 		});
 	});
 
+	test('builds and parses an external session link with the branded product protocol (D06)', () => {
+		// The product urlProtocol is `colincode` (product/product.json overlay);
+		// parsing is parameterized by the protocol so no code change is needed.
+		const external = buildExternalOpenSessionLinkUri('colincode', 'codex:/session-1', 'chat-9', 'turn-7');
+		assert.deepStrictEqual({
+			external,
+			internal: parseExternalOpenSessionLinkUri(external, 'colincode')?.toString(true),
+			legacyProtocolRejected: parseExternalOpenSessionLinkUri(external, 'vscode-insiders'),
+		}, {
+			external: 'colincode://agents/agent-host-session/codex/session-1/chat/chat-9?turn=turn-7',
+			internal: 'agent-host-session://codex/session-1?chat=chat-9&turn=turn-7',
+			legacyProtocolRejected: undefined,
+		});
+	});
+
 	test('encodes chat ids as path segments in external links', () => {
 		const external = buildExternalOpenSessionLinkUri('vscode-insiders', 'copilotcli:/abc-123', 'chat/9');
 		const internal = parseExternalOpenSessionLinkUri(external, 'vscode-insiders');

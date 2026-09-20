@@ -1,0 +1,4 @@
+{
+	"chat.agentHost.codexAgent.enabled": true,
+	"chat.editor.codex.preferAgentHost": true
+}

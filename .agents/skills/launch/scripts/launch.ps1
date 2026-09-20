@@ -79,6 +79,28 @@ function Get-UsableNode([string]$repoPath) {
 	throw "Node.js $requiredVersion or newer is required on PATH. $setupMessage"
 }
 
+function Get-EffectiveProductField([string]$repoPath, [string]$fieldName, [string]$fallback) {
+	# Effective product identity (D06 round-1, M3): the D06 mixin keeps the
+	# working-tree product.json pristine and carries the branded identity in
+	# the product/product.json overlay, so resolve in that order and fall
+	# back to the upstream Code OSS value.
+	$candidates = @(
+		(Join-Path $repoPath 'product\product.json'),
+		(Join-Path $repoPath 'product.json')
+	)
+	foreach ($candidate in $candidates) {
+		if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+			try {
+				$product = Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json
+				if ($product.PSObject.Properties[$fieldName]) {
+					return $product.$fieldName
+				}
+			} catch { }
+		}
+	}
+	return $fallback
+}
+
 function Get-SourceSharedDataDir([string]$repoPath) {
 	if ($env:CODE_OSS_DEV_AUTHED_SHARED_DATA_DIR) {
 		return $env:CODE_OSS_DEV_AUTHED_SHARED_DATA_DIR
@@ -91,16 +113,14 @@ function Get-SourceSharedDataDir([string]$repoPath) {
 		return Join-Path $env:VSCODE_PORTABLE 'shared-data'
 	}
 
-	$folderName = '.vscode-oss-shared'
-	$productJson = Join-Path $repoPath 'product.json'
-	if (Test-Path -LiteralPath $productJson -PathType Leaf) {
-		$product = Get-Content -LiteralPath $productJson -Raw | ConvertFrom-Json
-		if ($product.PSObject.Properties['sharedDataFolderName']) {
-			$folderName = $product.sharedDataFolderName
-		}
-	}
-
+	$folderName = Get-EffectiveProductField $repoPath 'sharedDataFolderName' '.vscode-oss-shared'
 	return Join-Path $env:USERPROFILE $folderName
+}
+
+function Get-DefaultSourceUserDataDir([string]$repoPath) {
+	# Dev-mode profiles live in ~/<dataFolderName>-dev.
+	$dataFolderName = Get-EffectiveProductField $repoPath 'dataFolderName' '.vscode-oss'
+	return Join-Path $env:USERPROFILE "$dataFolderName-dev"
 }
 
 function Get-FreePort {
@@ -423,7 +443,9 @@ try {
 		$sourceUserDataDir = if ($env:CODE_OSS_DEV_AUTHED_USER_DATA_DIR) {
 			$env:CODE_OSS_DEV_AUTHED_USER_DATA_DIR
 		} else {
-			Join-Path $env:USERPROFILE '.vscode-oss-dev'
+			$resolved = Get-DefaultSourceUserDataDir $repo
+			Write-LaunchError "[launch.ps1] source user-data-dir default resolved from effective product identity: $resolved"
+			$resolved
 		}
 	}
 	if (-not (Test-Path -LiteralPath $sourceUserDataDir -PathType Container)) {

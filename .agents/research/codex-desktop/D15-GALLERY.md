@@ -29,7 +29,7 @@
     `…/unpkg/redhat/vscode-yaml/latest/extension/package.json` → 200。
     注意裸 `{publisher}/{name}/{version}/{path}`（不带 `extension/` 前缀）是 404——
     模板按规格原样使用即可，运行时替换会补齐。
-  - 未设置 `controlUrl`（恶意扩展下架通道，Open VSX 无对应服务）与
+  - 未设置 `controlUrl`（恶意扩展下架通道；Open VSX 无内建 control 服务，EclipseFdn 的 extension-control（raw.githubusercontent.com）可作为后续可选接入——接入时需同步放宽 egress 门禁的 open-vsx 前缀检查）与
     `nlsBaseUrl`（语言包 CDN，Open VSX 无对应服务）——两者在上游均为可选，
     缺省时对应功能静默关闭。
   - 实际文件下载经 gallery 响应中的绝对 URL 302 到 Eclipse CDN

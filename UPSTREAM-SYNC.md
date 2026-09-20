@@ -84,7 +84,7 @@ npm run test-build-scripts   # 含 build/agent-sdk/test/versionSync.test.ts
 ### 3.2 操作步骤
 
 ```bash
-# dry-run 预报冲突（不改任何状态）
+# dry-run 预报冲突（不改工作区、索引、分支与 pin（会 fetch upstream 对象并注册 upstream remote））
 bash scripts/sync-upstream.sh --dry-run            # 目标默认 upstream/main
 
 # 实际同步（创建 sync-upstream/<date>-<sha> 分支并 merge --no-commit --no-ff）

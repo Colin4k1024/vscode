@@ -55,7 +55,7 @@ done
 # truncate local history by writing a shallow boundary, which we must not do.
 fetch_upstream() {
 	local since
-	since="$(git show -s --format=%cI "${1:-$PIN}" 2>/dev/null | cut -dT -f1 || true)"
+	since="$(git show -s --format=%cI "${1:-$CURRENT_PIN}" 2>/dev/null | cut -dT -f1 || true)"
 	if [ "$(git rev-parse --is-shallow-repository)" = "true" ] && [ -n "$since" ]; then
 		git fetch --no-tags --filter=blob:none --shallow-since="$since" "$UPSTREAM_REMOTE" || \
 			git fetch --no-tags "$UPSTREAM_REMOTE"
@@ -100,11 +100,24 @@ if git merge-base --is-ancestor "$TARGET_SHA" HEAD; then
 	exit 0
 fi
 
+# Preflight (real mode only): refuse a dirty working tree — merging into an
+# unclean checkout muddies conflict and commit boundaries.
+if [ "$DRY_RUN" -eq 0 ]; then
+	if ! git diff --quiet || ! git diff --cached --quiet; then
+		echo "ERROR: working tree or index is dirty; commit or stash before syncing." >&2
+		exit 2
+	fi
+fi
+
 # Step 2: create the sync branch (real mode only)
 BRANCH="sync-upstream/$(git show -s --format=%cd --date=format:%Y%m%d "$TARGET_SHA")-${TARGET_SHA:0:9}"
 if [ "$DRY_RUN" -eq 0 ]; then
 	echo "[2/6] Creating sync branch $BRANCH ..."
-	git checkout -b "$BRANCH" 2>/dev/null || git checkout "$BRANCH"
+	if git rev-parse --verify --quiet "refs/heads/$BRANCH" > /dev/null; then
+		echo "ERROR: sync branch $BRANCH already exists; delete it or pass a different ref." >&2
+		exit 2
+	fi
+	git checkout -b "$BRANCH"
 else
 	echo "[2/6] (dry-run) would create sync branch $BRANCH"
 fi
@@ -120,9 +133,11 @@ if [ "$DRY_RUN" -eq 1 ]; then
 		echo "[5/6] No conflicts: the merge would apply cleanly."
 	else
 		# merge-tree --write-tree conflict entries: "<mode> <oid> <stage>\t<path>"
-		# with stage 1 = base. Field 3 is the stage (paths may contain spaces,
-		# so split on tab for the path).
-		CONFLICTS="$(awk -F '\t' '$1 ~ / 1$/ {print $2}' "$MT_OUT" | sort -u)"
+		# Collect by path across ALL stages: add/add and rename/rename
+		# conflicts have no stage-1 (base) entry, so filtering for stage 1 would
+		# miss them. The exit code above is the authoritative conflict signal;
+		# this list is for display only (paths may contain spaces, so split on tab).
+		CONFLICTS="$(awk -F '\t' 'NF > 1 {print $2}' "$MT_OUT" | sort -u)"
 		echo "[5/6] CONFLICTS: $(printf '%s\n' "$CONFLICTS" | grep -c .) file(s) would conflict:"
 		printf '%s\n' "$CONFLICTS" | sed 's/^/        /'
 		echo "        (conflict hot zones are listed in UPSTREAM-SYNC.md section 3)"

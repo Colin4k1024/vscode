@@ -1032,6 +1032,60 @@ suite('AgentHostCatalogReconciliationService', () => {
 		});
 	});
 
+	test('parking a source-unresolvable session never tombstones it and keeps its payload dirty (D13 C3.9/C3.10)', async () => {
+		const harness = await createHarness(['one']);
+		const session = registered('one');
+		// Give the session a projected catalog row first, so a "disappearing"
+		// payload would be observable — a single lookup failure must never be
+		// treated as evidence that the session is gone.
+		await harness.sync.synchronize(session.session, { data: catalogData('cached'), legacyMetadata: {} });
+		const service = harness.createService(async () => ({ status: 'sourceUnresolvable' }));
+
+		await service.runPass();
+		await service.runPass(); // parked: no further resolution attempts
+
+		const row = await harness.central.getSessionV2(session.session.toString());
+		assert.deepStrictEqual({
+			tombstoned: await harness.central.isSessionTombstoned(session.session.toString()),
+			rowPresent: row !== undefined,
+			cachedSummary: row && summaryOf(row.payload),
+			payloadDirty: row?.payloadDirty,
+		}, {
+			tombstoned: false,
+			rowPresent: true,
+			cachedSummary: 'cached',
+			payloadDirty: 3,
+		});
+	});
+
+	test('a parked session is retried exactly once after a host restart, then parked again (D13 C3.10)', async () => {
+		const harness = await createHarness(['one']);
+		let sourceResolutions = 0;
+		const resolver = async (): Promise<AgentHostCatalogReconciliationSourceResult> => {
+			sourceResolutions++;
+			return { status: 'sourceUnresolvable' };
+		};
+		const first = harness.createService(resolver);
+		await first.runPass();
+		await first.runPass();
+		assert.strictEqual(sourceResolutions, 1, 'the first instance parks the session');
+
+		// A fresh service instance (host restart) has no in-memory park state.
+		const second = harness.createService(resolver);
+		const retried = await second.runPass();
+		const parkedAgain = await second.runPass();
+
+		assert.deepStrictEqual({
+			retried: retried.outcomes,
+			parkedAgain: parkedAgain.outcomes,
+			sourceResolutions,
+		}, {
+			retried: [{ session: 'agenthost:one', status: 'retry', reason: 'sourceUnresolvable' }],
+			parkedAgain: [],
+			sourceResolutions: 2,
+		});
+	});
+
 	test('a mutation arriving during source resolution is not parked away', async () => {
 		const harness = await createHarness(['one']);
 		const session = 'agenthost:one';

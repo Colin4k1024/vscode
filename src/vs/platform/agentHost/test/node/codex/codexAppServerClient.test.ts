@@ -390,4 +390,132 @@ suite('CodexAppServerClient', () => {
 			peer.dispose();
 		}
 	});
+
+	// #region D13 crash / backpressure / replacement negatives (issue #15)
+
+	test('process exit rejects every in-flight request and later requests fail without touching the wire (C2.1/B5)', async () => {
+		const peer = makeFakePeer();
+		const client = new CodexAppServerClient(peer.transport);
+		let wire = '';
+		peer.outbound.on('data', chunk => { wire += typeof chunk === 'string' ? chunk : chunk.toString('utf8'); });
+		const wireLines = () => wire.split('\n').filter(line => line.trim().length > 0).length;
+		try {
+			// Park three concurrent requests, then SIGKILL the peer. `request`
+			// writes synchronously, so all three are on the wire immediately.
+			const first = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			const second = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			const third = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			await new Promise(r => setImmediate(r));
+			await new Promise(r => setImmediate(r));
+			assert.strictEqual(wireLines(), 3, 'three requests must reach the wire');
+
+			peer.exit(null, 'SIGKILL');
+
+			await Promise.all([first, second, third].map(pending => assert.rejects(pending, (err: unknown) => {
+				assert.ok(err instanceof JsonRpcError, 'expected JsonRpcError');
+				assert.strictEqual(err.code, JsonRpcErrorCode.InternalError);
+				assert.match(err.message, /SIGKILL/);
+				assert.match(err.message, /aborted/);
+				return true;
+			})));
+
+			// A post-exit request rejects immediately and never reaches the wire.
+			await assert.rejects(
+				client.request('getAuthStatus', { refreshToken: false, includeToken: false }),
+				(err: unknown) => err instanceof JsonRpcError && err.code === JsonRpcErrorCode.InternalError,
+			);
+			await new Promise(r => setImmediate(r));
+			await new Promise(r => setImmediate(r));
+			assert.strictEqual(wireLines(), 3, 'no request may be written to a dead transport');
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	test('dispose force-kills a peer that ignores the stdin EOF grace period (D16/A1.4)', async () => {
+		// A peer that never exits on its own: dispose() must escalate to SIGKILL.
+		const stdin = new PassThrough();
+		const stdout = new PassThrough();
+		const exitEmitter = new Emitter<{ readonly code: number | null; readonly signal: NodeJS.Signals | null }>();
+		const killSignals: (NodeJS.Signals | undefined)[] = [];
+		const transport: ICodexAppServerTransport = {
+			stdin,
+			stdout,
+			kill: signal => { killSignals.push(signal); return true; },
+			onExit: exitEmitter.event,
+			onExitOnce: () => { },
+		};
+		const client = new CodexAppServerClient(transport, undefined, 10);
+		client.dispose();
+		await new Promise(resolve => setTimeout(resolve, 100));
+		assert.deepStrictEqual(killSignals, ['SIGKILL'], 'dispose must SIGKILL a peer that ignores EOF');
+		exitEmitter.dispose();
+		stdin.destroy();
+		stdout.destroy();
+	});
+
+	test('a response arriving after process exit is dropped without crashing (B7)', async () => {
+		const peer = makeFakePeer();
+		const logs: { level: string; message: string }[] = [];
+		const client = new CodexAppServerClient(peer.transport, (level, message) => logs.push({ level, message }));
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			const sent = await readNextMessage(peer.outbound) as { id: number };
+			peer.exit(1);
+			await assert.rejects(responsePromise);
+
+			// The late result of the killed process must not resolve anything.
+			peer.push({ id: sent.id, result: { authMode: 'apikey' } });
+			await new Promise(r => setImmediate(r));
+			assert.deepStrictEqual(logs, [{ level: 'warn', message: `unsolicited response id=${sent.id}` }]);
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	test('a -32001 overloaded rejection surfaces verbatim and triggers no automatic retry (B8/R8)', async () => {
+		const peer = makeFakePeer();
+		const client = new CodexAppServerClient(peer.transport);
+		// Collect raw wire traffic with a single stable listener; coalesced
+		// writes are split on newlines.
+		let wire = '';
+		peer.outbound.on('data', chunk => { wire += typeof chunk === 'string' ? chunk : chunk.toString('utf8'); });
+		const sentLines = () => wire.split('\n').filter(line => line.trim().length > 0).map(line => JSON.parse(line) as { id: number; method?: string });
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			const responseRejection = assert.rejects(responsePromise, (err: unknown) => {
+				assert.ok(err instanceof JsonRpcError, 'expected JsonRpcError');
+				assert.strictEqual(err.code, -32001);
+				assert.match(err.message, /Server overloaded; retry later\./);
+				return true;
+			});
+			await new Promise(r => setImmediate(r));
+			const sent = sentLines();
+			assert.strictEqual(sent.length, 1, 'exactly one request reaches the wire');
+			const id = sent[0].id;
+
+			peer.push({ id, error: { code: -32001, message: 'Server overloaded; retry later.' } });
+			await responseRejection;
+
+			// No immediate retry storm: nothing more may be written on its own.
+			await new Promise(resolve => setTimeout(resolve, 100));
+			assert.strictEqual(sentLines().length, 1, 'the client must not auto-retry an overloaded rejection');
+
+			// Nor is the failure sticky: the caller decides when to retry.
+			const retryPromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			const retryResult = assert.doesNotReject(retryPromise);
+			await new Promise(r => setImmediate(r));
+			const retried = sentLines().at(-1)!;
+			peer.push({ id: retried.id, result: { authMode: 'apikey' } });
+			await retryResult;
+			assert.deepStrictEqual(await retryPromise, { authMode: 'apikey' });
+		} finally {
+			client.dispose();
+			peer.dispose();
+		}
+	});
+
+	// #endregion
 });

@@ -3773,7 +3773,7 @@ suite('CodexAgent chat backing durability', () => {
 				connectionStarts: 2,
 				activated: false,
 				connection: 'idle',
-				disposed: ['proxy-1', 'child-1', 'proxy-2', 'child-2'],
+				disposed: ['child-1', 'proxy-1', 'child-2', 'proxy-2'],
 				requests: [
 					{ method: 'thread/archive', threadId: 'idle-archive-thread' },
 					{ method: 'thread/unarchive', threadId: 'idle-archive-thread' },

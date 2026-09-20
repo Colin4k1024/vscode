@@ -1228,8 +1228,13 @@ export class CodexAgent extends Disposable implements IAgent {
 	private _isShuttingDown = false;
 	private _connection: ConnectionState = { kind: 'idle' };
 	private _connectionGeneration = 0;
-	/** Makes cleanup idempotent across shutdown and connection-loss races. */
-	private readonly _disposedConnections = new WeakSet<IConnectionReady>();
+	/**
+	 * Makes cleanup idempotent across shutdown and connection-loss races.
+	 * Keyed by client (the resource-owning member): `_ensureConnection` wraps
+	 * the ready record in a fresh object when publishing, so keying the guard
+	 * on the wrapper's identity would let the same resources be disposed twice.
+	 */
+	private readonly _disposedConnections = new WeakSet<IConnectionReady['client']>();
 	/** Serializes persistent startup behind the one-off account probe. */
 	private readonly _startupAccountProbe = new DeferredPromise<void>();
 	/** Cancels startup before a partially initialized one-off process can outlive this agent. */
@@ -2666,9 +2671,14 @@ export class CodexAgent extends Disposable implements IAgent {
 				readModelContextWindows: () => readCodexModelContextWindows(binaryPath, args, env),
 			};
 		} catch (err) {
+			// Kill the child before releasing the proxy handle (see
+			// _disposeConnectionResources for the ownership invariant).
+			// This init-failure path mirrors _disposeConnectionResources and is
+			// covered by code symmetry only — no test stubs deep enough to reach
+			// it; keep the two cleanup sequences in lockstep when editing.
+			try { child?.kill('SIGKILL'); } catch { /* already dead */ }
 			client?.dispose();
 			proxyHandle.dispose();
-			try { child?.kill('SIGKILL'); } catch { /* already dead */ }
 			if (sandboxTempDirectory) {
 				try { await fs.promises.rm(sandboxTempDirectory, { recursive: true, force: true }); } catch { /* best effort */ }
 			}
@@ -4249,14 +4259,18 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private _disposeConnectionResources(connection: IConnectionReady): void {
-		if (this._disposedConnections.has(connection)) {
+		if (this._disposedConnections.has(connection.client)) {
 			return;
 		}
-		this._disposedConnections.add(connection);
+		this._disposedConnections.add(connection.client);
 		try { connection.subscriptions?.dispose(); } catch { /* ignore */ }
+		// Subprocess-ownership invariant (codexProxyService.ts): the child
+		// holding the proxy's baseUrl/nonce must be killed BEFORE the handle is
+		// released — the next start() may rebind the proxy to a different port,
+		// and a surviving child would silently lose its endpoint.
+		try { connection.child.kill('SIGKILL'); } catch { /* already dead */ }
 		try { connection.client.dispose(); } catch { /* ignore */ }
 		try { connection.proxyHandle.dispose(); } catch { /* ignore */ }
-		try { connection.child.kill('SIGKILL'); } catch { /* already dead */ }
 	}
 
 	// #endregion

@@ -121,7 +121,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 ## 4. 薄覆盖层清单（对齐 R2 / D09 AC12）
 
 口径：`git diff fb20064c0f4..HEAD`（fork 相对上游基线的全部自有改动）。
-当前总计：**192 文件**（静态快照：§4.1 为手工维护清单，数字为表实测值；行数差口径 +15580/-984 为 D14 合入时点快照。
+当前总计：**226 文件**（静态快照：§4.1 为手工维护清单，数字为表实测值——新增（覆盖层）145 / 源码改动 42 / 源码改动（测试）29；行数差口径以 `git diff --numstat fb20064c0f4 HEAD` 为准，不随表漂移）。
 全量实时口径跑 `scripts/own-change-surface.sh`；该脚本口径更宽——除本清单声明排除项（`protocol/generated/`、`build/codex/`）外还含
 §4.1 尚未补录的条目，两者不可直接对账，补录为既有债留作后续跟进）；
 其中新增（覆盖层）134、修改（源码改动）58（含 25 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
@@ -161,9 +161,6 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 文件，merge 时不会冲突。
 
 ### 4.1 逐文件清单（静态快照，以脚本输出为准）
-
-| 文件 | 变更 | 行数 | 来源 | 分类 | 理由 |
-|---|---|---|---|---|---|
 
 > 行数列是**手工维护的快照**，不是实时生成：`±N (D09)` 行为 D66 补录的 D09 changeset
 > 总变动行数（精确 +/- 拆分以 `git diff --numstat fb20064c0f4 HEAD -- <file>` 为准）；
@@ -386,7 +383,11 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/workbench/services/agentHost/browser/codexAccountService.ts` | M | +70/-3 | D03 | 源码改动 | D03：OpenAI 原生账号服务（+70/-3）；服务行为 |
 | `src/vs/workbench/services/agentHost/test/browser/codexAccountService.test.ts` | M | +131/-5 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 
-共 192 文件：覆盖层(新增) 134、源码改动 33、源码改动(测试) 25。
+| 文件 | 变更 | 行数 | 来源 | 分类 | 理由 |
+|---|---|---|---|---|---|
+
+
+共 226 文件：覆盖层(新增) 145、源码改动 42、源码改动(测试) 29。
 
 行数列说明：`±N (D09)` 行是 D66 补录的 D09 存量条目（M8——D14 制表时这些文件已计入
 178/56 总数，但 §4.1 逐行清单漏了它们）；`±N` 是 D09 changeset 的总变动行数

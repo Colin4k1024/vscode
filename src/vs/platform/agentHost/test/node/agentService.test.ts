@@ -1280,6 +1280,119 @@ suite('AgentService (node dispatcher)', () => {
 		});
 	});
 
+	suite('listSessions burst coalescing (D13 C1.4)', () => {
+
+		// Counts one registry traversal per `listSessions computation started` log line.
+		class CountingLogService extends NullLogService {
+			computations = 0;
+			override trace(message: string): void {
+				if (message.includes('listSessions computation started')) {
+					this.computations++;
+				}
+			}
+		}
+
+		// Holds the resolve phase (which runs after the registry read) open until released.
+		class GatedAgent extends MockAgent {
+			gate = new DeferredPromise<void>();
+			gateEntered = new DeferredPromise<void>();
+			blocking = false;
+			override async getChatMetadata(chat: URI, context: URI | IAgentChatContext): Promise<IAgentChatMetadata | undefined> {
+				if (this.blocking) {
+					if (!this.gateEntered.isSettled) {
+						this.gateEntered.complete();
+					}
+					await this.gate.p;
+				}
+				return super.getChatMetadata(chat, context);
+			}
+		}
+
+		function createBurstService(logService: CountingLogService, agent: MockAgent, catalogDatabase?: TestAgentHostOrchestratorDatabase) {
+			const svc = disposables.add(createTestAgentService(
+				logService, fileService, createSessionDataService(new TestSessionDatabase()), { _serviceBrand: undefined } as IProductService, createNoopGitService(),
+				undefined, undefined, undefined, undefined, undefined, [], undefined, undefined, catalogDatabase,
+			));
+			// The listing cache never consults the catalog gate; disabling the catalog
+			// gives a deterministic provider round-trip to hold open.
+			getConfigurationService(svc).updateRootConfig({ [AgentHostSessionCatalogEnabledConfigKey]: false });
+			registerTestAgentProvider(svc, agent);
+			return svc;
+		}
+
+		test('a burst of concurrent listSessions shares a single registry traversal and hands each caller its own array', async () => {
+			const logService = new CountingLogService();
+			const agent = new GatedAgent('copilot');
+			const svc = createBurstService(logService, agent);
+			await svc.createSession({ provider: 'copilot' });
+			await svc.listSessions(); // warm
+			logService.computations = 0;
+
+			agent.blocking = true;
+			const burst = Array.from({ length: 10 }, () => svc.listSessions());
+			await timeout(1);
+			agent.blocking = false;
+			agent.gate.complete();
+			const results = await Promise.all(burst);
+
+			assert.strictEqual(logService.computations, 1, 'a 10-window burst must coalesce into one registry traversal');
+			for (let i = 0; i < results.length; i++) {
+				assert.strictEqual(results[i].length, 1);
+				for (let j = i + 1; j < results.length; j++) {
+					assert.notStrictEqual(results[i], results[j], 'each caller must receive its own array');
+				}
+			}
+			assert.strictEqual((svc as unknown as { _inFlightListSessions: Map<unknown, unknown> })._inFlightListSessions.size, 0, 'no computation may be retained after the burst settles');
+		});
+
+		test('a mutation mid-burst advances the epoch and converges all callers on one shared recomputation', async () => {
+			const logService = new CountingLogService();
+			const agent = new GatedAgent('copilot');
+			const svc = createBurstService(logService, agent);
+			await svc.createSession({ provider: 'copilot' });
+			await svc.listSessions(); // warm
+			logService.computations = 0;
+
+			const epochBefore = (svc as unknown as { _registryEpoch: number })._registryEpoch;
+			agent.blocking = true;
+			const first = svc.listSessions();
+			// Wait until the in-flight computation has read the registry and is
+			// parked in the gated resolve phase before mutating.
+			await agent.gateEntered.p;
+
+			// Mutate the registry underneath the in-flight listing. Creating the
+			// session through the service keeps the provider mock consistent with
+			// the registry row, so the trailing listing can actually resolve it.
+			await svc.createSession({ provider: 'copilot' });
+			const epochAfter = (svc as unknown as { _registryEpoch: number })._registryEpoch;
+			assert.ok(epochAfter > epochBefore, 'a mutation must advance the registry epoch');
+			// The in-flight computation is not removed mid-flight.
+			assert.strictEqual((svc as unknown as { _inFlightListSessions: Map<unknown, unknown> })._inFlightListSessions.size, 1);
+
+			const latecomers = Array.from({ length: 5 }, () => svc.listSessions());
+			await timeout(1);
+			agent.blocking = false;
+			agent.gate.complete();
+			const [firstResult, ...lateResults] = await Promise.all([first, ...latecomers]);
+
+			// The in-flight computation detects the epoch change at the end of its
+			// pass and heals itself with exactly one refresh, so every caller —
+			// the pre-mutation one included — converges on the mutated registry.
+			// No caller recursively follows more than one computation.
+			assert.strictEqual(logService.computations, 2, 'one in-flight pass + one self-healing refresh, no cascade');
+			assert.strictEqual(firstResult.length, 2, 'the healed computation converges on the mutated registry');
+			for (const result of lateResults) {
+				assert.strictEqual(result.length, 2, 'latecomers share the healed computation over the mutated registry');
+			}
+			for (let i = 0; i < lateResults.length; i++) {
+				for (let j = i + 1; j < lateResults.length; j++) {
+					assert.notStrictEqual(lateResults[i], lateResults[j], 'each latecomer must receive its own array');
+				}
+			}
+			assert.strictEqual((svc as unknown as { _inFlightListSessions: Map<unknown, unknown> })._inFlightListSessions.size, 0, 'the trailing hand-off must clear once settled');
+		});
+	});
+
 	suite('catalog summary synchronization', () => {
 		test('restricted pull-request associations replace the central payload without restoring removed links', async () => {
 			const database = new TestSessionDatabase();

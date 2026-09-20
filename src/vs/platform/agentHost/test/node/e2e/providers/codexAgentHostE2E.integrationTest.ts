@@ -20,6 +20,7 @@ import { retry } from '../../../../../../base/common/async.js';
 import { PROTOCOL_VERSION } from '../../../../common/state/protocol/version/registry.js';
 import { ActionType, type ChatErrorAction, type ChatToolCallReadyAction } from '../../../../common/state/sessionActions.js';
 import { buildDefaultChatUri, CustomizationLoadStatus, CustomizationType, ROOT_STATE_URI, type DirectoryCustomization, type McpServerCustomization, type RootState, type SessionState } from '../../../../common/state/sessionState.js';
+import { readCodexAccountInfo } from '../../../../common/meta/codexAccount.js';
 import { AgentHostE2EServerLease, createRealSession, dispatchTurn, driveTurnToCompletion, removeTempDirs, resolveGitHubToken, startBackgroundApprovalLoop } from '../harness/agentHostE2ETestHarness.js';
 import { defineAgentHostE2ETests } from '../suites/agentHostE2ESuites.js';
 import { getActionEnvelope, isActionNotification, TestProtocolClient } from '../../serverIntegrationTestHelpers.js';
@@ -538,6 +539,187 @@ defineAgentHostE2ETests(CODEX_CONFIG);
 		}
 		if (errors.length > 0) {
 			throw new AggregateError(errors, `Failed to dispose Codex negative-path E2E suite resources: ${errors.map(error => error.message).join('; ')}`);
+		}
+	});
+});
+
+/**
+ * OpenAI-credential acceptance scenarios (issue #36, D03/D04/D05). The suite
+ * provisions an API-key `auth.json` into the lease's isolated Codex home
+ * before the host launches — the on-disk equivalent of the user having run
+ * `codex login --api-key` ahead of time — and never authenticates a GitHub
+ * token. Everything is asserted over AHP plus the replay proxy's observed
+ * model requests; no host internals are imported.
+ *
+ * - D03: an API key credential signs the account in (`signedIn` / `apiKey`)
+ *        and the model catalog still enumerates.
+ * - D04: with zero GitHub credentials a full turn completes (only possible
+ *        because the OpenAI credential drives the session).
+ * - D05: the default model provider resolves to `openai`, observed on the
+ *        request face the host sends to the model.
+ */
+(CODEX_CONFIG.enabled ? suite : suite.skip)('Agent Host E2E — Codex (OpenAI credentials)', function () {
+
+	let client: TestProtocolClient;
+	let lease: AgentHostE2EServerLease | undefined;
+	const createdSessions: string[] = [];
+	const tempDirs: string[] = [];
+
+	/**
+	 * Titles that never cross the model boundary replay against the shared
+	 * strict empty fixture: any model request they cause is a hard cache miss.
+	 */
+	const hostOnlyTitles = new Set<string>([
+		// Creates a session (to activate the provider and its catalog) but
+		// never starts a turn; account probe, config, and model enumeration
+		// are all app-server-local.
+		'an api key credential signs the codex account in and enumerates the model catalog',
+	]);
+
+	suiteSetup(function () {
+		lease = new AgentHostE2EServerLease(CODEX_CONFIG, { codexSdkRoot: CODEX_CONFIG.codexSdkRoot });
+		// Provision the OpenAI credential before the host (and its startup
+		// account probe) ever launches.
+		writeFileSync(join(lease.isolatedCodexHomeDir, 'auth.json'), JSON.stringify({ OPENAI_API_KEY: 'sk-e2e-replay-placeholder' }));
+	});
+
+	setup(async function () {
+		this.timeout(60_000);
+		if (!lease) {
+			throw new Error('Agent Host E2E server lease was not initialized.');
+		}
+		const title = this.currentTest?.title ?? 'unknown';
+		({ client } = await lease.acquire(title, hostOnlyTitles.has(title) ? 'none' : 'recorded'));
+	});
+
+	teardown(async function () {
+		this.timeout(120_000);
+		if (!lease) {
+			throw new Error('Agent Host E2E server lease was not initialized.');
+		}
+		const failed = this.currentTest?.state === 'failed';
+		if (failed) {
+			lease.dumpRuntimeLogsOnFailure(this.currentTest?.title ?? 'unknown');
+		}
+		await lease.release(createdSessions, failed);
+	});
+
+	/**
+	 * Create a Codex session with no GitHub `authenticate` call at all: the
+	 * OpenAI credential provisioned in the Codex home is the only credential
+	 * the host has.
+	 */
+	async function createOpenAICredentialSession(c: TestProtocolClient, clientId: string, workingDirectory: URI): Promise<string> {
+		await c.call('initialize', { channel: ROOT_STATE_URI, protocolVersions: [PROTOCOL_VERSION], clientId }, 30_000);
+		const sessionUri = URI.from({ scheme: CODEX_CONFIG.scheme, path: `/${generateUuid()}` }).toString();
+		await c.call('createSession', {
+			channel: sessionUri,
+			provider: CODEX_CONFIG.provider,
+			workingDirectories: [workingDirectory.toString()],
+			config: { isolation: 'folder', ...CODEX_CONFIG.sessionConfig },
+		}, 30_000);
+		createdSessions.push(sessionUri);
+		await c.call<SubscribeResult>('subscribe', { channel: sessionUri });
+		await c.call<SubscribeResult>('subscribe', { channel: buildDefaultChatUri(sessionUri) });
+		c.clearReceived();
+		return sessionUri;
+	}
+
+	/** Poll the root state until the Codex agent's catalog is populated. */
+	async function waitForCodexModels(c: TestProtocolClient): Promise<RootState['agents'][number]> {
+		return retry(async () => {
+			const root = await c.call<SubscribeResult>('subscribe', { channel: ROOT_STATE_URI }, 30_000);
+			const agent = (root.snapshot!.state as RootState).agents.find(a => a.provider === CODEX_CONFIG.provider);
+			if (!agent || agent.models.length === 0) {
+				throw new Error(`codex model catalog not populated yet (agents: ${(root.snapshot!.state as RootState).agents.map(a => `${a.provider}:${a.models.length}`).join(', ')})`);
+			}
+			return agent;
+		}, 500, 60);
+	}
+
+	test('an api key credential signs the codex account in and enumerates the model catalog', async function () {
+		this.timeout(120_000);
+
+		const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'ahp-codex-apikey-catalog-')));
+		tempDirs.push(workspace);
+		await createOpenAICredentialSession(client, 'codex-apikey-catalog', URI.file(workspace));
+
+		// D03: the API key in the Codex home closes the authentication loop —
+		// the account reads as signed in with `authType: 'apiKey'`.
+		const account = await retry(async () => {
+			const root = await client.call<SubscribeResult>('subscribe', { channel: ROOT_STATE_URI }, 30_000);
+			const info = readCodexAccountInfo(root.snapshot!.state as RootState);
+			if (info.status !== 'signedIn' || info.authType !== 'apiKey') {
+				throw new Error(`codex account not yet signed in via api key: ${JSON.stringify(info)}`);
+			}
+			return info;
+		}, 500, 60);
+		assert.strictEqual(account.status, 'signedIn');
+		assert.strictEqual(account.authType, 'apiKey');
+
+		// D03: the model catalog enumerates normally on the OpenAI credential
+		// alone. Every entry is an OpenAI-provider model: with no GitHub token
+		// there is no Copilot (`vscode-proxy`) catalog to merge in.
+		const agent = await waitForCodexModels(client);
+		assert.ok(agent.models.length > 0, 'expected a non-empty codex model catalog');
+		const nonOpenAi = agent.models.filter(m => !m.id.startsWith('@provider=openai:'));
+		assert.deepStrictEqual(nonOpenAi.map(m => m.id), [], 'without a GitHub token every codex model must come from the openai provider');
+	});
+
+	test('a turn completes with an openai api key credential and no github token', async function () {
+		this.timeout(180_000);
+
+		const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'ahp-codex-apikey-turn-')));
+		tempDirs.push(workspace);
+		const sessionUri = await createOpenAICredentialSession(client, 'codex-apikey-turn', URI.file(workspace));
+
+		// D04: no `authenticate` ever happened on this client — the only way a
+		// turn can complete is through the OpenAI credential.
+		const result = await driveTurnToCompletion(client, sessionUri, 'turn-no-github', 'Reply exactly "pong".', 1);
+		assert.strictEqual(result.responseText.trim(), 'pong');
+	});
+
+	test('the default model provider is openai when an openai credential is present', async function () {
+		this.timeout(180_000);
+
+		const workspace = realpathSync(mkdtempSync(join(tmpdir(), 'ahp-codex-default-provider-')));
+		tempDirs.push(workspace);
+		// No model is selected anywhere — the session rides the host's default.
+		const sessionUri = await createOpenAICredentialSession(client, 'codex-default-provider', URI.file(workspace));
+
+		// The catalog-derived expectation: the default model is the first
+		// openai-provider entry, matching the host's default-provider policy.
+		const agent = await waitForCodexModels(client);
+		const defaultEntry = agent.models.find(m => m.id.startsWith('@provider=openai:'));
+		assert.ok(defaultEntry, `expected an openai-provider model in the catalog, got: ${agent.models.map(m => m.id).join(', ')}`);
+		const expectedWireModel = decodeURIComponent(defaultEntry.id.slice('@provider=openai:'.length));
+
+		const result = await driveTurnToCompletion(client, sessionUri, 'turn-default-provider', 'Reply exactly "default-provider-ok".', 1);
+		assert.strictEqual(result.responseText.trim(), 'default-provider-ok');
+
+		// D05: the provider choice is observable on the request face the host
+		// sends to the model — the wire model is the openai default, not a
+		// Copilot (`vscode-proxy`) catalog id.
+		const bodies = lease!.observedModelRequestBodies.map(body => JSON.parse(body) as { model?: string });
+		assert.ok(bodies.length > 0, 'expected at least one observed model request');
+		assert.deepStrictEqual(bodies.map(b => b.model), [expectedWireModel]);
+	});
+
+	suiteTeardown(async function () {
+		this.timeout(120_000);
+		const errors: Error[] = [];
+		try {
+			await lease?.dispose();
+		} catch (error) {
+			errors.push(error instanceof Error ? error : new Error(String(error)));
+		}
+		try {
+			await removeTempDirs(tempDirs);
+		} catch (error) {
+			errors.push(error instanceof Error ? error : new Error(String(error)));
+		}
+		if (errors.length > 0) {
+			throw new AggregateError(errors, `Failed to dispose Codex OpenAI-credential E2E suite resources: ${errors.map(error => error.message).join('; ')}`);
 		}
 	});
 });

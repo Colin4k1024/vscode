@@ -4,8 +4,8 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
-import { readdirSync, readFileSync, statSync } from 'fs';
-import { join } from '../../../../base/common/path.js';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { join, dirname } from '../../../../base/common/path.js';
 import { fileURLToPath } from 'url';
 
 /**
@@ -25,10 +25,33 @@ import { fileURLToPath } from 'url';
  * leak in, whatever form the surrounding code takes.
  */
 
-// The test runs from `out/`, but the sources under audit live in `src/` —
-// resolve up to the repository root and back down, the same way the E2E
-// harness resolves its committed fixtures.
-const e2eRoot = fileURLToPath(new URL('../../../../../../../../src/vs/platform/agentHost/test/node/e2e/', import.meta.url));
+// The test runs from `out/`, but the sources under audit live in `src/`. The
+// module URL's depth is not stable across test loaders (the Electron unit
+// runner rewrites it), so locate the repository root by walking up from this
+// module until the audited source tree appears, falling back to the working
+// directory the test runners are documented to use.
+function resolveE2ESourceRoot(): string {
+	const marker = join('src', 'vs', 'platform', 'agentHost', 'test', 'node', 'e2e');
+	let dir = dirname(fileURLToPath(import.meta.url));
+	for (let depth = 0; depth < 16; depth++) {
+		const candidate = join(dir, marker);
+		if (existsSync(candidate)) {
+			return candidate;
+		}
+		const parent = dirname(dir);
+		if (parent === dir) {
+			break;
+		}
+		dir = parent;
+	}
+	const fromCwd = join(process.cwd(), marker);
+	if (existsSync(fromCwd)) {
+		return fromCwd;
+	}
+	throw new Error(`cannot locate ${marker} from ${fileURLToPath(import.meta.url)} or ${process.cwd()}`);
+}
+
+const e2eRoot = resolveE2ESourceRoot();
 
 /** Matches a static import or require specifier that resolves into the host's `node/` implementation layer. */
 const forbiddenImport = /(?:from\s+|require\()\s*'[^']*\/node\/[^']*'/;

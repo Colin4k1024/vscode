@@ -447,9 +447,15 @@ import { COPILOT_CONFIG } from './copilotTestConfiguration.js';
 				broken_probe_server: { command: process.execPath, args: [probeServerScript] },
 			}, createdSessions);
 
-			// The failing server must not block the turn.
-			const result = await driveTurnToCompletion(client, sessionUri, 'turn-b16', 'Say exactly "hello" and nothing else', 2);
-			assert.strictEqual(result.responseText, 'hello');
+			// The client-plugin sync races the first turn, so drive two turns:
+			// whichever order the sync lands in, the second turn's send restarts
+			// the codex thread with the plugin's MCP server in its config, which
+			// spawns the broken binary and must surface the failure. Neither turn
+			// may be blocked by the failing server.
+			const first = await driveTurnToCompletion(client, sessionUri, 'turn-b16', 'Say exactly "hello" and nothing else', 2);
+			assert.strictEqual(first.responseText, 'hello');
+			const second = await driveTurnToCompletion(client, sessionUri, 'turn-b16-followup', 'Say exactly "hello" and nothing else', 3);
+			assert.strictEqual(second.responseText, 'hello');
 
 			// The failure surfaces through the plugin child's state: it flips to
 			// `error` with the documented error type via

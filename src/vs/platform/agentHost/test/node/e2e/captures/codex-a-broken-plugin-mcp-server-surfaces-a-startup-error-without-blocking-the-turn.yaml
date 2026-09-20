@@ -1,10 +1,26 @@
 version: 1
 dialect: responses
+# Two turns: the first lets the client-plugin sync land wherever it lands; the
+# second turn's send then restarts the codex thread with the plugin's (broken)
+# MCP server in its config either way, so the failure is always exercised.
 exchanges:
   - request:
       model: gpt-5.3-codex
       system: ${system}
       messages:
+        - role: user
+          content: Say exactly "hello" and nothing else
+    response:
+      content: hello
+      stopReason: end_turn
+  - request:
+      model: gpt-5.3-codex
+      system: ${system}
+      messages:
+        - role: user
+          content: Say exactly "hello" and nothing else
+        - role: assistant
+          content: hello
         - role: user
           content: Say exactly "hello" and nothing else
     response:

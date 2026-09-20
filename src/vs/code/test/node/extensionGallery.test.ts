@@ -5,7 +5,6 @@
 
 import assert from 'assert';
 import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/common/utils.js';
 
@@ -19,9 +18,10 @@ suite('extension gallery (D15)', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
 
-	const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..');
-	const base = JSON.parse(readFileSync(join(repoRoot, 'product.json'), 'utf8')) as Record<string, unknown>;
-	const overlay = JSON.parse(readFileSync(join(repoRoot, 'product', 'product.json'), 'utf8')) as Record<string, unknown>;
+	const repoRootUrl = new URL('../../../../../', import.meta.url);
+	const readRepoFile = (rel: string) => readFileSync(fileURLToPath(new URL(rel, repoRootUrl)), 'utf8');
+	const base = JSON.parse(readRepoFile('product.json')) as Record<string, unknown>;
+	const overlay = JSON.parse(readRepoFile('product/product.json')) as Record<string, unknown>;
 
 	// Mirror scripts/apply-mixin.sh merge semantics (overlay wins; null deletes).
 	function merged(): Record<string, unknown> {
@@ -69,19 +69,28 @@ suite('extension gallery (D15)', () => {
 		}
 	});
 
-	test('the egress audit fails when the gallery is removed from the mixin', () => {
+	test('pins the gallery-presence assertion (G9 gate) in the egress audit and beta gates', () => {
+		// Text pin, not a behavioral execution: the behavioral half was verified
+		// at review time (deleting the overlay key makes both scripts exit 1).
 		// G9 regression gate: scripts/audit-network-egress.sh must contain the
 		// gallery-presence assertion — an `else` branch on the gallery-exists
 		// check that errors when the merged configuration has no
 		// extensionsGallery. Deleting the mixin key without deleting that
 		// assertion must stay a CI failure. The beta-gates script mirrors the
 		// same gate and is pinned here too.
-		const audit = readFileSync(join(repoRoot, 'scripts', 'audit-network-egress.sh'), 'utf8');
-		assert.ok(audit.includes('merged product.json has no extensionsGallery'),
+		const audit = readRepoFile('scripts/audit-network-egress.sh');
+		const failureText = 'merged product.json has no extensionsGallery';
+		const failureIdx = audit.indexOf(failureText);
+		assert.ok(failureIdx !== -1,
 			'audit-network-egress.sh must fail when the merged product.json has no extensionsGallery (G9 regression gate)');
-		assert.ok(/}\s*else\s*{[^}]*merged product\.json has no extensionsGallery/s.test(audit),
-			'the gallery-presence failure must live in the else branch of the gallery-exists check, not just anywhere in the script');
-		const betaGates = readFileSync(join(repoRoot, 'scripts', 'verify-beta-gates.sh'), 'utf8');
+		// The failure must live in the else branch of the gallery-exists check
+		// (positionally: after `if (gallery) {` and after its `} else {`),
+		// not just anywhere in the script.
+		const ifIdx = audit.indexOf('if (gallery) {');
+		const elseIdx = audit.lastIndexOf('} else {', failureIdx);
+		assert.ok(ifIdx !== -1 && elseIdx > ifIdx && failureIdx > elseIdx,
+			'the gallery-presence failure must live in the else branch of the if (gallery) check, not just anywhere in the script');
+		const betaGates = readRepoFile('scripts/verify-beta-gates.sh');
 		assert.ok(betaGates.includes('GATE FAILED: effective product.json has no extensionsGallery'),
 			'verify-beta-gates.sh must hard-fail when the effective product.json has no extensionsGallery (D15-06: both presence assertions are removed together on a deliberate rollback)');
 	});
@@ -89,8 +98,8 @@ suite('extension gallery (D15)', () => {
 	test('Open VSX is not on the network-egress denylist', () => {
 		// scripts/audit-network-egress.sh is denylist-based; the gallery host
 		// must stay off it for the audit to remain green.
-		const audit = readFileSync(join(repoRoot, 'scripts', 'audit-network-egress.sh'), 'utf8');
-		assert.ok(!audit.includes("'open-vsx.org'") && !audit.includes('"open-vsx.org"'),
+		const audit = readRepoFile('scripts/audit-network-egress.sh');
+		assert.ok(!/["']open-vsx\.org["']/.test(audit),
 			'open-vsx.org must not be added to DENYLIST_HOSTS');
 	});
 });

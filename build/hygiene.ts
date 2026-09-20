@@ -96,9 +96,12 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 			// ColinCode mixin exemption (D15): the upstream product.json must not
 			// carry a gallery, but with the mixin applied the working-tree
 			// product.json legitimately carries the overlay's Open VSX config.
-			// Accept exactly that value; anything else (e.g. an MS Marketplace
-			// URL edited in directly) still fails. The committed upstream file
-			// is separately pinned pristine by scripts/check-product-json-pristine.sh.
+			// Accept exactly that value, and only while the file differs from
+			// HEAD — a COMMITTED gallery in product.json (someone committing the
+			// applied mixin) must still fail here, since
+			// check-product-json-pristine.sh compares against HEAD and cannot
+			// catch that. Anything else (e.g. an MS Marketplace URL edited in
+			// directly) also fails.
 			let overlayGallery: unknown;
 			try {
 				// file.path is the root product.json being scanned; the mixin
@@ -107,7 +110,8 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 			} catch {
 				overlayGallery = undefined;
 			}
-			if (!overlayGallery || JSON.stringify(product.extensionsGallery) !== JSON.stringify(overlayGallery)) {
+			const committedToHead = cp.spawnSync('git', ['diff', '--quiet', 'HEAD', '--', file.relative], { cwd: path.dirname(file.path) }).status === 0;
+			if (committedToHead || !overlayGallery || JSON.stringify(product.extensionsGallery) !== JSON.stringify(overlayGallery)) {
 				console.error(`product.json: Contains 'extensionsGallery'`);
 				errorCount++;
 			}

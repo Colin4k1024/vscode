@@ -1,7 +1,7 @@
 # D15 第二轮实测日志摘录（complement PR，2026-09-20）
 # 环境：dev 形态（scripts/code.sh + mixin 应用），macOS arm64；profile: /tmp/code-oss-dev-20260920-201733-48778-chGgv6
 
-## 1. 安装（sharedprocess.log，首轮分支构建）
+## 1. 安装（sharedprocess.log，run1 补充 PR 第一轮分支构建）
 2026-09-20 20:25:17.615 [info] Getting Manifest... redhat.vscode-yaml
 2026-09-20 20:25:18.974 [info] Installing extension: redhat.vscode-yaml {"isMachineScoped":false,"installPreReleaseVersion":false,"pinned":false,"profileLocation":{"$mid":1,"external":"vscode-userdata:/tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/extensions.json","path":"/tmp/code-oss-dev-20260920-201733-48778-chGgv6/user-data/extensions/extensions.json","scheme":"vscode-userdata"},"isBuiltin":false,"isApplicationScoped":false,"productVersion":{"version":"1.139.0"}}
 2026-09-20 20:25:20.412 [error] Could not load vsce-sign module Cannot find package '@vscode/vsce-sign' imported from /Users/jiafan/Desktop/poc/vscode/.build/worktrees/d15x/out/vs/platform/extensionManagement/node/extensionSignatureVerificationService.js

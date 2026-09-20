@@ -153,13 +153,14 @@ jobs:
         # (extensionGallery Open VSX ruling + G9 presence gate,
         # agentsWindowStartup empty sessions allow-list) — pr.yml runs the full
         # suite on Microsoft's 1ES pool and never schedules on this fork, so
-        # baseline is the only gate that can hold these pins. Explicit file
-        # paths, not brace globs: file-level braces get mangled through
-        # `npm run` arg forwarding.
+        # baseline is the only gate that can hold these pins. `--run` with the
+        # source path (not --runGlob): the runner resolves the file directly
+        # and fails loudly when it is missing, while an unmatched glob passes
+        # silently with 0 tests.
         run: |
           npm run test-node -- --runGlob "vs/platform/agentHost/test/node/**/*.test.js"
-          npm run test-node -- --runGlob "vs/code/test/node/extensionGallery.test.js"
-          npm run test-node -- --runGlob "vs/code/test/node/agentsWindowStartup.test.js"
+          npm run test-node -- --run src/vs/code/test/node/extensionGallery.test.ts
+          npm run test-node -- --run src/vs/code/test/node/agentsWindowStartup.test.ts
 
   agent-host-e2e:
     name: Agent Host E2E (deterministic replay)

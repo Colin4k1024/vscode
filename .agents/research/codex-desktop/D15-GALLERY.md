@@ -79,7 +79,7 @@
 
 ## D15-06 VSIX 本地安装兜底（回滚权威口径：本节为准）
 
-- Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键——自补充 PR 起还须同删 `scripts/audit-network-egress.sh` 与 `scripts/verify-beta-gates.sh` 中的 gallery 存在性断言，否则 CI/打包门禁红，属有意的显式回滚门）后回到"无市场"状态，
+- Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键——自补充 PR 起还须**同删**：① `scripts/audit-network-egress.sh` 与 ② `scripts/verify-beta-gates.sh` 中的 gallery 存在性断言，③ `src/vs/code/test/node/extensionGallery.test.ts` 中的 overlay pin / merged pin 两个 test（否则这两条随 baseline CI 的 test-node 步骤报红），④ `.github/workflows/codex-desktop-baseline.yml` 中该测试文件的 `--run` 行。缺任一即撞上有意的显式回滚门）后回到"无市场"状态，
   仍可通过 `--install-extension <path-to.vsix>` 或 GUI "Install from VSIX" 安装。
   该路径不依赖 gallery 配置。
 
@@ -212,5 +212,5 @@ explicitly empty allow-list"（首轮已挂）。
 | 运行 | open-vsx.org | openvsx.eclipsecontent.org | MS Marketplace 主机 | 备注 |
 |---|---|---|---|---|
 | run1 搜索+安装（补充 PR 第一轮分支构建） | 201 | 101 | **0** | img.shields.io / raw.githubusercontent.com 均为 readme 内容渲染 |
-| run2 重启 / run3 Agents 窗口 | 10 / 0 | 1 / 0 | **0** | 重启轮为扩展更新检查；Agents 窗口零 gallery 请求 |
+| run2 重启 / run3 Agents 窗口 | 10 / 0 | 1 / 0 | **0** | 重启轮为扩展更新检查；Agents 窗口零 gallery 请求。run1/run2 亦各含 4 次 `main.vscode-cdn.net`（同 run4 注的 dev-only copilot 归因，工件脚注总述） |
 | run4 main 合并态复验 | 49 | 17 | **0** | 含 4 次 `main.vscode-cdn.net/extensions/copilotChat.json`——dev 形态在仓 extensions/copilot 发出（D08 门禁其不进产物），非出厂行为 |

@@ -248,6 +248,21 @@ const MCP_TOOL_APPROVAL_ANSWER_DECLINE = '__codex_mcp_decline__';
  */
 const CODEX_RESPONSES_ENDPOINT = '/responses';
 const CODEX_COPILOT_MODEL_PROVIDER = 'vscode-proxy';
+
+/**
+ * Whether `@vscode/copilot-api` is shipped in this build. The branded
+ * product sets `excludeCopilotFromPackaging` (D10 section 5 hard block),
+ * which strips the package — every CAPI-backed path would reject with the
+ * D10 error from `loadCopilotApi()`.
+ *
+ * A module-level function (not a method) so the `_startRawConnection`
+ * harness — a plain object without the class prototype — gets the same
+ * answer. An absent product service is not the branded build: CAPI paths
+ * stay available (dev/default behavior).
+ */
+function copilotApiShipped(productService: IProductService | undefined): boolean {
+	return productService?.excludeCopilotFromPackaging !== true;
+}
 const CODEX_COPILOT_MODEL_GROUP = 'copilot';
 const CODEX_OPENAI_MODEL_PROVIDER = 'openai';
 const CODEX_MODEL_SELECTION_PREFIX = '@provider=';
@@ -1655,10 +1670,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	 * backoff on every launch), and never start the CAPI proxy.
 	 */
 	private get _copilotApiShipped(): boolean {
-		// `?.`: some unit-test harnesses construct the agent without an
-		// IProductService at all — an absent product service is not the
-		// branded build, so CAPI paths stay available there.
-		return this._productService?.excludeCopilotFromPackaging !== true;
+		return copilotApiShipped(this._productService);
 	}
 
 	getProtectedResources(): ProtectedResourceMetadata[] {
@@ -2719,7 +2731,10 @@ export class CodexAgent extends Disposable implements IAgent {
 		// already undefined here; the check is defense in depth.
 		const githubToken = this._githubToken;
 		let proxyHandle: ICodexProxyHandle | undefined;
-		if (githubToken && this._copilotApiShipped) {
+		// NB: the bare `copilotApiShipped(...)` call, not the getter — the
+		// proxy-gating tests invoke `_startRawConnection` with a plain-object
+		// harness as `this`, on which the prototype getter does not exist.
+		if (githubToken && copilotApiShipped(this._productService)) {
 			const proxyStart = this._codexProxyService.start(githubToken);
 			try {
 				proxyHandle = await raceCancellationError(proxyStart, token);

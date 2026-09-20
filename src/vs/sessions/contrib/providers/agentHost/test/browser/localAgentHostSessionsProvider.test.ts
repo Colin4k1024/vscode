@@ -1486,6 +1486,51 @@ suite('LocalAgentHostSessionsProvider', () => {
 		assert.strictEqual(provider.getSessions().length, 0);
 	}));
 
+	test('a mid-life listSessions failure keeps the last good snapshot; only a successful empty list clears it (D13 C3.11)', () => runWithFakedTimers<void>({ useFakeTimers: true }, async () => {
+		agentHost.addSession(createSession('keep-1', { summary: 'Kept' }));
+
+		const provider = createProvider(disposables, agentHost);
+		const changes: ISessionChangeEvent[] = [];
+		disposables.add(provider.onDidChangeSessions(e => changes.push(e)));
+		await timeout(0);
+		assert.deepStrictEqual(provider.getSessions().map(s => s.title.get()), ['Kept']);
+
+		// Mid-life transport failure: the cached snapshot must survive and no
+		// removal may fire — a failed refresh is not a deletion delta.
+		agentHost.failListSessionsCount = 1;
+		agentHost.fireAction({
+			channel: buildDefaultChatUri(AgentSession.uri('copilotcli', 'keep-1').toString()),
+			action: { type: ActionType.ChatTurnComplete },
+			serverSeq: 1,
+			origin: undefined,
+		} as ActionEnvelope);
+		await timeout(0);
+		assert.deepStrictEqual({
+			removed: changes.flatMap(c => c.removed.map(s => s.title.get())),
+			cachedTitles: provider.getSessions().map(s => s.title.get()),
+		}, {
+			removed: [],
+			cachedTitles: ['Kept'],
+		});
+
+		// A successful, authoritatively empty list clears the snapshot.
+		agentHost.stopListingSessions('keep-1');
+		agentHost.fireAction({
+			channel: buildDefaultChatUri(AgentSession.uri('copilotcli', 'keep-1').toString()),
+			action: { type: ActionType.ChatTurnComplete },
+			serverSeq: 2,
+			origin: undefined,
+		} as ActionEnvelope);
+		await timeout(0);
+		assert.deepStrictEqual({
+			removed: changes.flatMap(c => c.removed.map(s => s.title.get())),
+			cachedTitles: provider.getSessions().map(s => s.title.get()),
+		}, {
+			removed: ['Kept'],
+			cachedTitles: [],
+		});
+	}));
+
 	test('retries with backoff until listSessions succeeds', () => runWithFakedTimers<void>({ useFakeTimers: true }, async () => {
 		// First two attempts fail, third succeeds. Verifies the retry keeps
 		// re-arming rather than giving up after a single failed attempt.

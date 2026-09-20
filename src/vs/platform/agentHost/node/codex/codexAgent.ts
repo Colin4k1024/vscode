@@ -1247,8 +1247,12 @@ export class CodexAgent extends Disposable implements IAgent {
 	 * on the wrapper's identity would let the same resources be disposed twice.
 	 */
 	private readonly _disposedConnections = new WeakSet<IConnectionReady['client']>();
-	/** Serializes persistent startup behind the one-off account probe. */
-	private readonly _startupAccountProbe = new DeferredPromise<void>();
+	/**
+	 * Serializes persistent startup behind the one-off account probe. Not
+	 * `readonly`: tests reopen the probe window by swapping in a fresh
+	 * deferred (see the #38 probe-window race tests).
+	 */
+	private _startupAccountProbe = new DeferredPromise<void>();
 	/** Cancels startup before a partially initialized one-off process can outlive this agent. */
 	private readonly _startupAccountProbeCancellation = this._register(new CancellationTokenSource());
 	/** One-off account/catalogue actions share one process at a time. */
@@ -4745,6 +4749,23 @@ export class CodexAgent extends Disposable implements IAgent {
 				await this.refreshModels();
 			}
 			this._throwIfShuttingDown();
+			// #38: `_defaultModelProvider` reads the OpenAI account state
+			// synchronously, so a creation landing inside the startup probe
+			// window would pin the chat to the Copilot provider before the probe
+			// settles — and restore would then stick to that mis-pin. When the
+			// credential-aware policy flag is on, the account is still unknown,
+			// and the creation will consult the default provider (no explicit
+			// model requested), wait for the one-off probe first. The probe runs
+			// on its own raw connection and never routes through
+			// `_ensureConnection` or this chat lifecycle sequencer, so awaiting
+			// it here cannot deadlock; explicit model selections never consult
+			// the default provider and keep their latency.
+			if (!options?.model
+				&& this._openAIAccountState.status === 'unknown'
+				&& this._configurationService.getRootValue(agentHostCustomizationConfigSchema, AgentHostConfigKey.CodexPreferOpenAIProvider) === true) {
+				await this._startupAccountProbe.p;
+				this._throwIfShuttingDown();
+			}
 			const adoptedSessionId = this._hasSessionBacking(owningSessionId) ? undefined : owningSessionId;
 			const session = options?.fork
 				? await this._forkChatBacking(options.fork, options, adoptedSessionId, target)

@@ -39,6 +39,7 @@ import { createArtifactServerToolGroup } from '../../../node/shared/artifactServ
 import { sessionServerToolDefinitions } from '../../../node/shared/sessionServerTools.js';
 import { AgentConfigurationService, IAgentConfigurationService } from '../../../node/agentConfigurationService.js';
 import { AgentHostWorkspaceTrustConfigKey } from '../../../common/agentHostSchema.js';
+import { AgentHostConfigKey } from '../../../common/agentHostCustomizationConfig.js';
 import { IAgentHostWorktreeIsolation, NullAgentHostWorktreeIsolation } from '../../../node/shared/worktreeIsolation.js';
 import { IAgentHostCustomizationEnablementService } from '../../../node/agentHostCustomizationEnablementService.js';
 import { AgentHostStateManager, IAgentHostStateManager } from '../../../node/agentHostStateManager.js';
@@ -1228,6 +1229,135 @@ suite('CodexAgent createChat', () => {
 			agent.refreshModels = originalRefreshModels;
 			agent['_startChatBacking'] = originalStartChatBacking;
 		}
+	});
+
+	test('creation waits out the startup account probe before pinning the default provider (#38)', async () => {
+		const agent = await createAgent(disposables);
+		const sessionUri = AgentSession.uri('codex', 'session-probe-window-create');
+		const chat = URI.parse(buildDefaultChatUri(sessionUri));
+		const folder = URI.file('/repo/probe-window-create');
+
+		// Dual credentials: `createAgent` already authenticated a GitHub token;
+		// reopen the probe window with the OpenAI account still unresolved.
+		agent['_configurationService'].updateRootConfig({ [AgentHostConfigKey.CodexPreferOpenAIProvider]: true });
+		const copilotEntry = agent['_models'].get()[0];
+		const openAIModelId = toCodexModelSelectionId('openai', 'gpt-test');
+		// Drain the original (already-completed) probe before swapping in the
+		// pending one, so the test never depends on implicit microtask timing.
+		await agent['_startupAccountProbe'].p;
+		// Copilot first in raw catalog order: without the probe wait the default
+		// provider would resolve to Copilot here.
+		agent['_models'].set([copilotEntry, { ...copilotEntry, id: openAIModelId }], undefined);
+		const probe = new DeferredPromise<void>();
+		agent['_startupAccountProbe'] = probe;
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'unknown' };
+
+		const create = createSessionBackedChat(agent, chat, { configurationResource: sessionUri, resource: chat }, {
+			workingDirectories: [folder],
+		});
+
+		// The creation must not register a backing (i.e. resolve its model)
+		// while the probe is pending.
+		const early = await Promise.race([
+			create.then(() => 'created', () => 'created'),
+			new Promise<string>(resolve => setTimeout(() => resolve('pending'), 25)),
+		]);
+		assert.strictEqual(early, 'pending');
+		assert.strictEqual(agent['_sessions'].size, 0);
+
+		// The probe lands with an OpenAI credential: the default provider resolves
+		// to the OpenAI-native model despite the Copilot-first catalog order.
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'signedIn', authType: 'chatgpt', email: 'person@example.com' };
+		await probe.complete(undefined);
+		const result = await create;
+
+		assert.deepStrictEqual(result.providerData && JSON.parse(result.providerData), {
+			sessionId: AgentSession.id(sessionUri),
+			model: { id: openAIModelId },
+		});
+	});
+
+	test('creation does not wait for the startup probe when the default-provider policy flag is off (#38)', async () => {
+		const agent = await createAgent(disposables);
+		const sessionUri = AgentSession.uri('codex', 'session-probe-window-flag-off');
+		const chat = URI.parse(buildDefaultChatUri(sessionUri));
+		agent['_configurationService'].updateRootConfig({ [AgentHostConfigKey.CodexPreferOpenAIProvider]: false });
+		const probe = new DeferredPromise<void>();
+		agent['_startupAccountProbe'] = probe;
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'unknown' };
+
+		// The legacy Copilot-first default applies immediately, probe or not.
+		const result = await createSessionBackedChat(agent, chat, { configurationResource: sessionUri, resource: chat }, {
+			workingDirectories: [URI.file('/repo/probe-window-flag-off')],
+		});
+		assert.deepStrictEqual(result.providerData && JSON.parse(result.providerData), {
+			sessionId: AgentSession.id(sessionUri),
+			model: { id: COPILOT_TEST_MODEL },
+		});
+		await probe.complete(undefined);
+	});
+
+	test('creation with an explicit model selection does not wait for the startup probe (#38)', async () => {
+		const agent = await createAgent(disposables);
+		const sessionUri = AgentSession.uri('codex', 'session-probe-window-explicit-model');
+		const chat = URI.parse(buildDefaultChatUri(sessionUri));
+		agent['_configurationService'].updateRootConfig({ [AgentHostConfigKey.CodexPreferOpenAIProvider]: true });
+		const probe = new DeferredPromise<void>();
+		agent['_startupAccountProbe'] = probe;
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'unknown' };
+
+		// An explicit selection never consults the default provider, so it must
+		// not pay the probe latency either.
+		const result = await createSessionBackedChat(agent, chat, { configurationResource: sessionUri, resource: chat }, {
+			workingDirectories: [URI.file('/repo/probe-window-explicit-model')],
+			model: { id: COPILOT_TEST_MODEL },
+		});
+		assert.deepStrictEqual(result.providerData && JSON.parse(result.providerData), {
+			sessionId: AgentSession.id(sessionUri),
+			model: { id: COPILOT_TEST_MODEL },
+		});
+		await probe.complete(undefined);
+	});
+
+	test('creation falls back to the Copilot default when the probe settles without an OpenAI account (#38)', async () => {
+		const agent = await createAgent(disposables);
+		const sessionUri = AgentSession.uri('codex', 'session-probe-settles-signed-out');
+		const chat = URI.parse(buildDefaultChatUri(sessionUri));
+		agent['_configurationService'].updateRootConfig({ [AgentHostConfigKey.CodexPreferOpenAIProvider]: true });
+		await agent['_startupAccountProbe'].p;
+		const probe = new DeferredPromise<void>();
+		agent['_startupAccountProbe'] = probe;
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'unknown' };
+
+		const create = createSessionBackedChat(agent, chat, { configurationResource: sessionUri, resource: chat }, {
+			workingDirectories: [URI.file('/repo/probe-settles-signed-out')],
+		});
+		// The probe settles WITHOUT an OpenAI account (failed/timed out): the
+		// default falls back to the Copilot-proxied model rather than erroring.
+		await probe.complete(undefined);
+		const result = await create;
+		assert.deepStrictEqual(result.providerData && JSON.parse(result.providerData), {
+			sessionId: AgentSession.id(sessionUri),
+			model: { id: COPILOT_TEST_MODEL },
+		});
+	});
+
+	test('disposing while creation waits on the probe rejects the create and rolls back the config scope (#38)', async () => {
+		const agent = await createAgent(disposables);
+		const sessionUri = AgentSession.uri('codex', 'session-probe-window-dispose');
+		const chat = URI.parse(buildDefaultChatUri(sessionUri));
+		agent['_configurationService'].updateRootConfig({ [AgentHostConfigKey.CodexPreferOpenAIProvider]: true });
+		await agent['_startupAccountProbe'].p;
+		agent['_startupAccountProbe'] = new DeferredPromise<void>();
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'unknown' };
+
+		const create = createSessionBackedChat(agent, chat, { configurationResource: sessionUri, resource: chat }, {
+			workingDirectories: [URI.file('/repo/probe-window-dispose')],
+		});
+		const rejected = create.then(() => 'created', () => 'rejected');
+		agent.dispose();
+		assert.strictEqual(await rejected, 'rejected', 'dispose must interrupt a probe-waiting create');
+		assert.strictEqual(agent['_sessions'].size, 0, 'no backing may be left half-registered');
 	});
 
 	test('dispose waits for an in-flight create of the same chat', async () => {

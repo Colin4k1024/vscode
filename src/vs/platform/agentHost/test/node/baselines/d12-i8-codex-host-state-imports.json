@@ -1,0 +1,4 @@
+{
+	"$comment": "D12/I8 baseline: files under src/vs/platform/agentHost/node/codex/** allowed to reference AgentHostStateManager (import or type). AGENTS.md §8 documented this slice as not-yet-converted; as of D12 the set is EMPTY (conversion complete). Any new reference fails the guard; shrinking the set requires updating this file.",
+	"allowedViolations": []
+}

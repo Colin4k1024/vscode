@@ -1,0 +1,11 @@
+{
+	"$comment": "D12/I4 baseline: methods of agentHostStateManager.ts currently allowed to write _chatEntries. The documented invariant names addChat/registerRestoredChatSummary/removeChat; removal funnels through _invalidateChatEntry and the remaining entries are historical. Adding a NEW writer method fails the guard; removing one also fails so the baseline shrinks as the code converges.",
+	"allowedWriters": [
+		"_ensureDefaultChat",
+		"_invalidateChatEntry",
+		"_synchronizeChatEntries",
+		"addChat",
+		"dispose",
+		"registerRestoredChatSummary"
+	]
+}

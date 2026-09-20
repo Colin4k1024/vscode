@@ -1255,6 +1255,16 @@ export class AgentHostE2EServerLease {
 		}
 	}
 
+	/**
+	 * Run the strict replay checks for a dedicated lease. The shared lease gets
+	 * this per test on release, but a dedicated lease's {@link dispose} closes
+	 * the proxy without checking — call this first so a request-side mismatch
+	 * cannot pass silently.
+	 */
+	verifyReplay(): void {
+		this._server?.capiReplay?.assertNoReplayMismatches();
+	}
+
 	/** Tear down a shared server at the end of the suite (no-op for per-test). */
 	async dispose(): Promise<void> {
 		const dataDir = this._dataDir;

@@ -350,6 +350,7 @@ defineAgentHostE2ETests(CODEX_CONFIG);
 				c.close();
 			}
 		} finally {
+			bogusLease.verifyReplay();
 			await bogusLease.dispose();
 		}
 	});
@@ -514,6 +515,7 @@ defineAgentHostE2ETests(CODEX_CONFIG);
 			} else {
 				process.env['CODEX_HOME'] = previous;
 			}
+			probeLease.verifyReplay();
 			await probeLease.dispose();
 		}
 

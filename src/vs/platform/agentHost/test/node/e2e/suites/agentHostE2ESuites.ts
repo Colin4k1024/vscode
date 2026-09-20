@@ -157,9 +157,11 @@ function defineSuite(config: IAgentHostE2EProviderConfig, options: IDefineOption
 
 		defineAutomationsTests(context);
 
+		// Self-gates on the conformance tier internally (single guard, no double gating).
+		defineReplayStrictnessTests(context);
+
 		// Suites that contain only conformance-tier scenarios.
 		if (options.tier === 'conformance') {
-			defineReplayStrictnessTests(context);
 			defineHostFeaturesTests(context);
 			defineStateOperationsTests(context);
 			defineClientFilesystemTests(context);

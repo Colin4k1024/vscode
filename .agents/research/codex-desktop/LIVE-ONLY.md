@@ -27,9 +27,9 @@
 | 场景 | replay 不可表达的原因 | 单测兜底 |
 |---|---|---|
 | B2：`product.agentSdks.codex` 缺失（出厂构建） | 这是构建期 product 配置缺失，e2e harness 无法从外部摘除 product.json 字段；downloader 的 `no product.agentSdks.codex configured` 路径与 `AgentChatMigrationDeferred` 只能在内层触发。 | `test/node/agentService.test.ts`（migration deferred） |
-| B7：连接被替换（`CodexConnectionReplacedError`） | generation 不匹配的迟到结果丢弃是 host↔app-server 连接管理的内部竞态，AHP 外部无触发面。 | `test/node/codex/codexAgent.test.ts`、`codexAppServerClient.test.ts` |
+| B7：连接被替换（`CodexConnectionReplacedError`） | generation 不匹配的迟到结果丢弃是 host↔app-server 连接管理的内部竞态，AHP 外部无触发面。 | `test/node/codex/codexCreateChat.test.ts`（`drops thread history returned by a replaced app-server` 等）、`codexAppServerClient.test.ts`（迟到响应丢弃） |
 | B8：JSON-RPC `-32001 Server overloaded` 重试 | 错误发生在 host↔app-server 的 JSON-RPC 链路上；e2e 起的是真实 app-server 子进程，无法注入该错误帧。 | `test/node/codex/codexAppServerClient.test.ts`（-32001 用例） |
-| B17：elicitation 未知语义输入（`openai/form`） | host 在 `initialize` 未声明 `mcpServerOpenaiFormElicitation` capability，codex 因此对 `openai/form` elicitation 直接内部 decline，**从不转发给 host**——replay 层没有可观察的触发面；映射逻辑（message-only request、不返回 JSON-RPC error、等待 decline/cancel）由映射器单测覆盖。 | `test/node/codex/codexElicitationMapper.test.ts` |
+| B17：elicitation 未知语义输入（`openai/form`） | host 在 `initialize` 未声明 `mcpServerOpenaiFormElicitation` capability，codex 因此对 `openai/form` elicitation 直接内部 decline，**从不转发给 host**——replay 层没有可观察的触发面；decline/cancel 映射由映射器单测覆盖（`mode: form`/`url`）；`openai/form` 的 message-only 兜底分支无单测（capability 未声明，replay 与单测均无可观察面）。 | `test/node/codex/codexElicitationMapper.test.ts` |
 | B28：磁盘满 / `agent-host.db` 写失败 | `_persistDefaultChatBacking` 的 blob 写失败注入需要控制 host 进程内的文件服务；e2e 的隔离目录语义不支持精确制造"blob 写失败但 marker 写成功"的部分失败。 | `test/node/agentService.test.ts` |
 
 ## C. 已由 replay 矩阵覆盖的 B 段场景（本批次新增/确认）

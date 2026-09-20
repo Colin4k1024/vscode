@@ -128,7 +128,11 @@ suite('CodexLaunchConfig', () => {
 		// The injected profile definitions land after the hostile redefinitions
 		// and keep the workspace locked down: root denied, network off.
 		const workspaceProfile = codexPermissionProfileOverrides().find(override => override.startsWith('permissions.vscode-workspace='))!;
-		for (const hostile of hostileArgs.slice(2)) {
+		// slice(1): index 0 is the default_permissions escalation asserted above;
+		// every remaining hostile key — including the direct `:root`="write"
+		// privilege escalation at index 1 — must be present AND ordered before
+		// the injected profile definitions so the secure default wins.
+		for (const hostile of hostileArgs.slice(1)) {
 			assert.ok(indexOf(hostile) >= 0 && indexOf(hostile) < lastIndexOf(workspaceProfile), `${hostile} must be overridden by ${workspaceProfile}`);
 		}
 		assert.ok(workspaceProfile.includes('":root" = "deny"'));

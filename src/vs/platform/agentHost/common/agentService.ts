@@ -188,6 +188,36 @@ export const AgentHostAllowSignedOutWhenUsableSettingId = 'chat.agentHost.allowS
  */
 export const AgentHostAllowSignedOutWhenUsableProductDefault = true;
 
+/**
+ * Workbench setting id gating the Codex default-provider policy (D05/#7).
+ * When `true`, Codex sessions that never received an explicit model selection
+ * default to the OpenAI-native provider whenever the Codex account is signed in
+ * (ChatGPT subscription or API key), falling back to the Copilot `vscode-proxy`
+ * provider only when no OpenAI credential exists. When `false`, the legacy
+ * Copilot-first default is restored. Runtime rollback lever for the default
+ * provider change.
+ *
+ * Mirrors {@link AgentHostAllowSignedOutWhenUsableSettingId}: the workbench
+ * registers the setting and forwards it into the agent-host root config under
+ * `AgentHostConfigKey.CodexPreferOpenAIProvider`, which the Codex agent reads
+ * node-side via `getRootValue`.
+ */
+export const AgentHostCodexPreferOpenAIProviderSettingId = 'chat.agentHost.codexPreferOpenAIProvider';
+
+/**
+ * Fork product default for {@link AgentHostCodexPreferOpenAIProviderSettingId}
+ * (D05/#7): this product's primary Codex path is OpenAI-native auth, so the
+ * credential-aware default provider is the intended behavior; upstream keeps
+ * the Copilot-first default.
+ *
+ * Single point of truth for both registrations (the workbench configuration
+ * schema and the agent-host root-config schema) so the two defaults cannot
+ * drift; tests import this constant instead of pulling in the registration
+ * modules, whose side effects (command registrations) break the full unit
+ * suite when loaded alongside their own tests.
+ */
+export const AgentHostCodexPreferOpenAIProviderProductDefault = true;
+
 // The Copilot-CLI-specific setting IDs (`customTerminalTool`, `opus48Prompt`,
 // `modelCapabilityOverrides`) live with their root-config keys in
 // `copilotCliConfig.ts`.

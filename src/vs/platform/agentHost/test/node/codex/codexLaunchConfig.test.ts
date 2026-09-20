@@ -106,6 +106,90 @@ suite('CodexLaunchConfig', () => {
 		});
 	});
 
+	test('hostile user config cannot widen the injected sandbox profiles (D05 #7 / AC2 B13)', () => {
+		// A CODEX_HOME config.toml trying to relax `vscode-workspace` shows up as
+		// extra `-c` arguments. Codex applies `-c` overrides in order (last wins),
+		// so every hardening override must land AFTER user-supplied ones.
+		const hostileArgs = [
+			'-c', 'default_permissions=":danger-full-access"',
+			'-c', 'permissions.vscode-workspace.filesystem.":root"="write"',
+			'-c', 'permissions.vscode-workspace.network={ enabled = true }',
+			'-c', 'permissions.vscode-workspace-read-only.filesystem.":root"="write"',
+		];
+		const config = buildCodexLaunchConfig({}, { baseUrl: 'http://127.0.0.1:1234', nonce: 'nonce' }, hostileArgs);
+
+		const indexOf = (needle: string) => config.args.indexOf(needle);
+		const lastIndexOf = (needle: string) => config.args.lastIndexOf(needle);
+
+		// The secure default wins over the hostile `default_permissions`.
+		assert.ok(indexOf('default_permissions=":danger-full-access"') >= 0);
+		assert.ok(indexOf('default_permissions=":danger-full-access"') < lastIndexOf('default_permissions="vscode-workspace"'));
+
+		// The injected profile definitions land after the hostile redefinitions
+		// and keep the workspace locked down: root denied, network off.
+		const workspaceProfile = codexPermissionProfileOverrides().find(override => override.startsWith('permissions.vscode-workspace='))!;
+		for (const hostile of hostileArgs.slice(2)) {
+			assert.ok(indexOf(hostile) >= 0 && indexOf(hostile) < lastIndexOf(workspaceProfile), `${hostile} must be overridden by ${workspaceProfile}`);
+		}
+		assert.ok(workspaceProfile.includes('":root" = "deny"'));
+		assert.ok(workspaceProfile.includes('network = { enabled = false }'));
+	});
+
+	test('read-only and workspace profiles carry the spawn-args sandbox denials (D05 #7 / AC3 D7/D8)', () => {
+		// D7/D8 spawn-args-level assertion: the profiles an agent lands on must
+		// deny (a) writes outside the workspace, (b) writes to sensitive in-tree
+		// files such as `.env`, (c) writes to `~/.codex/config.toml`, and (d)
+		// outbound connections. The read-only profile permits no writes at all;
+		// the workspace profile denies everything outside the workspace roots
+		// (which covers ~/.codex/config.toml) and ships network disabled.
+		const overrides = codexPermissionProfileOverrides();
+		const workspace = overrides.find(override => override.startsWith('permissions.vscode-workspace={'))!;
+		const readOnly = overrides.find(override => override.startsWith('permissions.vscode-workspace-read-only={'))!;
+
+		assert.ok(workspace.includes('":root" = "deny"'), 'writes outside the workspace are denied');
+		assert.ok(workspace.includes('network = { enabled = false }'), 'outbound connections are denied');
+		assert.ok(workspace.includes('extends = ":workspace"'), 'workspace writes stay scoped to the workspace roots');
+
+		// Read-only: extends the workspace profile but re-scopes every workspace
+		// root to read — no write capability remains for `.env` or anything else.
+		assert.ok(readOnly.includes(`extends = "vscode-workspace"`));
+		assert.ok(readOnly.includes('":workspace_roots" = { "." = "read" }'));
+	});
+
+	test('codexPermissionProfile maps every sandbox mode exhaustively, with full access only from an explicit selection (D05 #7 / AC4)', () => {
+		const modes = ['read-only', 'workspace-write', 'danger-full-access'] as const;
+		const mapped = modes.flatMap(mode => [false, true].map(networkAccess => [`${mode}/${networkAccess}`, codexPermissionProfile(mode, networkAccess)] as const));
+		assert.deepStrictEqual(Object.fromEntries(mapped), {
+			'read-only/false': 'vscode-workspace-read-only',
+			'read-only/true': 'vscode-workspace-read-only',
+			'workspace-write/false': 'vscode-workspace',
+			'workspace-write/true': 'vscode-workspace-network',
+			'danger-full-access/false': ':danger-full-access',
+			'danger-full-access/true': ':danger-full-access',
+		});
+		// No implicit path grants full machine access: neither the default
+		// preset nor any network flag reaches `:danger-full-access` without the
+		// explicit `danger-full-access` sandbox mode.
+		assert.ok(!Object.values(Object.fromEntries(mapped.filter(([key]) => !key.startsWith('danger-full-access')))).includes(':danger-full-access'));
+	});
+
+	test('Windows keeps an empty filesystem override and non-Linux denies shared temp access (D05 #7 / AC11)', () => {
+		const windows = codexPermissionProfileOverrides('win32');
+		assert.deepStrictEqual(windows, [
+			'default_permissions="vscode-workspace"',
+			'permissions.vscode-workspace={ extends = ":workspace", network = { enabled = false } }',
+			'permissions.vscode-workspace-network={ extends = "vscode-workspace", network = { enabled = true } }',
+			'permissions.vscode-workspace-read-only={ extends = ":read-only" }',
+		]);
+		// Empty fileSystemOverride: no `filesystem` table (and therefore no
+		// `:slash_tmp` grant) is injected on Windows.
+		assert.ok(windows.every(override => !override.includes('filesystem =') && !override.includes(':slash_tmp')));
+		// Linux keeps its sandbox bootstrap readable; every other platform
+		// denies shared temp access explicitly.
+		assert.ok(codexPermissionProfileOverrides('linux')[1].includes('":slash_tmp" = "read"'));
+		assert.ok(codexPermissionProfileOverrides('darwin')[1].includes('":slash_tmp" = "deny"'));
+	});
+
 	test('resume explicitly binds each session model and provider', () => {
 		assert.deepStrictEqual(buildCodexResumeParams({ modelProvider: 'openai', modelId: 'native-model' }, 'thread-a', {}, undefined, {}, undefined, true), {
 			threadId: 'thread-a',

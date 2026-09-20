@@ -9,7 +9,7 @@ import type { DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { INativeEnvironmentService } from '../../../../../platform/environment/common/environment.js';
-import { CodexSessionConfigKey, collaborationModeKind, getCodexAutonomousSessionConfig, migrateCodexPermissionValues, narrowAdditionalDirectories, narrowApprovalPolicy, narrowBoolean, narrowCodexPermissionsPreset, narrowPersonality, narrowReasoningEffort, narrowReasoningSummary, narrowSandboxMode, narrowWebSearchMode, presetForResolvedPermissions, resolveCodexPermissions, resolveCodexPermissionsPreset } from '../../../node/codex/codexSessionConfigKeys.js';
+import { CODEX_DEFAULT_PERMISSIONS_PRESET, CODEX_PERMISSIONS_PRESETS, CodexSessionConfigKey, collaborationModeKind, getCodexAutonomousSessionConfig, migrateCodexPermissionValues, narrowAdditionalDirectories, narrowApprovalPolicy, narrowBoolean, narrowCodexPermissionsPreset, narrowPersonality, narrowReasoningEffort, narrowReasoningSummary, narrowSandboxMode, narrowWebSearchMode, presetForResolvedPermissions, resolveCodexPermissions, resolveCodexPermissionsPreset } from '../../../node/codex/codexSessionConfigKeys.js';
 import { TestInstantiationService } from '../../../../../platform/instantiation/test/common/instantiationServiceMock.js';
 import { ILogService, NullLogService } from '../../../../../platform/log/common/log.js';
 import { IProductService } from '../../../../../platform/product/common/productService.js';
@@ -167,6 +167,26 @@ suite('codexSessionConfigKeys', () => {
 			{ value: 'auto-review', description: 'Same sandboxed access as Default, but approval requests are routed through the auto-reviewer instead of prompting you.' },
 			{ value: 'full-access', description: 'Codex can edit files outside the workspace and use the internet without asking. Use only when you want full machine access.' },
 		]);
+	});
+
+	test('pins the product permission defaults: no widening, human approver, full access only when explicit (D05 #7)', () => {
+		// Decision 2: the default preset is not widened.
+		assert.strictEqual(CODEX_DEFAULT_PERMISSIONS_PRESET, 'default');
+		assert.deepStrictEqual(CODEX_PERMISSIONS_PRESETS, ['default', 'auto-review', 'full-access']);
+
+		// Decision 3: the default reviewer is the user; auto-review is never
+		// implicit — it requires the explicit `auto-review` preset.
+		const legacyDefaults = { approvalPolicy: 'on-request' as const, sandboxMode: 'workspace-write' as const };
+		assert.strictEqual(resolveCodexPermissions(undefined, legacyDefaults).approvalsReviewer, 'user');
+		assert.strictEqual(resolveCodexPermissions({}, legacyDefaults).approvalsReviewer, 'user');
+		assert.strictEqual(resolveCodexPermissionsPreset(CODEX_DEFAULT_PERMISSIONS_PRESET).approvalsReviewer, 'user');
+
+		// Decision 2/AC4: `danger-full-access` is reachable only through the
+		// explicit `full-access` preset (or a matching legacy axis), never from
+		// defaults or an unknown preset value.
+		assert.strictEqual(resolveCodexPermissions(undefined, legacyDefaults).sandboxMode, 'workspace-write');
+		assert.strictEqual(resolveCodexPermissions({ [CodexSessionConfigKey.PermissionsPreset]: 'yolo' }, legacyDefaults).sandboxMode, 'workspace-write');
+		assert.strictEqual(resolveCodexPermissions({ [CodexSessionConfigKey.PermissionsPreset]: 'full-access' }, legacyDefaults).sandboxMode, 'danger-full-access');
 	});
 
 	test('inverts presets and migrates legacy axes without escalating', () => {

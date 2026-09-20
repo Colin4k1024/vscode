@@ -28,6 +28,7 @@ import type { GuardianWarningNotification } from '../../../node/codex/protocol/g
 import { targetForMcpServer } from '../../../node/shared/customizationEnablementGate.js';
 import { McpCustomizationController, type IMcpCustomizationControllerOptions } from '../../../node/shared/mcpCustomizationController.js';
 import { createGitHubMcpServerConfiguration, getGitHubMcpTools } from '../../../node/shared/githubMcpServer.js';
+import { McpServerType } from '../../../../mcp/common/mcpPlatformTypes.js';
 
 /**
  * Exactly the state `_resolveConversationSession` reads: the provider id it
@@ -93,6 +94,38 @@ interface ICodexGitHubMcpEnabledHarness {
 
 interface ICodexCreationModelHarness {
 	_resolveCreationModel(requested: { readonly id: string } | undefined): { readonly id: string } | undefined;
+}
+
+interface ICodexImageGenerationHarness {
+	_imageGenerationEnabledForModelProvider(modelProvider: string): boolean;
+}
+
+interface ICodexRestoredModelHarness {
+	_modelsRefreshPromise: Promise<void> | undefined;
+	refreshModels(): Promise<void>;
+	_resolveRestoredModel(model: { readonly id: string } | undefined): Promise<{ readonly id: string } | undefined>;
+}
+
+interface ICodexReloadMarkingHarness {
+	_markSessionForReload(session: {
+		needsResume: boolean;
+		unsubscribeBeforeResume: boolean;
+		threadId?: string;
+		hostTurnIdByAppTurnId: Map<string, string>;
+		codexTurnIdByHostTurnId: Map<string, string>;
+	}): void;
+}
+
+interface ICodexResumeSessionHarness {
+	_resumeSession(session: Record<string, unknown>, connection?: unknown): Promise<void>;
+}
+
+interface ICodexMcpMergeHarness {
+	_buildSessionMcpServers(session: {
+		readonly sessionId: string;
+		readonly workingDirectory: URI;
+		readonly agentMergeTurn?: boolean;
+	}): Record<string, ICodexMcpServerConfigJson>;
 }
 
 interface ICodexAuthenticateHarness {
@@ -382,6 +415,10 @@ suite('CodexAgent', () => {
 			_models: observableValue('models', models),
 			_logService: new NullLogService(),
 			_githubToken: token,
+			// D05: no default-provider flag and no OpenAI credential — the legacy
+			// Copilot-first default-provider policy applies.
+			_configurationService: { getRootValue: () => undefined },
+			_openAIAccountState: { usageSource: 'openai', status: 'signedOut' },
 			_gitHubEndpointService: {
 				getCopilotResource: () => ({ resource: 'https://api.github.com/copilot_internal/user' }),
 				getRepoResource: () => ({ resource: 'https://api.github.com' }),
@@ -406,6 +443,291 @@ suite('CodexAgent', () => {
 
 		// With a token the same Copilot default resolves fine.
 		assert.deepStrictEqual(createHarness([copilotModel], 'token')._resolveCreationModel(undefined), { id: copilotModel.id });
+	});
+
+	test('default provider policy prefers OpenAI credentials and falls back to Copilot only without them (D05 #7 / AC1)', () => {
+		const openAIModel = { id: toCodexModelSelectionId('openai', 'gpt-5-codex'), name: 'GPT-5 Codex', provider: 'codex', supportsVision: false };
+		const openAIModel2 = { id: toCodexModelSelectionId('openai', 'gpt-5'), name: 'GPT-5', provider: 'codex', supportsVision: false };
+		const copilotModel = { id: toCodexModelSelectionId('vscode-proxy', 'gpt-5'), name: 'GPT-5 (Copilot)', provider: 'codex', supportsVision: false };
+		const createHarness = (
+			models: readonly typeof openAIModel[],
+			token: string | undefined,
+			accountState: { readonly status: string; readonly authType?: string },
+			preferOpenAI: boolean,
+		): ICodexCreationModelHarness => Object.assign(Object.create(CodexAgent.prototype), {
+			_models: observableValue('models', models),
+			_logService: new NullLogService(),
+			_githubToken: token,
+			_configurationService: { getRootValue: (_schema: unknown, key: string) => key === 'codexPreferOpenAIProvider' ? preferOpenAI : undefined },
+			_openAIAccountState: { usageSource: 'openai', ...accountState },
+			_gitHubEndpointService: {
+				getCopilotResource: () => ({ resource: 'https://api.github.com/copilot_internal/user' }),
+				getRepoResource: () => ({ resource: 'https://api.github.com' }),
+			},
+		}) as ICodexCreationModelHarness;
+
+		// OpenAI credential present (ChatGPT subscription): the default jumps the
+		// Copilot-first catalog order and picks the first OpenAI-native model.
+		assert.deepStrictEqual(
+			createHarness([copilotModel, openAIModel, openAIModel2], 'token', { status: 'signedIn', authType: 'chatgpt' }, true)._resolveCreationModel(undefined),
+			{ id: openAIModel.id },
+		);
+
+		// OpenAI credential present (API key): same policy, and no GitHub token is
+		// demanded for the OpenAI default (B9 core).
+		assert.deepStrictEqual(
+			createHarness([openAIModel], undefined, { status: 'signedIn', authType: 'apiKey' }, true)._resolveCreationModel(undefined),
+			{ id: openAIModel.id },
+		);
+
+		// No OpenAI credential but a GitHub token: the default falls back to the
+		// Copilot proxy provider.
+		assert.deepStrictEqual(
+			createHarness([copilotModel, openAIModel], 'token', { status: 'signedOut' }, true)._resolveCreationModel(undefined),
+			{ id: copilotModel.id },
+		);
+
+		// Neither credential: the legacy guidance stands — a Copilot-routed
+		// default still raises the structured sign-in prompt.
+		const noCredentials = createHarness([copilotModel], undefined, { status: 'signedOut' }, true);
+		assert.throws(
+			() => noCredentials._resolveCreationModel(undefined),
+			(error: unknown) => error instanceof ProtocolError && error.code === AHP_AUTH_REQUIRED,
+		);
+
+		// Rollback lever: with the policy flag off the Copilot-first default is
+		// restored even for a signed-in OpenAI account.
+		assert.deepStrictEqual(
+			createHarness([copilotModel, openAIModel], 'token', { status: 'signedIn', authType: 'chatgpt' }, false)._resolveCreationModel(undefined),
+			{ id: copilotModel.id },
+		);
+
+		// A signed-in OpenAI account with an empty catalog is not asked for a
+		// GitHub token: the no-selection fallback provider is the OpenAI provider.
+		assert.deepStrictEqual(
+			createHarness([], undefined, { status: 'signedIn', authType: 'chatgpt' }, true)._resolveCreationModel(undefined),
+			undefined,
+		);
+
+		// The same empty catalog without any credential keeps the legacy gate.
+		const emptyLegacy = createHarness([], undefined, { status: 'signedOut' }, false);
+		assert.throws(
+			() => emptyLegacy._resolveCreationModel(undefined),
+			(error: unknown) => error instanceof ProtocolError && error.code === AHP_AUTH_REQUIRED,
+		);
+	});
+
+	test('image generation is gated to the OpenAI provider with a ChatGPT subscription (D05 #7 / AC9)', () => {
+		const createHarness = (status: string, authType?: string): ICodexImageGenerationHarness =>
+			Object.assign(Object.create(CodexAgent.prototype), {
+				_openAIAccountState: { usageSource: 'openai', status, authType },
+			}) as ICodexImageGenerationHarness;
+
+		const results: Record<string, boolean> = {};
+		for (const provider of ['openai', 'vscode-proxy', 'custom-provider']) {
+			for (const status of ['signedIn', 'signedOut', 'unknown', 'unavailable', 'error']) {
+				for (const authType of ['chatgpt', 'apiKey', 'other', undefined]) {
+					results[`${provider}/${status}/${authType ?? 'none'}`] = createHarness(status, authType)._imageGenerationEnabledForModelProvider(provider);
+				}
+			}
+		}
+		const enabled = Object.entries(results).filter(([, value]) => value).map(([key]) => key);
+		assert.deepStrictEqual(enabled, ['openai/signedIn/chatgpt']);
+	});
+
+	test('restored model resolution waits for discovery, stays on the same provider, and keeps history-only models (D05 #7 / AC5)', async () => {
+		const storedOpenAI = { id: toCodexModelSelectionId('openai', 'gpt-5-codex') };
+		const fallbackOpenAI = { id: toCodexModelSelectionId('openai', 'gpt-5.1-codex'), name: 'GPT-5.1 Codex', provider: 'codex', supportsVision: false };
+		const secondOpenAI = { id: toCodexModelSelectionId('openai', 'gpt-5'), name: 'GPT-5', provider: 'codex', supportsVision: false };
+		const copilotModel = { id: toCodexModelSelectionId('vscode-proxy', 'gpt-5'), name: 'GPT-5 (Copilot)', provider: 'codex', supportsVision: false };
+
+		const createHarness = (models: readonly typeof fallbackOpenAI[]): ICodexRestoredModelHarness => Object.assign(Object.create(CodexAgent.prototype), {
+			_models: observableValue('models', models),
+			_modelsRefreshPromise: undefined,
+			_logService: new NullLogService(),
+			_configurationService: { getRootValue: () => undefined },
+			_openAIAccountState: { usageSource: 'openai', status: 'signedOut' },
+			refreshModels: async () => { },
+		}) as ICodexRestoredModelHarness;
+
+		// A5.3: a stored model still in the catalog is preserved verbatim.
+		assert.deepStrictEqual(await createHarness([fallbackOpenAI])._resolveRestoredModel({ id: fallbackOpenAI.id }), { id: fallbackOpenAI.id });
+
+		// A5.4: a stored model missing from the catalog waits for the queued
+		// refresh, then falls back to the FIRST available model of the SAME
+		// provider.
+		const harness = createHarness([]);
+		harness._modelsRefreshPromise = Promise.resolve().then(() => {
+			(harness as unknown as { _models: { set(value: readonly unknown[], tx?: unknown): void } })._models.set([fallbackOpenAI, secondOpenAI, copilotModel]);
+			harness._modelsRefreshPromise = undefined;
+		});
+		assert.deepStrictEqual(await harness._resolveRestoredModel(storedOpenAI), { id: fallbackOpenAI.id });
+
+		// A5.5 + A5.6: with no model left on the stored provider the selection is
+		// kept (so the history stays readable) instead of silently crossing the
+		// billing boundary onto another provider's model.
+		assert.deepStrictEqual(await createHarness([copilotModel])._resolveRestoredModel(storedOpenAI), storedOpenAI);
+	});
+
+	test('session MCP servers merge root config, workspace discovery, and client plugins with later layers winning (D05 #7 / AC8)', () => {
+		const session = { sessionId: 'session-1', workingDirectory: URI.file('/repo'), agentMergeTurn: false };
+		const http = (url: string) => ({ type: McpServerType.REMOTE, url });
+		const harness = Object.assign(Object.create(CodexAgent.prototype), {
+			_configurationService: {
+				getRootValue: (_schema: unknown, key: string) => key === 'mcpServers' ? {
+					shared: http('https://root.example/shared'),
+					'root-only': http('https://root.example/root-only'),
+				} : undefined,
+			},
+			_isMcpServerEnabledForSdk: () => true,
+			_sessionMcpDiscoveries: new Map([[session.sessionId, {
+				discovery: {
+					definitions: [
+						{ name: 'shared', configuration: http('https://workspace.example/shared') },
+						{ name: 'workspace-only', configuration: http('https://workspace.example/workspace-only') },
+					],
+				},
+			}]]),
+			_enabledClientPlugins: () => [{
+				synced: { customization: { id: 'plugin', uri: 'file:///plugin' } },
+				parsed: {
+					mcpServers: [
+						{ name: 'shared', configuration: http('https://plugin.example/shared') },
+						{ name: 'plugin-only', configuration: http('https://plugin.example/plugin-only') },
+					],
+				},
+			}],
+			_builtInGitHubMcpServer: () => ({}),
+			_mcpAuthTokens: new Map<string, string>(),
+		}) as ICodexMcpMergeHarness;
+
+		// AC8: on a name collision the client plugin wins over workspace
+		// discovery, which wins over the root configuration.
+		assert.deepStrictEqual(harness._buildSessionMcpServers(session), {
+			shared: { url: 'https://plugin.example/shared' },
+			'root-only': { url: 'https://root.example/root-only' },
+			'workspace-only': { url: 'https://workspace.example/workspace-only' },
+			'plugin-only': { url: 'https://plugin.example/plugin-only' },
+		});
+	});
+
+	test('reload marking keeps the thread and turn-id mappings intact for the next send (D05 #7 / AC6)', () => {
+		const session = {
+			needsResume: false,
+			unsubscribeBeforeResume: false,
+			threadId: 'thread-1',
+			hostTurnIdByAppTurnId: new Map([['app-1', 'host-1']]),
+			codexTurnIdByHostTurnId: new Map([['host-1', 'codex-1']]),
+		};
+		(CodexAgent.prototype as unknown as ICodexReloadMarkingHarness)._markSessionForReload.call({} as ICodexReloadMarkingHarness, session);
+
+		// A provider/model switch defers the reload to the next send on the SAME
+		// thread: the thread id and both turn-id mappings survive untouched.
+		assert.deepStrictEqual(session, {
+			needsResume: true,
+			unsubscribeBeforeResume: true,
+			threadId: 'thread-1',
+			hostTurnIdByAppTurnId: new Map([['app-1', 'host-1']]),
+			codexTurnIdByHostTurnId: new Map([['host-1', 'codex-1']]),
+		});
+	});
+
+	suite('resume provider switch (D05 #7 / AC6 + AC7)', () => {
+		const copilotModel = { id: toCodexModelSelectionId('vscode-proxy', 'gpt-5'), name: 'GPT-5 (Copilot)', provider: 'codex', supportsVision: false };
+
+		function createResumeFixture(materializedModelProvider: string) {
+			const requests: { method: string; params: Record<string, unknown> }[] = [];
+			const client = {
+				request: async (method: string, params: Record<string, unknown>) => {
+					requests.push({ method, params });
+					return {};
+				},
+			};
+			const conn = { kind: 'ready', client };
+			const session = {
+				sessionId: 'session-1',
+				sessionUri: URI.parse('codex:/session-1'),
+				configurationResource: URI.parse('codex:/session-1'),
+				workingDirectory: URI.file('/repo'),
+				workingDirectories: undefined,
+				multiRootEnabled: false,
+				threadId: 'thread-1',
+				disposed: false,
+				needsResume: true,
+				unsubscribeBeforeResume: true,
+				resumePromise: undefined,
+				hasNativeHistory: true,
+				firstTurnSent: true,
+				agentMergeTurn: false,
+				model: { id: copilotModel.id },
+				materializedModelProvider,
+				pendingModelProviderSwitch: undefined,
+				materializedMcpSig: undefined,
+				materializedCustomizationsSig: undefined,
+				materializedHookTrustSig: undefined,
+				hostTurnIdByAppTurnId: new Map([['app-1', 'host-1']]),
+				codexTurnIdByHostTurnId: new Map([['host-1', 'codex-1']]),
+			};
+			const harness = Object.assign(Object.create(CodexAgent.prototype), {
+				_connection: conn,
+				_logService: new NullLogService(),
+				_models: observableValue('models', [copilotModel]),
+				_modelsRefreshPromise: undefined,
+				_configurationService: { getRootValue: () => undefined, getSessionConfigValues: () => ({}) },
+				_openAIAccountState: { usageSource: 'openai', status: 'signedIn', authType: 'apiKey' },
+				_refreshSessionMcpDiscovery: async () => { },
+				_buildSessionMcpServers: () => ({}),
+				_buildCustomizationLaunch: async () => ({ config: {}, developerInstructions: undefined, selectedCapabilityRoots: [], signature: 'sig' }),
+				_ensurePortableProxyConfiguration: async () => { },
+				_buildSessionHookTrustState: async () => ({ grants: {}, contextSignature: '' }),
+				_tryBuildSessionHookTrustState: async () => undefined,
+				_isCurrentSessionHookTrustState: () => true,
+				_applySessionHookTrustState: () => { },
+				_refreshMcpInventory: async () => { },
+				_traceContext: () => undefined,
+			}) as unknown as ICodexResumeSessionHarness;
+			return { harness, session, requests, conn };
+		}
+
+		test('unsubscribes before resuming the same thread, keeps turn-id maps, and records the switch', async () => {
+			const { harness, session, requests, conn } = createResumeFixture('openai');
+
+			await harness._resumeSession(session as unknown as Record<string, unknown>, conn);
+
+			// thread/unsubscribe strictly precedes thread/resume so app-server
+			// reloads the persisted history with the current launch-only config.
+			assert.deepStrictEqual(requests.map(r => r.method), ['thread/unsubscribe', 'thread/resume']);
+			// Same thread: the id is never reassigned and both turn-id mappings
+			// survive the reload.
+			assert.strictEqual(session.threadId, 'thread-1');
+			assert.deepStrictEqual(session.hostTurnIdByAppTurnId, new Map([['app-1', 'host-1']]));
+			assert.deepStrictEqual(session.codexTurnIdByHostTurnId, new Map([['host-1', 'codex-1']]));
+			// The switch is recorded so the NEXT accepted turn/start on this
+			// thread — and only that — can count it (AC7).
+			assert.deepStrictEqual(session.pendingModelProviderSwitch, { threadId: 'thread-1', fromProvider: 'openai' });
+			assert.strictEqual(session.materializedModelProvider, 'vscode-proxy');
+			const resumeParams = requests[1].params as { threadId?: string; model?: string; modelProvider?: string; approvalPolicy?: string; approvalsReviewer?: string; permissions?: string; config?: Record<string, unknown> };
+			assert.strictEqual(resumeParams.threadId, 'thread-1');
+			// A5.6: thread/resume params carry the model AND its provider.
+			assert.strictEqual(resumeParams.model, 'gpt-5');
+			assert.strictEqual(resumeParams.modelProvider, 'vscode-proxy');
+			// Decision 3: the default preset keeps a human approver.
+			assert.strictEqual(resumeParams.approvalsReviewer, 'user');
+			// Decision 2: workspace-write sessions launch on the workspace profile.
+			assert.strictEqual(resumeParams.permissions, 'vscode-workspace');
+			// Decision 4 / AC9: image generation stays off for the Copilot provider.
+			assert.strictEqual(resumeParams.config?.['features.image_generation'], false);
+		});
+
+		test('resume within the same provider records no switch (AC7)', async () => {
+			const { harness, session, requests, conn } = createResumeFixture('vscode-proxy');
+
+			await harness._resumeSession(session as unknown as Record<string, unknown>, conn);
+
+			assert.deepStrictEqual(requests.map(r => r.method), ['thread/unsubscribe', 'thread/resume']);
+			assert.strictEqual(session.pendingModelProviderSwitch, undefined);
+			assert.strictEqual(session.materializedModelProvider, 'vscode-proxy');
+		});
 	});
 
 	test('clears GitHub MCP credentials when the GitHub endpoint changes', () => {

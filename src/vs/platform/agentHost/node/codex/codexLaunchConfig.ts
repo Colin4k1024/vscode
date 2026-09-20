@@ -88,9 +88,20 @@ export function buildCodexResumeParams(
 	};
 }
 
+/**
+ * Build the app-server spawn environment and arguments.
+ *
+ * `proxy` is the live Copilot proxy bind. It is `undefined` when no GitHub
+ * token is available (Issue #39): the proxy is never started without a token,
+ * so there is no loopback endpoint to point the `vscode-proxy` provider at,
+ * and the provider (plus the `OPENAI_API_KEY` nonce env) is left out of the
+ * launch config entirely. A process spawned this way can only serve the
+ * OpenAI-native provider; when a token later arrives the connection is
+ * restarted so the replacement process gets the full proxy config.
+ */
 export function buildCodexLaunchConfig(
 	inheritedEnv: NodeJS.ProcessEnv,
-	proxy: ICodexLaunchProxy,
+	proxy: ICodexLaunchProxy | undefined,
 	extraArgs: readonly string[],
 	telemetry?: IAgentHostNativeOTelConfig,
 ): ICodexLaunchConfig {
@@ -99,14 +110,15 @@ export function buildCodexLaunchConfig(
 		delete env.OTEL_SERVICE_NAME;
 		env.OTEL_RESOURCE_ATTRIBUTES = serializeResourceAttributes(telemetry.resourceAttributes);
 	}
-	env.OPENAI_API_KEY = proxy.nonce;
 	const overrides = [
-		`model_providers.vscode-proxy.name="VS Code Proxy"`,
-		`model_providers.vscode-proxy.base_url="${proxy.baseUrl}/v1"`,
-		`model_providers.vscode-proxy.wire_api="responses"`,
-		`model_providers.vscode-proxy.env_key="OPENAI_API_KEY"`,
-		`model_providers.vscode-proxy.requires_openai_auth=false`,
-		`model_providers.vscode-proxy.supports_websockets=false`,
+		...(proxy ? [
+			`model_providers.vscode-proxy.name="VS Code Proxy"`,
+			`model_providers.vscode-proxy.base_url="${proxy.baseUrl}/v1"`,
+			`model_providers.vscode-proxy.wire_api="responses"`,
+			`model_providers.vscode-proxy.env_key="OPENAI_API_KEY"`,
+			`model_providers.vscode-proxy.requires_openai_auth=false`,
+			`model_providers.vscode-proxy.supports_websockets=false`,
+		] : []),
 		// Codex filters its shell tool's env through `shell_environment_policy`,
 		// so pin the marker there too — a user policy (e.g. `inherit = "core"`)
 		// would otherwise drop it.
@@ -116,6 +128,9 @@ export function buildCodexLaunchConfig(
 		// ChatGPT subscription threads opt in with a per-thread override.
 		`features.image_generation=false`,
 	];
+	if (proxy) {
+		env.OPENAI_API_KEY = proxy.nonce;
+	}
 	const permissionOverrides = codexPermissionProfileOverrides();
 	const telemetryOverrides = codexTelemetryOverrides(telemetry);
 	return {

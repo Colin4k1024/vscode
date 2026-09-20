@@ -797,6 +797,86 @@ suite('CodexAgent', () => {
 		});
 	});
 
+	test('restarts a proxy-less app-server connection when a GitHub token arrives (Issue #39)', async () => {
+		const copilotResource = { resource: 'https://api.github.com/copilot_internal/user' };
+		const proxyTokens: string[] = [];
+		const lostConnections: unknown[] = [];
+		let modelRefreshes = 0;
+		const proxyLessConnection = { kind: 'ready', proxyHandle: undefined };
+		const harness = Object.assign(Object.create(CodexAgent.prototype), {
+			_gitHubEndpointService: { getCopilotResource: () => copilotResource, getRepoResource: () => ({ resource: 'https://api.github.com' }) },
+			_githubAuthenticationGeneration: 0,
+			_githubToken: undefined,
+			_gitHubMcpServerConfiguration: undefined,
+			_resolveGitHubMcpServerConfiguration: async () => undefined,
+			_connection: proxyLessConnection,
+			_queueModelRefresh: () => { modelRefreshes++; },
+			_sessions: new Map(),
+			_reconcileMaterializedCustomizations: async () => { },
+			_logService: new NullLogService(),
+			_refreshProviderConfiguration: async () => { },
+			_handleConnectionLost: (connection: unknown) => { lostConnections.push(connection); },
+		}) as ICodexAuthenticateHarness & { _githubToken?: string };
+
+		const result = await harness.authenticate(copilotResource.resource, 'new-token');
+
+		assert.strictEqual(result, true);
+		assert.strictEqual(harness._githubToken, 'new-token');
+		assert.deepStrictEqual(proxyTokens, [], 'there is no proxy to hot-update');
+		assert.deepStrictEqual(lostConnections, [proxyLessConnection], 'the proxy-less connection is bounced so the replacement spawns with the proxy');
+		assert.strictEqual(modelRefreshes, 1);
+	});
+
+	test('hot-updates the proxy token in place when the connection already has a proxy (Issue #39)', async () => {
+		const copilotResource = { resource: 'https://api.github.com/copilot_internal/user' };
+		const proxyTokens: string[] = [];
+		const lostConnections: unknown[] = [];
+		const harness = Object.assign(Object.create(CodexAgent.prototype), {
+			_gitHubEndpointService: { getCopilotResource: () => copilotResource, getRepoResource: () => ({ resource: 'https://api.github.com' }) },
+			_githubAuthenticationGeneration: 0,
+			_githubToken: 'old-token',
+			_gitHubMcpServerConfiguration: undefined,
+			_resolveGitHubMcpServerConfiguration: async () => undefined,
+			_connection: { kind: 'ready', proxyHandle: { setToken: (token: string) => proxyTokens.push(token) } },
+			_queueModelRefresh: () => { },
+			_sessions: new Map(),
+			_reconcileMaterializedCustomizations: async () => { },
+			_logService: new NullLogService(),
+			_refreshProviderConfiguration: async () => { },
+			_handleConnectionLost: (connection: unknown) => { lostConnections.push(connection); },
+		}) as ICodexAuthenticateHarness & { _githubToken?: string };
+
+		const result = await harness.authenticate(copilotResource.resource, 'new-token');
+
+		assert.strictEqual(result, true);
+		assert.deepStrictEqual(proxyTokens, ['new-token'], 'an existing proxy keeps the in-place token rotation');
+		assert.deepStrictEqual(lostConnections, [], 'a proxy-backed connection is not bounced');
+	});
+
+	test('does not bounce anything when a GitHub token arrives while the connection is idle (Issue #39)', async () => {
+		const copilotResource = { resource: 'https://api.github.com/copilot_internal/user' };
+		const lostConnections: unknown[] = [];
+		const harness = Object.assign(Object.create(CodexAgent.prototype), {
+			_gitHubEndpointService: { getCopilotResource: () => copilotResource, getRepoResource: () => ({ resource: 'https://api.github.com' }) },
+			_githubAuthenticationGeneration: 0,
+			_githubToken: undefined,
+			_gitHubMcpServerConfiguration: undefined,
+			_resolveGitHubMcpServerConfiguration: async () => undefined,
+			_connection: { kind: 'idle' },
+			_queueModelRefresh: () => { },
+			_sessions: new Map(),
+			_reconcileMaterializedCustomizations: async () => { },
+			_logService: new NullLogService(),
+			_refreshProviderConfiguration: async () => { },
+			_handleConnectionLost: (connection: unknown) => { lostConnections.push(connection); },
+		}) as ICodexAuthenticateHarness & { _githubToken?: string };
+
+		const result = await harness.authenticate(copilotResource.resource, 'new-token');
+
+		assert.strictEqual(result, true);
+		assert.deepStrictEqual(lostConnections, [], 'an idle connection needs no bounce — the next spawn sees the token');
+	});
+
 	test('does not treat a transient host configuration scope as a chat backing', () => {
 		const session = AgentSession.uri('codex', 'session-1');
 

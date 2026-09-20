@@ -888,7 +888,12 @@ type ConnectionState =
 
 interface IConnectionReady {
 	readonly client: ICodexAppServerClient;
-	readonly proxyHandle: ICodexProxyHandle;
+	/**
+	 * `undefined` when the app-server was spawned without a GitHub token
+	 * (Issue #39): the proxy is never started in that case, so no loopback
+	 * port is bound and the launch config carries no `vscode-proxy` provider.
+	 */
+	readonly proxyHandle: ICodexProxyHandle | undefined;
 	readonly child: ChildProcessWithoutNullStreams;
 	/** Reads context limits from the same Codex SDK and configuration as this app-server. */
 	readonly readModelContextWindows?: () => Promise<ReadonlyMap<string, ICodexModelContextWindow>>;
@@ -1683,6 +1688,17 @@ export class CodexAgent extends Disposable implements IAgent {
 			// The app-server stays running. The proxy reads the new token from its
 			// own cell, while MCP-backed threads reconcile their per-thread config.
 			this._connection.proxyHandle.setToken(normalizedToken ?? '');
+			this._queueModelRefresh();
+		} else if (changed && normalizedToken !== undefined && this._connection.kind === 'ready' && !this._connection.proxyHandle) {
+			// Issue #39: the app-server was spawned before any GitHub token
+			// existed, so it has no proxy and no `vscode-proxy` provider config
+			// (the proxy baseUrl is baked into its spawn arguments and cannot be
+			// retrofitted). Bounce the connection so the replacement process
+			// starts the proxy and serves Copilot models. Sessions are marked
+			// needsResume and transparently resume on their next operation, as
+			// with any connection loss.
+			this._logService.info('[Codex] GitHub token acquired after the app-server started without the Copilot proxy; restarting the connection to enable vscode-proxy');
+			this._handleConnectionLost(this._connection, this._connectionGeneration);
 			this._queueModelRefresh();
 		} else if (changed) {
 			// Defer model refresh until the connection comes up.
@@ -2547,7 +2563,15 @@ export class CodexAgent extends Disposable implements IAgent {
 				throw new CodexConnectionReplacedError('Codex app-server was replaced while starting');
 			}
 			// Authentication can complete while the connection is starting; apply the latest token before publishing ready.
-			ready.proxyHandle.setToken(this._githubToken ?? '');
+			if (this._githubToken && !ready.proxyHandle) {
+				// Issue #39: a token arrived after this process had already been
+				// spawned proxy-less, so it can never serve the `vscode-proxy`
+				// provider. Discard it and let the caller retry — the replacement
+				// connection starts the proxy.
+				this._disposeConnectionResources(ready);
+				throw new CodexConnectionReplacedError('GitHub token arrived while a proxy-less Codex app-server was starting');
+			}
+			ready.proxyHandle?.setToken(this._githubToken ?? '');
 			// Skill roots are process-global app-server state. Seed every new process
 			// before exposing it to thread/start or thread/resume, including a
 			// replacement process after an unexpected disconnect.
@@ -2636,15 +2660,25 @@ export class CodexAgent extends Disposable implements IAgent {
 			throw new Error(`Codex binary not executable: ${binaryPath} (${err instanceof Error ? err.message : String(err)})`);
 		}
 
-		const proxyStart = this._codexProxyService.start(this._githubToken ?? '');
-		let proxyHandle: ICodexProxyHandle;
-		try {
-			proxyHandle = await raceCancellationError(proxyStart, token);
-		} catch (error) {
-			// The proxy API has no cancellation input. If its start finishes after
-			// this connection was cancelled, release that late handle immediately.
-			void proxyStart.then(handle => handle.dispose(), () => { });
-			throw error;
+		// Issue #39: without a GitHub token the proxy must not bind a port at
+		// all, so start() is skipped entirely. The proxy only exists to serve
+		// the Copilot `vscode-proxy` provider, which itself requires the token
+		// (`_ensureModelProviderAuthenticated`), so a proxy-less process loses
+		// nothing. If a token arrives later, `authenticate()` / the
+		// `_ensureConnection` publish step bounce this connection so the
+		// replacement spawns with the proxy.
+		const githubToken = this._githubToken;
+		let proxyHandle: ICodexProxyHandle | undefined;
+		if (githubToken) {
+			const proxyStart = this._codexProxyService.start(githubToken);
+			try {
+				proxyHandle = await raceCancellationError(proxyStart, token);
+			} catch (error) {
+				// The proxy API has no cancellation input. If its start finishes after
+				// this connection was cancelled, release that late handle immediately.
+				void proxyStart.then(handle => handle.dispose(), () => { });
+				throw error;
+			}
 		}
 		let child: ChildProcessWithoutNullStreams | undefined;
 		let client: CodexAppServerClient | undefined;
@@ -2717,7 +2751,7 @@ export class CodexAgent extends Disposable implements IAgent {
 			// it; keep the two cleanup sequences in lockstep when editing.
 			try { child?.kill('SIGKILL'); } catch { /* already dead */ }
 			client?.dispose();
-			proxyHandle.dispose();
+			proxyHandle?.dispose();
 			if (sandboxTempDirectory) {
 				try { await fs.promises.rm(sandboxTempDirectory, { recursive: true, force: true }); } catch { /* best effort */ }
 			}
@@ -4309,7 +4343,7 @@ export class CodexAgent extends Disposable implements IAgent {
 		// and a surviving child would silently lose its endpoint.
 		try { connection.child.kill('SIGKILL'); } catch { /* already dead */ }
 		try { connection.client.dispose(); } catch { /* ignore */ }
-		try { connection.proxyHandle.dispose(); } catch { /* ignore */ }
+		try { connection.proxyHandle?.dispose(); } catch { /* ignore */ }
 	}
 
 	// #endregion

@@ -30,6 +30,18 @@ suite('CodexLaunchConfig', () => {
 		]);
 	});
 
+	test('omits the Copilot proxy provider and nonce env when no proxy is supplied (Issue #39)', () => {
+		// No GitHub token → the proxy never starts → there is no loopback
+		// endpoint to advertise. The launch config must carry no `vscode-proxy`
+		// provider and must not overwrite an inherited OPENAI_API_KEY.
+		const config = buildCodexLaunchConfig({ PATH: '/bin' }, undefined, []);
+		assert.strictEqual(config.env.OPENAI_API_KEY, undefined);
+		assert.strictEqual(config.env.AI_AGENT, 'github_copilot_vscode_agent');
+		assert.ok(!config.args.some(argument => argument.startsWith('model_providers.vscode-proxy')), 'no vscode-proxy provider overrides without a proxy');
+		assert.ok(config.args.includes('shell_environment_policy.set.AI_AGENT="github_copilot_vscode_agent"'));
+		assert.ok(config.args.includes('analytics.enabled=false'));
+	});
+
 	test('routes traces to loopback and logs/metrics directly to the external sink', () => {
 		const config = buildCodexLaunchConfig({}, { baseUrl: 'http://127.0.0.1:1234', nonce: 'nonce' }, [], {
 			traces: { endpoint: 'http://127.0.0.1:4567/v1/traces', protocol: 'http/json' },

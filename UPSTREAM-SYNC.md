@@ -11,7 +11,7 @@
 | 上游 | 跟踪方式 | 当前 pin |
 |---|---|---|
 | `microsoft/vscode` | `upstream` remote（`https://github.com/microsoft/vscode.git`），跟踪 `main` | `UPSTREAM_COMMIT`（仓库根，裸 commit SHA）= `fb20064c0f4`（2026-09-18，fork 切出点） |
-| `openai/codex` | npm 包 `@openai/codex` 三处 pin（见 §2） | `0.153.0` |
+| `openai/codex` | npm 包 `@openai/codex` 三处 pin（见 §2） | `0.155.1`（#44 已按本 runbook 升级） |
 | fork 自身发行版本 | `VERSION`（仓库根，裸版本号，grok-code-product 格式） | `0.1.0`（pre-release） |
 
 `UPSTREAM_COMMIT` + `VERSION` 双文件 pin 机制沿用 grok-code-product 格式：纯文本、

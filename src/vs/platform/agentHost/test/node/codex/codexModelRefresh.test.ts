@@ -543,7 +543,7 @@ suite('CodexAgent model refresh', () => {
 		assert.deepStrictEqual(disposed, []);
 		await releaseRateLimit.complete();
 		await probe;
-		assert.deepStrictEqual(disposed, ['client', 'proxy', 'child']);
+		assert.deepStrictEqual(disposed, ['child', 'client', 'proxy']);
 		await releaseProfileImage.complete();
 		await profileImageStored.p;
 		await new Promise<void>(resolve => setImmediate(resolve));
@@ -555,7 +555,7 @@ suite('CodexAgent model refresh', () => {
 			connection: ctx.agent['_connection'].kind,
 		}, {
 			requests: ['account/read', 'account/rateLimits/read', 'getAuthStatus'],
-			disposed: ['client', 'proxy', 'child'],
+			disposed: ['child', 'client', 'proxy'],
 			account: {
 				status: 'signedIn',
 				authType: 'chatgpt',
@@ -614,7 +614,7 @@ suite('CodexAgent model refresh', () => {
 			account: readCodexAccountInfo(ctx.stateManager.rootState),
 			connection: ctx.agent['_connection'].kind,
 		}, {
-			disposed: ['client', 'proxy', 'child'],
+			disposed: ['child', 'client', 'proxy'],
 			account: {
 				status: 'signedIn',
 				authType: 'chatgpt',
@@ -724,7 +724,7 @@ suite('CodexAgent model refresh', () => {
 			connection: ctx.agent['_connection'].kind,
 		}, {
 			requests: ['account/read', 'account/login/start', 'account/read', 'account/rateLimits/read', 'getAuthStatus'],
-			disposed: ['client', 'proxy', 'child'],
+			disposed: ['child', 'client', 'proxy'],
 			account: { status: 'signedIn', authType: 'chatgpt', email: 'person@example.com', planType: 'plus', profileImage: undefined, requiresOpenaiAuth: true, rateLimit: undefined, authUrl: undefined, authUrlNonce: undefined, deviceVerificationUrl: undefined, deviceUserCode: undefined },
 			connection: 'idle',
 		});
@@ -1531,7 +1531,7 @@ suite('CodexAgent model refresh', () => {
 		await assert.rejects(agent['_ensureConnection'](), /replaced while starting/);
 
 		assert.strictEqual(agent['_connection'].kind, 'idle');
-		assert.deepStrictEqual(disposed, ['subscriptions', 'client', 'proxy', 'child']);
+		assert.deepStrictEqual(disposed, ['subscriptions', 'child', 'client', 'proxy']);
 	});
 
 	test('rejects an app-server that exited before persistent listeners were attached', async () => {
@@ -1556,7 +1556,7 @@ suite('CodexAgent model refresh', () => {
 
 		await assert.rejects(agent['_startConnection'](0, CancellationToken.None), /exited before persistent startup completed/);
 
-		assert.deepStrictEqual(disposed, ['client', 'proxy', 'child']);
+		assert.deepStrictEqual(disposed, ['child', 'client', 'proxy']);
 	});
 
 	test('drops a model catalog returned by a replaced app-server', async () => {

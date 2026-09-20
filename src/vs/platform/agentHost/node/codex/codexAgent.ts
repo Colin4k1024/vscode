@@ -2666,9 +2666,11 @@ export class CodexAgent extends Disposable implements IAgent {
 				readModelContextWindows: () => readCodexModelContextWindows(binaryPath, args, env),
 			};
 		} catch (err) {
+			// Kill the child before releasing the proxy handle (see
+			// _disposeConnectionResources for the ownership invariant).
+			try { child?.kill('SIGKILL'); } catch { /* already dead */ }
 			client?.dispose();
 			proxyHandle.dispose();
-			try { child?.kill('SIGKILL'); } catch { /* already dead */ }
 			if (sandboxTempDirectory) {
 				try { await fs.promises.rm(sandboxTempDirectory, { recursive: true, force: true }); } catch { /* best effort */ }
 			}
@@ -4254,9 +4256,13 @@ export class CodexAgent extends Disposable implements IAgent {
 		}
 		this._disposedConnections.add(connection);
 		try { connection.subscriptions?.dispose(); } catch { /* ignore */ }
+		// Subprocess-ownership invariant (codexProxyService.ts): the child
+		// holding the proxy's baseUrl/nonce must be killed BEFORE the handle is
+		// released — the next start() may rebind the proxy to a different port,
+		// and a surviving child would silently lose its endpoint.
+		try { connection.child.kill('SIGKILL'); } catch { /* already dead */ }
 		try { connection.client.dispose(); } catch { /* ignore */ }
 		try { connection.proxyHandle.dispose(); } catch { /* ignore */ }
-		try { connection.child.kill('SIGKILL'); } catch { /* already dead */ }
 	}
 
 	// #endregion

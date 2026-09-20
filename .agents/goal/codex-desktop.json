@@ -36,6 +36,11 @@
       "merged": "567ebe16ed7",
       "closed_at": "2026-09-19T23:00+08:00",
       "review": "pi r3 APPROVE 8.6"
+    },
+    "#11": {
+      "d": "D09",
+      "merged": "8addb70eb7ff",
+      "note": "上游会话合并；本会话子代理发现 Electron-Smoke 回归 → PR #64 修复"
     }
   },
   "issues": {
@@ -158,8 +163,8 @@
         "D17"
       ],
       "gated_by": "D10",
-      "state": "in_progress",
-      "note": "D17 已裁定：0-patch 目标确认",
+      "state": "closed",
+      "note": "上游会话已合并 PR #50 关闭；子代理修复 CI 引入的 Electron-Smoke 回归 → PR #64 待合并；审查 findings 另开 #66",
       "deps_ok": true
     },
     "#12": {
@@ -226,6 +231,24 @@
         "D05"
       ],
       "state": "open"
+    },
+    "#56": {
+      "d": "衍生",
+      "state": "in_progress",
+      "pr": 63,
+      "note": "修复完成+pi 审查中"
+    },
+    "#54": {
+      "d": "衍生",
+      "state": "in_progress",
+      "pr": 63,
+      "note": "修复完成+pi 审查中"
+    },
+    "#34": {
+      "d": "衍生",
+      "state": "in_progress",
+      "pr": 63,
+      "note": "turnStateFromStatus fail-safe 衍生随 PR 一并"
     }
   },
   "audit_log": [
@@ -312,6 +335,14 @@
     {
       "ts": "2026-09-20T10:00+08:00",
       "event": "收窄后的推进计划: #56/#54 由主 agent 直接修; #11 派子代理(d09x worktree)修 CI 失败+pi 审查+合并; #17 派子代理(d15x worktree)实施 Open VSX+白名单+实测; PR #61 pi 审查待发; Epic #1 收尾待定。两子代理已在配额重置后重启"
+    },
+    {
+      "ts": "2026-09-20T10:30+08:00",
+      "event": "多会话并行推进: D09 子代理修 PR #50 的 8 个 CI 失败+pi 审查+合并; D15 子代理实施 Open VSX; 主 agent 修 #56+#54+#34衍生+onboarding 崩溃(用户报) → PR #63, pi 审查中"
+    },
+    {
+      "ts": "2026-09-20T23:20+08:00",
+      "event": "D09 子代理完成: PR #50 已由上游会话合并关闭 #11；发现 PR-introduced Electron-Smoke 回归 → PR #64（修 + pi r3 APPROVE，留待合并）；另开 #66 收 D09 审查 findings（1 HIGH + 8 MEDIUM + 11 LOW）。主 agent #56/#54 round-2 复审中；PR #61 pi 审查启动"
     }
   ],
   "review_state": {

@@ -1,0 +1,35 @@
+version: 1
+dialect: responses
+exchanges:
+  - request:
+      model: gpt-5.3-codex
+      system: ${system}
+      messages:
+        - role: user
+          content: Call the get_empty_result tool exactly once, then reply with exactly "done".
+    response:
+      content:
+        - type: tool_use
+          id: call_empty_0
+          name: get_empty_result
+          input: {}
+      stopReason: tool_use
+  - request:
+      model: gpt-5.3-codex
+      system: ${system}
+      messages:
+        - role: user
+          content: Call the get_empty_result tool exactly once, then reply with exactly "done".
+        - role: assistant
+          content:
+            - type: tool_use
+              name: get_empty_result
+              input: {}
+        - role: user
+          content:
+            - type: tool_result
+              tool_use_id: call_empty_0
+              content: Ran the empty-result tool
+    response:
+      content: done
+      stopReason: end_turn

@@ -3,6 +3,9 @@ name: Codex Desktop Baseline
 # D01 (#3): minimal reproducible bootstrap + transpile + codex protocol sync +
 # agent-host unit test subset on a stock GitHub-hosted runner. Runs on PRs and
 # on demand; later issues (D11/D14) fold these checks into PR-required gates.
+# D11 (#13): the `agent-host-e2e` job below gates every PR on the deterministic
+# replay suite (no token, no network; an unrecorded model request is a hard
+# failure).
 on:
   pull_request:
     branches:
@@ -102,3 +105,93 @@ jobs:
       - name: Agent Host unit tests
         timeout-minutes: 20
         run: npm run test-node -- --runGlob "vs/platform/agentHost/test/node/**/*.test.js"
+
+  agent-host-e2e:
+    name: Agent Host E2E (deterministic replay)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+
+      # Mirrors the Electron integration-test environment of pr-linux-test.yml:
+      # the agent host E2E runner launches the real Electron binary.
+      - name: Install Electron test dependencies and start Xvfb
+        run: |
+          set -e
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          ./build/azure-pipelines/linux/apt-retry.sh sudo apt-get update
+          ./build/azure-pipelines/linux/apt-retry.sh sudo apt-get install -y \
+            xvfb \
+            libgtk-3-0 \
+            libxkbfile-dev \
+            libkrb5-dev \
+            libgbm1 \
+            socat
+          sudo cp build/azure-pipelines/linux/xvfb.init /etc/init.d/xvfb
+          sudo chmod +x /etc/init.d/xvfb
+          sudo update-rc.d xvfb defaults
+          sudo service xvfb start
+
+      - name: Restore node_modules cache
+        id: cache-node-modules
+        uses: ./.github/actions/restore-node-modules
+        with:
+          key-prefix: node_modules-codex-desktop
+          key-args: "compile $(node -p process.arch)"
+
+      - name: Install build tools
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: sudo apt update -y && sudo apt install -y build-essential pkg-config libx11-dev libx11-xcb-dev libxkbfile-dev libnotify-bin libkrb5-dev
+
+      - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: |
+          set -e
+
+          for i in {1..5}; do # try 5 times
+            npm ci && break
+            if [ $i -eq 5 ]; then
+              echo "Npm install failed too many times" >&2
+              exit 1
+            fi
+            echo "Npm install failed $i, trying again..."
+          done
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Save node_modules cache
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        uses: ./.github/actions/save-node-modules
+
+      - name: Setup Electron
+        uses: ./.github/actions/setup-electron
+        with:
+          arch: x64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Transpile suffices for the replay runner (it executes out/); a full
+      # `npm run compile` would need Electron typings that the shared
+      # node_modules cache (populated with ELECTRON_SKIP_BINARY_DOWNLOAD=1)
+      # does not contain.
+      - name: Transpile
+        run: npm run gulp transpile-client-esbuild transpile-extensions
+
+      # Deterministic replay only: no token, no network. An unrecorded model
+      # request or an unconsumed recorded response fails this gate.
+      - name: Agent Host E2E (replay)
+        timeout-minutes: 30
+        run: npm run test-agent-host-e2e
+        env:
+          DISPLAY: ":10"
+          VSCODE_SKIP_PRELAUNCH: '1'

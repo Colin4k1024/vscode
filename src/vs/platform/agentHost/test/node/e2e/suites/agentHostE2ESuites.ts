@@ -29,6 +29,7 @@ import { defineCopilotRuntimeToolsTests } from './copilotRuntimeToolsSuite.js';
 import { defineManagementExtensionTests } from './managementExtensionsSuite.js';
 import { defineAutomationsTests } from './automationsSuite.js';
 import { defineDetachedWorktreeTests } from './detachedWorktreeSuite.js';
+import { defineReplayStrictnessTests } from './replayStrictnessSuite.js';
 import type { AgentHostE2ETier, IAgentHostE2ETestContext } from './e2eTestContext.js';
 
 const isLinux = process.platform === 'linux';
@@ -155,6 +156,9 @@ function defineSuite(config: IAgentHostE2EProviderConfig, options: IDefineOption
 		});
 
 		defineAutomationsTests(context);
+
+		// Self-gates on the conformance tier internally (single guard, no double gating).
+		defineReplayStrictnessTests(context);
 
 		// Suites that contain only conformance-tier scenarios.
 		if (options.tier === 'conformance') {

@@ -1051,6 +1051,16 @@ export class AgentHostE2EServerLease {
 		return this._server?.capiReplay?.observedModelRequestBodies ?? [];
 	}
 
+	/**
+	 * The isolated Codex home the target was launched with. Exposed so
+	 * isolation tests can prove the provider confined its state here rather
+	 * than to an ambient `CODEX_HOME` (part of the {@link IAgentHostTarget}
+	 * launch contract, not an implementation internal).
+	 */
+	get isolatedCodexHomeDir(): string {
+		return this._startOptions.codexHomeDir;
+	}
+
 	/** The bundled `@github/copilot` CLI is the only provider whose own runtime logs we capture / run verbosely. */
 	private get _isCopilotProvider(): boolean {
 		return this._config.provider === 'copilotcli';
@@ -1243,6 +1253,16 @@ export class AgentHostE2EServerLease {
 			}
 			throw new AggregateError(cleanupErrors, `Failed to release Agent Host E2E test resources: ${cleanupErrors.map(error => error.message).join('; ')}`);
 		}
+	}
+
+	/**
+	 * Run the strict replay checks for a dedicated lease. The shared lease gets
+	 * this per test on release, but a dedicated lease's {@link dispose} closes
+	 * the proxy without checking — call this first so a request-side mismatch
+	 * cannot pass silently.
+	 */
+	verifyReplay(): void {
+		this._server?.capiReplay?.assertNoReplayMismatches();
 	}
 
 	/** Tear down a shared server at the end of the suite (no-op for per-test). */

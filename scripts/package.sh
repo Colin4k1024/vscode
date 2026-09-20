@@ -8,8 +8,8 @@
 # zip + SHA256SUMS manifest.
 #
 # Ported from grok-code-product scripts/build.sh + scripts/package.sh
-# (D17 §4 — 改造后复用; their signing/notarization steps are deliberately
-# NOT ported: D09 裁定 3 — first version ships unsigned, see the known
+# (D17 section 4 — adapted for reuse; their signing/notarization steps are deliberately
+# NOT ported: D09 ruling 3 — first version ships unsigned, see the known
 # limitations printed at the end).
 #
 # Usage:
@@ -180,21 +180,21 @@ SUMS="$DIST_DIR/SHA256SUMS.txt"
 echo "    manifest: $SUMS"
 cat "$SUMS"
 
-cat <<EOF
+cat <<-EOT
 
 ================================================================
 BUILD COMPLETE
-  app:      $APP_PATH
-  zip:      ${ZIP%-skip}
-  manifest: $SUMS
+app:      $APP_PATH
+zip:      ${ZIP%-skip}
+manifest: $SUMS
 
-Known limitations (D09 裁定 3 — recorded per AC11):
-  * UNSIGNED / NOT NOTARIZED: first launch on macOS requires
-    right-click → Open, or: xattr -d com.apple.quarantine "<app>"
-  * Windows builds would trigger SmartScreen (no Authenticode).
-  * No auto-update feed; updates are manual re-installs.
-  * SDK tarballs are NOT uploaded by this script. Publish them with:
-      bash scripts/publish-sdk-release.sh
-    until then the urlTemplate stamped into product.agentSdks resolves 404.
+Known limitations (D09 ruling 3, recorded per AC11):
+* UNSIGNED / NOT NOTARIZED: first launch on macOS requires
+right-click > Open, or: xattr -d com.apple.quarantine "<app>"
+* Windows builds would trigger SmartScreen (no Authenticode).
+* No auto-update feed; updates are manual re-installs.
+* SDK tarballs are NOT uploaded by this script. Publish them with:
+bash scripts/publish-sdk-release.sh
+until then the urlTemplate stamped into product.agentSdks resolves 404.
 ================================================================
-EOF
+EOT

@@ -45,7 +45,7 @@ const packageLock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.jso
 	readonly packages?: Readonly<Record<string, { readonly version?: string }>>;
 };
 // D09 (#11): the ColinCode mixin sets `excludeCopilotFromPackaging` — the
-// D10 §5 redistribution-blocked packages (@vscode/copilot-api,
+// D10 section 5 redistribution-blocked packages (@vscode/copilot-api,
 // @github/copilot, blackbird utils) and the built-in copilot extension must
 // not ship. The MIT-licensed @github/copilot-sdk* packages DO ship: the
 // agent host imports them statically. Upstream (no flag) behavior unchanged.
@@ -175,7 +175,7 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 		const extensions = gulp.src([
 			'.build/extensions/**',
 			...platformSpecificBuiltInExtensionsExclusions,
-			// D09: the compiled in-tree copilot extension must not ship (D10 §5).
+			// D09: the compiled in-tree copilot extension must not ship (D10 section 5).
 			...(copilotExcludedFromPackaging ? ['!.build/extensions/copilot/**'] : []),
 		], { base: '.build', dot: true });
 
@@ -267,7 +267,7 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 		const osProxyResolverPlatformPackage = gulp.src(getOSProxyResolverPlatformFiles(platform, arch), { base: '.', dot: true, allowEmpty: true });
 		const deps = es.merge(cleanedDeps, copilotRuntimePrebuilds, osProxyResolverPlatformPackage)
 			// Upstream excludes the non-target copilot-sdk platform packages;
-			// the mixin additionally excludes the D10 §5 block-listed packages.
+			// the mixin additionally excludes the D10 section 5 block-listed packages.
 			.pipe(filter(copilotExcludedFromPackaging
 				? [...getCopilotExcludeFilter(platform, arch), ...getCopilotFullExcludeFilter().slice(1)]
 				: getCopilotExcludeFilter(platform, arch)))

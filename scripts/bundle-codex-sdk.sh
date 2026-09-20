@@ -2,14 +2,14 @@
 # Bundle the Codex agent SDK tarball(s) for one platform target and write the
 # results JSON that the gulp packageTask stamps into product.agentSdks.
 #
-# Ported from grok-code-product scripts/bundle-agent.sh (D17 §4 — 改造后复用).
+# Ported from grok-code-product scripts/bundle-agent.sh (D17 section 4 — adapted for reuse).
 # Differences from the source script:
 #   * the SDK source is the pinned npm dependency in
 #     build/agent-sdk/agents/<sdk>/ (lockfile-deterministic), not a checked-out
 #     agent repo — the heavy lifting lives in build/agent-sdk/produce.ts;
 #   * the distribution endpoint defaults to THIS REPO's GitHub Releases
-#     (D09 裁定 1), not an object-storage CDN;
-#   * LICENSE/NOTICE obligations (Apache-2.0, D17 §4 item 4 / D10 §2) are
+#     (D09 ruling 1), not an object-storage CDN;
+#   * LICENSE/NOTICE obligations (Apache-2.0, D17 section 4 item 4 / D10 section 2) are
 #     fulfilled by injecting the vendored build/agent-sdk/licenses/codex/
 #     files into the tarball (the @openai/codex npm packages do not ship
 #     their license), then re-packing with the same node-tar portable
@@ -81,7 +81,7 @@ esac
 RESULTS_FILE="${AGENT_SDK_RESULTS_FILE:-$REPO_ROOT/.build/agent-sdk/results.json}"
 TARBALLS_DIR="$REPO_ROOT/.build/agent-sdk/tarballs"
 
-# D09 裁定 1: default distribution endpoint = this repo's GitHub Releases.
+# D09 ruling 1: default distribution endpoint = this repo's GitHub Releases.
 # Assets are flat file names under the tag `agent-sdk-<sdk>-<version>`, so a
 # full URL template (not a CDN base) is required — buildCdnUrlTemplate honors
 # AGENT_SDK_URL_TEMPLATE and keeps {sdkTarget} intact for the runtime.
@@ -106,9 +106,9 @@ SDK_VERSION="$(node -p "const d=JSON.parse(require('fs').readFileSync('build/age
 TGZ="$TARBALLS_DIR/$SDK-$SDK_VERSION-$TARGET.tgz"
 [ -f "$TGZ" ] || fail "expected tarball missing: $TGZ"
 
-# --- Apache-2.0 redistribution obligations (D17 §4 item 4, D10 §2) ----------
+# --- Apache-2.0 redistribution obligations (D17 section 4 item 4, D10 section 2) ----------
 # The @openai/codex npm packages do NOT ship a LICENSE file (verified
-# 2026-09-20 against 0.153.0). Apache-2.0 §4 requires the license text (and
+# 2026-09-20 against 0.153.0). Apache-2.0 section 4 requires the license text (and
 # NOTICE, if any) to accompany redistribution, so we inject the vendored
 # copies and re-pack with the same node-tar portable settings package.ts
 # uses. If a future SDK version starts shipping its own license, that also
@@ -118,7 +118,7 @@ if tar -tzf "$TGZ" | grep -qiE 'license|notice'; then
 else
 	LICENSE_DIR="$REPO_ROOT/build/agent-sdk/licenses/$SDK"
 	[ -f "$LICENSE_DIR/LICENSE" ] || fail "$SDK tarball ships no license and no vendored copy exists at $LICENSE_DIR — Apache-2.0 obligations unmet"
-	echo "    injecting LICENSE + NOTICE into $(basename "$TGZ") (Apache-2.0 §4)"
+	echo "    injecting LICENSE + NOTICE into $(basename "$TGZ") (Apache-2.0 section 4)"
 	node --input-type=module - "$TGZ" "$LICENSE_DIR" "$REPO_ROOT" "$SDK" <<'NODE_EOF'
 import * as fs from 'fs';
 import * as os from 'os';

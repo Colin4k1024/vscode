@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Pre-release gate chain (D09 #11 AC14; D17 §4 item 8 — verify-beta-gates.sh
-# 重写, grok-code-product 原脚本的检查项对 fork 路线整体失效).
+# Pre-release gate chain (D09 #11 AC14; D17 section 4 item 8 — verify-beta-gates.sh
+# rewritten; the original script's checks do not apply to the fork route).
 #
 # Gates (ALL hard-fail; order = cheap/static first):
 #   1. product.json integrity: pristine vs HEAD, OR a correctly applied mixin
 #      (apply-mixin --check) — the two states the build can legitimately be in.
-#   2. Copilot hard block (D10 §5): no copilot extension dirs / restricted
+#   2. Copilot hard block (D10 section 5): no copilot extension dirs / restricted
 #      packages in the repo tree and (with --app) in the packaged product;
 #      product.json must not reference defaultChatAgent / vscode-cdn.net.
-#   3. clientInfo.name ≠ vscode_agent_host (D10 §3): we must not
+#   3. clientInfo.name != vscode_agent_host (D10 section 3): we must not
 #      misattribute traffic to Microsoft's registered OpenAI client name.
 #   4. Gallery must not point at the MS Marketplace (D10): the merged
 #      product.json must not reference marketplace.visualstudio.com /
@@ -48,14 +48,14 @@ else
 	echo "    product.json: applied mixin verified (apply-mixin --check)"
 fi
 
-echo "==> [2/8] Copilot hard block (D10 §5)"
+echo "==> [2/8] Copilot hard block (D10 section 5)"
 # 2a. The mixin must exclude Copilot from packaging (the packaged app is the
 #     redistributable; the repo legitimately keeps extensions/copilot, D08 (a)).
 node - <<'NODE_EOF'
 const fs = require('fs');
 const overlay = JSON.parse(fs.readFileSync('product/product.json', 'utf8'));
 if (overlay.excludeCopilotFromPackaging !== true) {
-	console.error('GATE FAILED: product/product.json must set "excludeCopilotFromPackaging": true (D10 §5 redistribution hard block).');
+	console.error('GATE FAILED: product/product.json must set "excludeCopilotFromPackaging": true (D10 section 5 redistribution hard block).');
 	process.exit(1);
 }
 console.log('    mixin sets excludeCopilotFromPackaging: true — OK');
@@ -64,7 +64,7 @@ NODE_EOF
 if [ -n "$APP_DIR" ]; then
 	bash scripts/check-no-copilot-artifacts.sh "$APP_DIR"
 
-	# 2c. D10 §5 conflict surfacing (NOT a pass/fail gate — flagged for the
+	# 2c. D10 section 5 conflict surfacing (NOT a pass/fail gate — flagged for the
 	# D10 owner): @vscode/copilot-api's code is INLINED into the bundled
 	# agent host (the codex/claude providers use CAPIClient for model
 	# listing), so its Module-Terms reach the artifact even though the
@@ -74,7 +74,7 @@ if [ -n "$APP_DIR" ]; then
 	if ls "$APP_DIR/Contents/Resources/app/out/vs/platform/agentHost/node/agentHostMain.js" >/dev/null 2>&1; then
 		if grep -q "copilot_internal/v2/token" "$APP_DIR/Contents/Resources/app/out/vs/platform/agentHost/node/agentHostMain.js" 2>/dev/null; then
 			echo "    ⚠️  COMPLIANCE WARNING: bundled agentHostMain.js contains inlined @vscode/copilot-api code (CAPIClient markers found)."
-			echo "        D10 §5 blocks @vscode/copilot-api redistribution; the package dir is absent but its code is inlined."
+			echo "        D10 section 5 blocks @vscode/copilot-api redistribution; the package dir is absent but its code is inlined."
 			echo "        ESCALATE to the D10 owner / tech-lead before any external distribution. (D09 packaging cannot resolve this.)"
 		fi
 	fi
@@ -82,7 +82,7 @@ else
 	echo "    packaged-artifact scan skipped (no --app; run against the packaged product before publishing)"
 fi
 
-echo "==> [3/8] clientInfo.name is not Microsoft's registered name (D10 §3)"
+echo "==> [3/8] clientInfo.name is not Microsoft's registered name (D10 section 3)"
 node - <<'NODE_EOF'
 const fs = require('fs');
 const src = fs.readFileSync('src/vs/platform/agentHost/node/codex/codexAgent.ts', 'utf8');
@@ -92,7 +92,7 @@ if (!m) {
 	process.exit(1);
 }
 if (m[1] === 'vscode_agent_host') {
-	console.error("GATE FAILED: CLIENT_INFO.name is 'vscode_agent_host' — Microsoft's registered OpenAI client name. Reusing it misattributes our traffic (D10 §3).");
+	console.error("GATE FAILED: CLIENT_INFO.name is 'vscode_agent_host' — Microsoft's registered OpenAI client name. Reusing it misattributes our traffic (D10 section 3).");
 	process.exit(1);
 }
 console.log(`    clientInfo.name = '${m[1]}' — OK`);

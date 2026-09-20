@@ -30,7 +30,7 @@ for dir in "$@"; do
 		status=1
 	done < <(find "$dir" -type d \( -name 'copilot' -o -name 'copilot-chat' \) -path '*extensions*' 2>/dev/null || true)
 
-	# 2. Restricted packages (D10 §5 block list) must not appear in any
+	# 2. Restricted packages (D10 section 5 block list) must not appear in any
 	#    node_modules: @vscode/copilot-api (GitHub npm Module Terms: Code-OSS
 	#    dev-only, no redistribution), @github/copilot (unmodified-only),
 	#    @github/blackbird-external-ingest-utils (same closure).

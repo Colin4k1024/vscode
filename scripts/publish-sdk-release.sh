@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Publish agent-SDK tarballs to this repo's GitHub Releases — the default
-# self-hosted distribution endpoint (D09 裁定 1).
+# self-hosted distribution endpoint (D09 ruling 1).
 #
 # Layout (matches the default AGENT_SDK_URL_TEMPLATE in bundle-codex-sdk.sh):
 #   tag:   agent-sdk-<sdk>-<version>

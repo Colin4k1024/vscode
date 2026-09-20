@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generate the SBOM for a ColinCode build (D09 #11 AC13, per D10 §14 裁定:
+# Generate the SBOM for a ColinCode build (D09 #11 AC13, per D10 section 14 ruling:
 # merge the repo's cgmanifest.json + cglicenses.json baselines — do NOT
 # re-port grok-code-product's handwritten 3-component SBOM).
 #
@@ -11,7 +11,7 @@
 #   3. build/agent-sdk/agents/*\/package.json — the agent SDK version pins
 #      (D02), which upstream's manifests do not cover.
 #   4. .npmrc             — the pinned Electron version (Chromium/ffmpeg
-#      notices travel with the official prebuilt, D10 §8).
+#      notices travel with the official prebuilt, D10 section 8).
 #
 # Output: .build/sbom/sbom.cdx.json (CycloneDX 1.5)
 #
@@ -149,7 +149,7 @@ try {
 			type: 'framework',
 			name: 'electron',
 			version: electronVersion,
-			description: 'Official Electron prebuilt (Chromium + ffmpeg notices ship inside the binary distribution; D10 §8)',
+			description: 'Official Electron prebuilt (Chromium + ffmpeg notices ship inside the binary distribution; D10 section 8)',
 			licenses: [{ license: { id: 'MIT' } }],
 		});
 	}

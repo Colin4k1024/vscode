@@ -5,7 +5,7 @@
 
 import type Anthropic from '@anthropic-ai/sdk';
 // D09 (#11): TYPE-ONLY import. @vscode/copilot-api carries GitHub's npm
-// Module Terms (Code-OSS dev-only, no redistribution — D10 §5 hard block),
+// Module Terms (Code-OSS dev-only, no redistribution — D10 section 5 hard block),
 // so the branded build does not ship the package; every VALUE use below goes
 // through loadCopilotApi() so the agent host still starts without it and
 // only the CAPI-backed paths fail (loudly) when invoked.
@@ -19,7 +19,7 @@ let _capiModule: Promise<CopilotApiModule> | undefined;
  * Lazily resolve `@vscode/copilot-api`. The package is external to the
  * esbuild bundle (`packages: 'external'` in build/next/bundle.ts), so a
  * static value import would crash agentHostMain at startup in any build
- * that does not ship it (D10 §5). Fail loud — and only for the CAPI-backed
+ * that does not ship it (D10 section 5). Fail loud — and only for the CAPI-backed
  * code path being exercised — instead.
  */
 function loadCopilotApi(): Promise<CopilotApiModule> {
@@ -27,7 +27,7 @@ function loadCopilotApi(): Promise<CopilotApiModule> {
 		_capiModule = import('@vscode/copilot-api').catch(err => {
 			_capiModule = undefined; // allow retry (e.g. after a fix-up install)
 			throw new Error(
-				`@vscode/copilot-api is not shipped in this build (D10 §5 redistribution block); ` +
+				`@vscode/copilot-api is not shipped in this build (D10 section 5 redistribution block); ` +
 				`the requested CAPI-backed operation is unavailable. (${err instanceof Error ? err.message : String(err)})`
 			);
 		});

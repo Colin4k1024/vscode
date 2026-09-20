@@ -59,7 +59,7 @@ interface ITestAgentContext {
  * running the suite has `@openai/codex` in `node_modules`. Tests wanting the
  * cold case override `_isSdkResolvableWithoutDownload` directly.
  */
-function createAgentContext(disposables: Pick<DisposableStore, 'add'>, models: () => Promise<CCAModel[]>, rootConfig: Record<string, boolean> = {}, sdkDownloader = new RecordingAgentSdkDownloader()): ITestAgentContext {
+function createAgentContext(disposables: Pick<DisposableStore, 'add'>, models: () => Promise<CCAModel[]>, rootConfig: Record<string, boolean> = {}, sdkDownloader = new RecordingAgentSdkDownloader(), productServiceExtras: Record<string, unknown> = {}): ITestAgentContext {
 	const instantiationService = new TestInstantiationService();
 	const logService = new NullLogService();
 	const stateManager = disposables.add(new AgentHostStateManager(logService));
@@ -77,7 +77,7 @@ function createAgentContext(disposables: Pick<DisposableStore, 'add'>, models: (
 	instantiationService.stub(IAgentHostCheckpointService, NULL_CHECKPOINT_SERVICE);
 	instantiationService.stub(IAgentHostOTelService, { _serviceBrand: undefined, getNativeSdkTelemetryConfig: async () => undefined });
 	instantiationService.stub(IAgentHostSessionTitleSignal, { _serviceBrand: undefined, onDidChangeSessionTitle: Event.None });
-	instantiationService.stub(IProductService, { _serviceBrand: undefined, version: '1.0.0-test' } as IProductService);
+	instantiationService.stub(IProductService, { _serviceBrand: undefined, version: '1.0.0-test', ...productServiceExtras } as IProductService);
 	instantiationService.stub(INativeEnvironmentService, { userHome: URI.file('/tmp') });
 	instantiationService.stub(ILogService, logService);
 	instantiationService.stub(ITelemetryService, NullTelemetryService);
@@ -87,8 +87,8 @@ function createAgentContext(disposables: Pick<DisposableStore, 'add'>, models: (
 	return { agent, stateManager, configurationService, sdkDownloader, runStartupAccountProbe };
 }
 
-function createAgent(disposables: Pick<DisposableStore, 'add'>, models: () => Promise<CCAModel[]>, rootConfig: Record<string, boolean> = {}, sdkDownloader = new RecordingAgentSdkDownloader()): CodexAgent {
-	return createAgentContext(disposables, models, rootConfig, sdkDownloader).agent;
+function createAgent(disposables: Pick<DisposableStore, 'add'>, models: () => Promise<CCAModel[]>, rootConfig: Record<string, boolean> = {}, sdkDownloader = new RecordingAgentSdkDownloader(), productServiceExtras: Record<string, unknown> = {}): CodexAgent {
+	return createAgentContext(disposables, models, rootConfig, sdkDownloader, productServiceExtras).agent;
 }
 
 const modelListResponse = {
@@ -1202,6 +1202,50 @@ suite('CodexAgent model refresh', () => {
 			noAccount: false,
 			chatGPTAccount: false,
 		});
+	});
+
+	test('branded build (excludeCopilotFromPackaging) hides the Copilot sign-in resource (M3)', async () => {
+		// D10 section 5: without @vscode/copilot-api no CAPI-backed feature can
+		// consume a Copilot token, so the resource is not listed at all — the
+		// auth coordinator has nothing to offer or forward. The repo resource
+		// stays listed (it feeds no CAPI path).
+		const branded = createAgent(disposables, async () => [], {}, new RecordingAgentSdkDownloader(), { excludeCopilotFromPackaging: true });
+		const copilotResource = createTestGitHubEndpointService().getCopilotResource().resource;
+		assert.ok(!branded.getProtectedResources().some(r => r.resource === copilotResource), 'Copilot resource must not be offered in the branded build');
+		assert.strictEqual(branded.getProtectedResources().length, 1, 'only the repo resource remains');
+
+		const unbranded = createAgent(disposables, async () => [], {});
+		assert.ok(unbranded.getProtectedResources().some(r => r.resource === copilotResource), 'dev/default builds keep the Copilot resource');
+	});
+
+	test('branded build ignores a Copilot token instead of driving CAPI paths (M3)', async () => {
+		let copilotListings = 0;
+		const agent = createAgent(disposables, async () => { copilotListings++; return []; }, {}, new RecordingAgentSdkDownloader(), { excludeCopilotFromPackaging: true });
+		agent['_isSdkResolvableWithoutDownload'] = async () => false;
+		agent['_refreshCodexModels'] = async () => { };
+
+		const endpointService = createTestGitHubEndpointService();
+		assert.strictEqual(await agent.authenticate(endpointService.getCopilotResource().resource, 'stale-token'), true);
+		assert.strictEqual(agent['_githubToken'], undefined, 'the token must not stick — every CAPI effect keys off it');
+
+		await agent.refreshModels();
+		assert.strictEqual(copilotListings, 0, 'the CAPI model listing must not run in the branded build');
+		assert.deepStrictEqual(agent.models.get(), []);
+	});
+
+	test('branded build short-circuits _refreshCopilotModels without an error (no retry storm) (M3)', async () => {
+		let copilotListings = 0;
+		const agent = createAgent(disposables, async () => { copilotListings++; return []; }, {}, new RecordingAgentSdkDownloader(), { excludeCopilotFromPackaging: true });
+		agent['_refreshCodexModels'] = async () => { };
+		// Even with a token forced in (bypassing authenticate), the refresh
+		// must short-circuit: an empty Copilot catalog and NO error — an error
+		// return would put _refreshModels on its backoff-retry loop for a
+		// condition that cannot heal.
+		agent['_githubToken'] = 'forced-token';
+		const error = await agent['_refreshCopilotModels']();
+		assert.strictEqual(error, undefined);
+		assert.strictEqual(copilotListings, 0);
+		assert.deepStrictEqual(agent['_copilotModels'], []);
 	});
 
 	test('does not publish Copilot models disabled for the model picker', async () => {

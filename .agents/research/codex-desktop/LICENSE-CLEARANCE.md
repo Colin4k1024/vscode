@@ -169,7 +169,7 @@ const CLIENT_INFO = {
 | ms-vscode.js-debug | 1.117.0 | 854eeb8a… | github.com/microsoft/vscode-js-debug |
 | ms-vscode.vscode-js-profile-table | 1.0.11 | a962a1e6… | github.com/microsoft/vscode-js-profile-visualizer |
 
-三个上游仓库均为 MIT（微软开源），`metadata.publisherId.publisherName = ms-vscode` 只是发布通道标识。VSIX 在构建期从上游发布产物拉取并以 sha256 固定。
+三个上游仓库均为 MIT（微软开源），`metadata.publisherId.publisherName = ms-vscode` 只是发布通道标识。VSIX 在构建期拉取并以 sha256 固定；D15 配置 gallery 后，构建管线实际从 **Open VSX** 拉取（`build/lib/builtInExtensions.ts` 的 `fromMarketplace(serviceUrl)`），GitHub 仅是无 gallery 时的回退——两来源 bits 逐字节一致（三项 sha256 与 Open VSX 实拉逐一比对通过，证据：`D15-GALLERY.md` 附录 B.5）。
 
 **义务清单**：MIT 义务（许可证文本随 VSIX 内携带）；保留版本与 sha256 pin（供应链完整性 + 可追溯）；分发物 notices 列出三者的名称/版本/许可/来源。
 
@@ -219,7 +219,7 @@ const CLIENT_INFO = {
 **MS Marketplace**（取证：Visual Studio Marketplace Terms of Use，官方条款）：
 > "Marketplace Offerings are intended for use only with Visual Studio Products and Services and you may only install and use Marketplace Offerings with Visual Studio Products and Services."
 
-**裁定**：第三方构建（VSCodium 及同类）不被覆盖，**产品不得配置 `extensionsGallery` 指向 MS Marketplace**。当前 `product.json` 本就无 `extensionsGallery`（G9）——保持"未配置"即合规基线；D15 接市场时**只允许 Open VSX 或自建/私有 registry**。VSCodium 的公开实践即默认 Open VSX。
+**裁定**：第三方构建（VSCodium 及同类）不被覆盖，**产品不得配置 `extensionsGallery` 指向 MS Marketplace**。D15 前 `product.json` 无 `extensionsGallery`（G9），彼时"未配置"即合规基线；D15 起出厂形态**必须**配置为 Open VSX（缺失 = G9 回归，`audit-network-egress.sh` / `verify-beta-gates.sh` 双门禁硬失败），或显式回滚时同删两处断言。D15 接市场**只允许 Open VSX 或自建/私有 registry**。VSCodium 的公开实践即默认 Open VSX。
 
 **Open VSX**（open-vsx.org，Eclipse 基金会运营；registry 代码 EPL-2.0）：
 - 消费侧义务：逐扩展遵守其声明许可（registry 不附加统一条款）；扩展内容许可由发布者负责。
@@ -230,7 +230,7 @@ const CLIENT_INFO = {
 
 **落地动作**：D15 #17（Open VSX 接入/私有 registry；不触碰 MS Marketplace）；D07 #9（Agents 窗口允许扩展列表随 gallery 方案走）。
 
-**落地状态（2026-09-20，D15 #17 完成）**：出厂 gallery 已配置为 Open VSX（mixin 覆盖层注入，D15-01）；`audit-network-egress.sh` 新增合并配置级断言——禁止 MS Marketplace 域名、gallery 各 URL 必须为 open-vsx.org（CI 门禁）；GUI 实测搜索/安装/重启持久通过，全程零 MS Marketplace 请求（AC1–AC4 证据见 `.agents/research/codex-desktop/D15-GALLERY.md` 与 `evidence/d15-*`）。本条目可勾销。
+**落地状态（2026-09-20，D15 #17 完成 + 补充包）**：出厂 gallery 已配置为 Open VSX（mixin 覆盖层注入，含 `publisherUrl`）；`audit-network-egress.sh` 合并配置级断言——禁止 MS Marketplace 域名、gallery 各 URL 必须为 open-vsx.org、**gallery 必须存在**（G9 回归门，单测钉住且已接入 baseline CI 的 test-node 步骤）；`verify-beta-gates.sh` gate 4 镜像同一存在性断言。GUI 两轮独立实测（tombi / redhat.vscode-yaml）搜索/安装/重启持久通过，全程零 MS Marketplace 请求（证据见 `.agents/research/codex-desktop/D15-GALLERY.md` 与 `evidence/d15-*`）。本条目已勾销（`PRE-RELEASE-CHECKLIST.md` E1/E2/E3）。
 
 ## 11. 其他第三方依赖中非 MIT/Apache/BSD 的抽样清单
 

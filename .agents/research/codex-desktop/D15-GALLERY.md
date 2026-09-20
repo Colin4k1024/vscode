@@ -64,7 +64,9 @@
 ## D15-04 builtInExtensions（AC7）
 
 - **裁定**：保留现状——`ms-vscode.js-debug` 等 3 个内置扩展带 sha256 +
-  publisher 元数据，从 `github.com/microsoft/*` 拉取（MIT 允许再分发）。
+  publisher 元数据（MIT 允许再分发）。拉取来源表述以附录 B.5 的更正为准：
+  gallery 已配置时构建管线实际从 Open VSX 拉取（`fromMarketplace`），两来源 bits
+  逐字节一致（sha256 实测）。
 - 自托管镜像记录为**可选后续项**（不阻断发布；github.com 拉取失败时打包流水线
   已有多重重试 + GITHUB_TOKEN 提额，D09）。
 - 内置扩展清单：`extensions/` 下语言/主题/基础功能全部保留；依赖外部服务的扩展
@@ -75,7 +77,7 @@
 - 维持上游默认（on），不做产品级改动。
 - `--disable-workspace-trust` CLI 开关存在且可用（`argv.ts` 保留），自动化场景可用。
 
-## D15-06 VSIX 本地安装兜底
+## D15-06 VSIX 本地安装兜底（回滚权威口径：本节为准）
 
 - Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键——自补充 PR 起还须同删 `scripts/audit-network-egress.sh` 与 `scripts/verify-beta-gates.sh` 中的 gallery 存在性断言，否则 CI/打包门禁红，属有意的显式回滚门）后回到"无市场"状态，
   仍可通过 `--install-extension <path-to.vsix>` 或 GUI "Install from VSIX" 安装。
@@ -155,8 +157,10 @@
 
 ### B.3 Agents 窗口不激活未列入扩展（AC5 运行时证据）
 
-同一 profile（已装 redhat.vscode-yaml）以 Agents 窗口打开 `test.yaml`：文件正常打开，
-但该窗口 exthost 日志**无** `redhat.vscode-yaml` 激活记录（对照：常规窗口同操作有）。
+同一 profile（已装 redhat.vscode-yaml）以 Agents 窗口（会话日志目录 `20260920T203313`）
+打开 `test.yaml`：文件正常打开（编辑器打开不落 info 日志，此正向半句以截图为准），
+但该窗口 exthost 日志**无** `redhat.vscode-yaml` 激活记录（对照：常规窗口同操作有，
+日志可复现——见下）。
 激活的仅有内置扩展（vscode.git、vscode.emmet 等）。
 对照工件：`evidence/d15-second-round-logs.txt` §4（Agents 窗口会话激活全量列表 +
 redhat 命中数 0；与 §2 常规窗口激活记录对照）。截图
@@ -207,6 +211,6 @@ explicitly empty allow-list"（首轮已挂）。
 
 | 运行 | open-vsx.org | openvsx.eclipsecontent.org | MS Marketplace 主机 | 备注 |
 |---|---|---|---|---|
-| 搜索+安装（首轮分支构建） | 201 | 101 | **0** | img.shields.io / raw.githubusercontent.com 均为 readme 内容渲染 |
-| 重启×2 + Agents 窗口 | 10 / 0 | 1 / 0 | **0** | 重启轮为扩展更新检查；Agents 窗口零 gallery 请求 |
-| main 合并态复验 | 49 | 17 | **0** | 含 4 次 `main.vscode-cdn.net/extensions/copilotChat.json`——dev 形态在仓 extensions/copilot 发出（D08 门禁其不进产物），非出厂行为 |
+| run1 搜索+安装（补充 PR 第一轮分支构建） | 201 | 101 | **0** | img.shields.io / raw.githubusercontent.com 均为 readme 内容渲染 |
+| run2 重启 / run3 Agents 窗口 | 10 / 0 | 1 / 0 | **0** | 重启轮为扩展更新检查；Agents 窗口零 gallery 请求 |
+| run4 main 合并态复验 | 49 | 17 | **0** | 含 4 次 `main.vscode-cdn.net/extensions/copilotChat.json`——dev 形态在仓 extensions/copilot 发出（D08 门禁其不进产物），非出厂行为 |

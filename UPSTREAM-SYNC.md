@@ -248,7 +248,9 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `product/extensions.json` | A | +5/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/product.json` | A | +48/-0 | D06,D07,D08,D15 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `scripts/apply-mixin.sh` | A | +188/-0 | D06,D08,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
-| `scripts/audit-network-egress.sh` | A | +137/-0 | D08 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
+| `scripts/audit-network-egress.sh` | A | +177/-0 | D08,D15 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件）；D15 追加合并配置 gallery 断言（Open VSX 前缀 + MS Marketplace 禁令 + G9 存在性门） |
+| `scripts/verify-beta-gates.sh` | A | +153/-0 | D09,D15 | 覆盖层 | D09 发布门禁链；D15 起 gate 4 增加 gallery 存在性硬门（与 audit-network-egress.sh 对齐） |
+| `src/vs/code/test/node/extensionGallery.test.ts` | A | +104/-0 | D15 | 覆盖层 | D15 gallery 裁定 pin 测试（overlay 值、merged 无 MS Marketplace、egress 脚本 G9 存在性断言钉住） |
 | `scripts/check-branding-identity.sh` | A | +86/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/check-branding-residue.sh` | A | +105/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/check-no-copilot-artifacts.sh` | A | +52/-0 | D08,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |

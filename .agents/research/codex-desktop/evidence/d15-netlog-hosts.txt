@@ -1,6 +1,6 @@
 # D15 第二轮 netlog 主机聚合（--log-net-log 抓包，按 "url" host 计数）
 
-## 搜索+安装（首轮分支构建）（/tmp/d15-netlog.json）
+## run1 搜索+安装（补充 PR 第一轮分支构建）（/tmp/d15-netlog.json）
     201  open-vsx.org
     101  openvsx.eclipsecontent.org
      34  img.shields.io
@@ -10,18 +10,18 @@
       1  a.nel.cloudflare.com
   MS Marketplace 主机（marketplace.visualstudio.com / *.vsassets.io / gallerycdn）请求数: 0
 
-## 重启（常规窗口）（/tmp/d15-netlog2.json）
+## run2 重启后常规窗口（/tmp/d15-netlog2.json）
      12  wpad
      10  open-vsx.org
       4  main.vscode-cdn.net
       1  openvsx.eclipsecontent.org
   MS Marketplace 主机（marketplace.visualstudio.com / *.vsassets.io / gallerycdn）请求数: 0
 
-## Agents 窗口（/tmp/d15-netlog3.json）
+## run3 Agents 窗口（/tmp/d15-netlog3.json）
       6  wpad
   MS Marketplace 主机（marketplace.visualstudio.com / *.vsassets.io / gallerycdn）请求数: 0
 
-## main 合并态复验（/tmp/d15-netlog4.json）
+## run4 main 合并态复验（/tmp/d15-netlog4.json）
      49  open-vsx.org
      17  openvsx.eclipsecontent.org
      15  wpad

@@ -71,12 +71,19 @@ suite('extension gallery (D15)', () => {
 
 	test('the egress audit fails when the gallery is removed from the mixin', () => {
 		// G9 regression gate: scripts/audit-network-egress.sh must contain the
-		// gallery-presence assertion (the `else` branch that errors when the
-		// merged configuration has no extensionsGallery). Deleting the mixin
-		// key without deleting that assertion must stay a CI failure.
+		// gallery-presence assertion — an `else` branch on the gallery-exists
+		// check that errors when the merged configuration has no
+		// extensionsGallery. Deleting the mixin key without deleting that
+		// assertion must stay a CI failure. The beta-gates script mirrors the
+		// same gate and is pinned here too.
 		const audit = readFileSync(join(repoRoot, 'scripts', 'audit-network-egress.sh'), 'utf8');
 		assert.ok(audit.includes('merged product.json has no extensionsGallery'),
 			'audit-network-egress.sh must fail when the merged product.json has no extensionsGallery (G9 regression gate)');
+		assert.ok(/}\s*else\s*{[^}]*merged product\.json has no extensionsGallery/s.test(audit),
+			'the gallery-presence failure must live in the else branch of the gallery-exists check, not just anywhere in the script');
+		const betaGates = readFileSync(join(repoRoot, 'scripts', 'verify-beta-gates.sh'), 'utf8');
+		assert.ok(betaGates.includes('GATE FAILED: effective product.json has no extensionsGallery'),
+			'verify-beta-gates.sh must hard-fail when the effective product.json has no extensionsGallery (D15-06: both presence assertions are removed together on a deliberate rollback)');
 	});
 
 	test('Open VSX is not on the network-egress denylist', () => {

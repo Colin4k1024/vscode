@@ -93,8 +93,24 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 		const product = JSON.parse(file.contents!.toString('utf8'));
 
 		if (product.extensionsGallery) {
-			console.error(`product.json: Contains 'extensionsGallery'`);
-			errorCount++;
+			// ColinCode mixin exemption (D15): the upstream product.json must not
+			// carry a gallery, but with the mixin applied the working-tree
+			// product.json legitimately carries the overlay's Open VSX config.
+			// Accept exactly that value; anything else (e.g. an MS Marketplace
+			// URL edited in directly) still fails. The committed upstream file
+			// is separately pinned pristine by scripts/check-product-json-pristine.sh.
+			let overlayGallery: unknown;
+			try {
+				// file.path is the root product.json being scanned; the mixin
+				// overlay lives at product/product.json next to it.
+				overlayGallery = JSON.parse(fs.readFileSync(path.join(path.dirname(file.path), 'product', 'product.json'), 'utf8')).extensionsGallery;
+			} catch {
+				overlayGallery = undefined;
+			}
+			if (!overlayGallery || JSON.stringify(product.extensionsGallery) !== JSON.stringify(overlayGallery)) {
+				console.error(`product.json: Contains 'extensionsGallery'`);
+				errorCount++;
+			}
 		}
 
 		this.emit('data', file);

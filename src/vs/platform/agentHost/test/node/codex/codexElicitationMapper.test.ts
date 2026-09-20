@@ -89,7 +89,9 @@ suite('codexElicitationMapper', () => {
 		});
 		assert.deepStrictEqual(
 			elicitationResponseFromAnswers(verificationParams, ChatInputResponseKind.Accept, undefined),
-			{ action: 'accept', content: null, _meta: null },
+			// issue #54: a proof-less accept is silently downgraded to Cancel by
+			// the server — we decline honestly instead (fails closed).
+			{ action: 'decline', content: null, _meta: null },
 		);
 	});
 

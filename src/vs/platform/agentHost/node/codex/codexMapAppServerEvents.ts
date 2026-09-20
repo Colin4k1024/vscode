@@ -1325,6 +1325,6 @@ export function turnStateFromStatus(status: string): TurnState {
 			// outcome is unknown (issue #34): it must not default to Complete.
 			return TurnState.Uncertain;
 		default:
-			return TurnState.Complete;
+			return TurnState.Uncertain;
 	}
 }

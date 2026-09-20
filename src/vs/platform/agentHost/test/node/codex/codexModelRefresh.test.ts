@@ -958,6 +958,53 @@ suite('CodexAgent model refresh', () => {
 		assert.ok(requests.includes('account/login/cancel'));
 	});
 
+	test('a cancel that beats login/start never publishes the authorization URL', async () => {
+		const ctx = createAgentContext(disposables, async () => []);
+		const cancelParams: unknown[] = [];
+		const loginStart = new DeferredPromise<{ type: 'chatgpt'; loginId: string; authUrl: string }>();
+		ctx.agent['_startRawConnection'] = async () => ({
+			client: {
+				onExit: Event.None,
+				request: async (method: string, params?: unknown) => {
+					if (method === 'account/read') {
+						return { account: null, requiresOpenaiAuth: true };
+					}
+					if (method === 'account/login/start') {
+						return loginStart.p;
+					}
+					if (method === 'account/login/cancel') {
+						cancelParams.push(params);
+						return { status: 'canceled' };
+					}
+					throw new Error(`Unexpected request: ${method}`);
+				},
+				onNotification: () => ({ dispose() { } }),
+				dispose: () => { },
+			},
+			proxyHandle: { dispose: () => { } },
+			child: { kill: () => true },
+		}) as never;
+
+		const signIn = ctx.agent['_signInToChatGPT']('request-early-cancel');
+		// Cancel while account/login/start is in flight: the pending sign-in is
+		// registered but the login id does not exist yet, so the cancellation must
+		// be remembered, not dropped. Poll for the registration to keep the test
+		// free of timing assumptions.
+		while (ctx.agent['_pendingChatGPTSignIn'] === undefined) {
+			await new Promise(resolve => setTimeout(resolve, 1));
+		}
+		await ctx.agent['_cancelChatGPTSignIn']('request-early-cancel');
+		await loginStart.complete({ type: 'chatgpt', loginId: 'login-early-1', authUrl: 'https://example.com/should-not-open' });
+		await signIn;
+
+		const account = readCodexAccountInfo(ctx.stateManager.rootState);
+		assert.strictEqual(account.authUrl, undefined, 'cancelled login must never publish the authorization URL');
+		assert.strictEqual(account.authUrlNonce, undefined);
+		assert.strictEqual(account.status, 'signedOut');
+		assert.deepStrictEqual(cancelParams, [{ loginId: 'login-early-1' }]);
+		assert.strictEqual(ctx.agent['_pendingChatGPTSignIn'], undefined);
+	});
+
 	test('retains the last observed rate limit when a refresh fails', async () => {
 		const agent = createAgent(disposables, async () => []);
 		let fail = false;

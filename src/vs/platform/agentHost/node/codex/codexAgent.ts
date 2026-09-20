@@ -1495,6 +1495,25 @@ export class CodexAgent extends Disposable implements IAgent {
 						this._publishAccountInfo(this._toAccountInfo(this._openAIAccountState));
 						return;
 					}
+					if (pendingSignIn.cancelRequested) {
+						// The cancel request beat `account/login/start`; cancel now that
+						// the login id exists. Never publish the authorization URL —
+						// the user already cancelled, so opening a browser would be a
+						// surprise — and settle without depending on the app-server to
+						// echo a completion for the aborted login: on a persistent
+						// connection that echo is not guaranteed, so clear the pending
+						// sign-in and refresh back to the signed-out account state here.
+						await this._requestChatGPTLoginCancel(client, loginId);
+						if (!transient) {
+							if (this._pendingChatGPTSignIn === pendingSignIn) {
+								this._pendingChatGPTSignIn = undefined;
+							}
+							await this._refreshAccount(client, true, transient);
+							this._queueModelRefresh();
+							return;
+						}
+						pendingSignIn.completeCancellation();
+					}
 					this._publishAccountInfo({
 						...this._toAccountInfo(this._openAIAccountState),
 						authUrl: response.type === 'chatgpt' ? response.authUrl : undefined,
@@ -1502,13 +1521,6 @@ export class CodexAgent extends Disposable implements IAgent {
 						deviceVerificationUrl: response.type === 'chatgptDeviceCode' ? response.verificationUrl : undefined,
 						deviceUserCode: response.type === 'chatgptDeviceCode' ? response.userCode : undefined,
 					});
-					if (pendingSignIn.cancelRequested) {
-						// The cancel request beat `account/login/start`; cancel now that
-						// the login id exists, and settle the wait without depending on
-						// the app-server to echo a completion for the aborted login.
-						await this._requestChatGPTLoginCancel(client, loginId);
-						pendingSignIn.completeCancellation();
-					}
 					if (transient) {
 						const result = await Promise.race([
 							loginCompleted.p,

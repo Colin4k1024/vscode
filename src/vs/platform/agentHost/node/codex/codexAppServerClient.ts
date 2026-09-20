@@ -6,6 +6,7 @@
 import type { Readable, Writable } from 'stream';
 import { timeout } from '../../../../base/common/async.js';
 import { CancellationError } from '../../../../base/common/errors.js';
+import { CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable, type IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
 import { hasKey } from '../../../../base/common/types.js';
@@ -146,7 +147,9 @@ export const DEFAULT_CODEX_OVERLOADED_RETRY_POLICY: ICodexOverloadedRetryPolicy 
  * `turn/start` were silently accepted despite the -32001 response, an
  * automatic retry would either be refused by the per-thread write lock
  * (surfacing a spurious failure while the user's turn is actually running)
- * or, worse, double-apply. Read-only / query methods carry no such risk,
+ * or, worse, double-apply. Read-only / query methods carry no such risk
+ * (account/read and getAuthStatus with refreshToken:true trigger a token
+ * refresh, but that refresh is itself idempotent — safe to retry),
  * so automatic retry is restricted to this allowlist of idempotent reads.
  * Every other method keeps the fail-fast behavior: a -32001 rejection
  * propagates immediately and the caller decides whether to retry (the UI
@@ -323,6 +326,7 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 
 	private _exited = false;
 	private _disposed = false;
+	private readonly _disposeCts = new CancellationTokenSource();
 	private _buf = '';
 	private readonly _overloadedRetryPolicy: ICodexOverloadedRetryPolicy;
 
@@ -518,7 +522,9 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 				}
 				attempt++;
 				this._log('warn', `${method}: overloaded (-32001), retry ${attempt}/${policy.maxRetries} in ${delay}ms`);
-				await timeout(delay);
+				// Cancellable sleep: dispose during a backoff rejects promptly
+				// instead of hanging the caller until the delay elapses.
+				await timeout(delay, this._disposeCts.token);
 				if (this._disposed) {
 					throw new CancellationError();
 				}
@@ -598,6 +604,7 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 			return;
 		}
 		this._disposed = true;
+		this._disposeCts.cancel();
 		// Reject anything still pending so callers don't hang.
 		for (const pending of this._pending.values()) {
 			pending.reject(new CancellationError());

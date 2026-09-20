@@ -10,6 +10,7 @@ import { Emitter } from '../../../../../base/common/event.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import {
 	CodexAppServerClient,
+	DEFAULT_CODEX_OVERLOADED_RETRY_POLICY,
 	JsonRpcError,
 	JsonRpcErrorCode,
 	type ICodexAppServerTransport,
@@ -587,7 +588,7 @@ suite('CodexAppServerClient', () => {
 			jitterRatio: 0.5,
 			maxRetries: 2,
 			totalBudgetMs: 10_000,
-			random: () => 1,
+			random: () => 0.999, // top of Math.random's range: the production supremum
 		});
 		const traffic = autoRespondOverloaded(peer);
 		try {
@@ -605,6 +606,40 @@ suite('CodexAppServerClient', () => {
 			client.dispose();
 			peer.dispose();
 		}
+	});
+
+	test('dispose during a backoff sleep rejects the pending request promptly', async () => {
+		const peer = makeFakePeer();
+		const client = new CodexAppServerClient(peer.transport, undefined, undefined, {
+			initialDelayMs: 5_000, // long enough that without cancellation the test would hang
+			backoffFactor: 2,
+			jitterRatio: 0,
+			maxRetries: 4,
+			totalBudgetMs: 60_000,
+			random: () => 0.5,
+		});
+		autoRespondOverloaded(peer);
+		try {
+			const responsePromise = client.request('getAuthStatus', { refreshToken: false, includeToken: false });
+			// First attempt fails with -32001, the client enters the 5s backoff.
+			await new Promise(resolve => setTimeout(resolve, 100));
+			const started = Date.now();
+			client.dispose();
+			await assert.rejects(responsePromise, (err: unknown) => err instanceof CancellationError);
+			assert.ok(Date.now() - started < 2_000, 'dispose must interrupt the backoff sleep promptly');
+		} finally {
+			peer.dispose();
+		}
+	});
+
+	test('the default retry policy mathematically cannot fire more than one retry within 100ms (B8)', () => {
+		// Pure-math pin for the shipped policy: the minimum possible delay is
+		// initialDelayMs * (1 - jitterRatio) = 500 * 0.5 = 250ms > 100ms, so at
+		// most one retry can land in any 100ms window regardless of random().
+		const policy = DEFAULT_CODEX_OVERLOADED_RETRY_POLICY;
+		const minDelay = policy.initialDelayMs * (1 - policy.jitterRatio);
+		assert.ok(minDelay > 100, `default policy min delay ${minDelay}ms must exceed the 100ms density window`);
+		assert.ok(policy.maxRetries <= 4 && policy.totalBudgetMs <= 30_000, 'default policy stays bounded');
 	});
 
 	test('overloaded retry fires at most 3 retries within 100ms even with an aggressive policy (B8: no dense retry storm)', async () => {

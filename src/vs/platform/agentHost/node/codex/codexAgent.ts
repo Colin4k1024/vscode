@@ -77,7 +77,7 @@ import { IAgentSdkDownloader, IAgentSdkPackage } from '../agentSdkDownloader.js'
 import { CancellationToken, CancellationTokenSource } from '../../../../base/common/cancellation.js';
 import { PendingRequestRegistry } from '../../common/pendingRequestRegistry.js';
 import { IAgentHostOTelService } from '../../common/otel/agentHostOTelService.js';
-import { CodexAppServerClient, JsonRpcError, transportFromChildProcess, type ICodexAppServerClient, type ServerRequestHandlerResult } from './codexAppServerClient.js';
+import { CodexAppServerClient, isServerOverloadedError, JsonRpcError, transportFromChildProcess, type ICodexAppServerClient, type ServerRequestHandlerResult } from './codexAppServerClient.js';
 import { CODEX_PORTABLE_HISTORY_HEADER, ICodexProxyService, type ICodexProxyHandle } from './codexProxyService.js';
 import { GITHUB_MCP_SERVER_NAME, resolveGitHubMcpServerConfiguration } from '../shared/githubMcpServer.js';
 import { AGENT_MERGE_GITHUB_TOOL_RESTRICTION, getAgentMergeGitHubToolRestriction, isGitHubMcpToolName } from '../shared/agentMergeToolRestrictions.js';
@@ -6287,7 +6287,7 @@ export class CodexAgent extends Disposable implements IAgent {
 				// -32001 (overloaded) maps to a user-actionable "temporarily
 				// busy" message via mapCodexRequestError; all other failures
 				// keep the CodexTurnError/CodexCompactionError shape verbatim.
-				part: createErrorResponsePart(mapCodexRequestError(err, isCompactCommand ? 'CodexCompactionError' : 'CodexTurnError')),
+				part: createErrorResponsePart(mapCodexRequestError(err, isCompactCommand ? 'CodexCompactionError' : 'CodexTurnError'), isServerOverloadedError(err)),
 			});
 			this._fire(sessionUri, { type: ActionType.ChatTurnComplete, turnId: effectiveTurnId, duration });
 		} finally {

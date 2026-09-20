@@ -13,7 +13,7 @@ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/tes
 import { NullLogService } from '../../../../../platform/log/common/log.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { PendingRequestRegistry } from '../../../common/pendingRequestRegistry.js';
-import { ChatInputAnswerState, ChatInputAnswerValueKind, ChatInputResponseKind, ToolCallConfirmationReason } from '../../../common/state/sessionState.js';
+import { ChatInputAnswerState, ChatInputAnswerValueKind, ChatInputResponseKind } from '../../../common/state/sessionState.js';
 import { ActionType, type ChatAction, type SessionAction } from '../../../common/state/sessionActions.js';
 import { CodexAgent } from '../../../node/codex/codexAgent.js';
 import { CodexAppServerClient, type ICodexAppServerTransport } from '../../../node/codex/codexAppServerClient.js';
@@ -100,7 +100,7 @@ function makeHarness(...sessions: { session: IApprovalSession; threadId: string 
 		_logService: new NullLogService(),
 		_sessions: bySessionId as Map<string, IApprovalSession>,
 		_sessionIdByThreadId: byThreadId,
-		_subagentsByThreadId: new Map(),
+		_subagentsByThreadId: new Map<string, never>(),
 		fired,
 		_fire(uri, action) { fired.push({ uri: uri.toString(), action }); },
 		_resolveApprovalTarget(threadId) {

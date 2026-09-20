@@ -99,6 +99,17 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         uses: ./.github/actions/save-node-modules
 
+      # D12 / Issue #53: no src typecheck ever ran on this fork — pr.yml's
+      # typecheck jobs schedule on Microsoft's 1ES pool, which never picks up
+      # runs here — so type errors in agentHost test files accumulated
+      # silently. Gate the full client tsconfig on every PR through this
+      # baseline job (tsc resolves to @typescript/native, i.e. tsgo).
+      - name: Prepare Electron types
+        run: node build/npm/electronTypes.ts
+
+      - name: Type check client (src/tsconfig.json)
+        run: npm run typecheck-client
+
       # D14 (Issue #16): fold the remaining always-green guards into the
       # effective PR gate set. pr.yml runs these on Microsoft's self-hosted
       # 1ES pool, which never schedules on this fork — baseline is the only

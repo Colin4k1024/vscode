@@ -124,6 +124,40 @@ function discoverSourceFiles(): { src: string; dest: string }[] {
 	return results;
 }
 
+/**
+ * Drift guard (#51): protocol markers introduced by vscode#34 that MUST be
+ * present in the canonical repo before a sync is allowed to touch the
+ * vendored copy. A stale canonical checkout that predates #34 would
+ * otherwise silently revert `TurnState.Uncertain` / `ChatTurnUncertain` /
+ * protocol version 0.10.0 from the vendored tree. Fail loud instead.
+ */
+const REQUIRED_CANONICAL_MARKERS: { file: string; needle: string }[] = [
+	{ file: 'channels-chat/state.ts', needle: "Uncertain = 'uncertain'" },
+	{ file: 'channels-chat/actions.ts', needle: 'ChatTurnUncertain' },
+	{ file: 'version/registry.ts', needle: "'0.10.0'" },
+];
+
+function assertCanonicalMarkers(): void {
+	const missing: string[] = [];
+	for (const marker of REQUIRED_CANONICAL_MARKERS) {
+		const markerPath = path.join(TYPES_DIR, marker.file);
+		if (!fs.existsSync(markerPath) || !fs.readFileSync(markerPath, 'utf-8').includes(marker.needle)) {
+			missing.push(`${marker.file} -> ${marker.needle}`);
+		}
+	}
+	if (missing.length > 0) {
+		console.error(`ERROR: canonical agent-host-protocol checkout at ${PROTOCOL_REPO}`);
+		console.error('is missing required protocol markers introduced by vscode#34:');
+		for (const m of missing) {
+			console.error(`  - ${m}`);
+		}
+		console.error('Refusing to sync: an outdated canonical repo would silently revert');
+		console.error('those changes from the vendored copy. Update the canonical repo first');
+		console.error('(https://github.com/Colin4k1024/agent-host-protocol, see vscode#51).');
+		process.exit(1);
+	}
+}
+
 function getSourceCommitHash(): string {
 	try {
 		return execSync('git rev-parse --short HEAD', { cwd: PROTOCOL_REPO, encoding: 'utf-8' }).trim();
@@ -249,9 +283,11 @@ function main() {
 	if (!fs.existsSync(TYPES_DIR)) {
 		console.error(`ERROR: Cannot find ${TYPES_DIR}`);
 		console.error('Clone agent-host-protocol as a sibling of the VS Code repo:');
-		console.error('  git clone git@github.com:microsoft/agent-host-protocol.git ../agent-host-protocol');
+		console.error('  git clone git@github.com:Colin4k1024/agent-host-protocol.git ../agent-host-protocol');
 		process.exit(1);
 	}
+
+	assertCanonicalMarkers();
 
 	const commitHash = getSourceCommitHash();
 	console.log(`Syncing from agent-host-protocol @ ${commitHash}`);

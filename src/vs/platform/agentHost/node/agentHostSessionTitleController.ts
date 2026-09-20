@@ -639,8 +639,9 @@ export class AgentHostSessionTitleController extends Disposable implements IAgen
 		// Branded build (D10 section 5): @vscode/copilot-api is not shipped, so
 		// the utility completion would reject per call — skip it instead of
 		// logging a warn per generated title. The fallback title path below is
-		// unaffected.
-		if (this._productService.excludeCopilotFromPackaging === true) {
+		// unaffected. (`?.`: unit tests construct the controller with `new`, no
+		// DI — an absent product service means "not the branded build".)
+		if (this._productService?.excludeCopilotFromPackaging === true) {
 			return undefined;
 		}
 

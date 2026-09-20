@@ -83,7 +83,9 @@ export class AgentHostCommitOperationHandler implements IChangesetOperationHandl
 		// Branded build (D10 section 5): @vscode/copilot-api is not shipped, so
 		// the utility completion cannot run — fail with a user-appropriate
 		// message instead of the internal D10 string from loadCopilotApi().
-		if (this._productService.excludeCopilotFromPackaging === true) {
+		// (`?.`: unit tests construct the handler with `new`, no DI — an absent
+		// product service means "not the branded build", gate open.)
+		if (this._productService?.excludeCopilotFromPackaging === true) {
 			throw new ProtocolError(
 				JsonRpcErrorCodes.InternalError,
 				localize('agentHost.changeset.commit.notAvailableInBuild', "Commit message generation is not available in this build. Write the commit message manually."),

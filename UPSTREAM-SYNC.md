@@ -164,6 +164,11 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 
 | 文件 | 变更 | 行数 | 来源 | 分类 | 理由 |
 |---|---|---|---|---|---|
+
+> 行数列是**手工维护的快照**，不是实时生成：`±N (D09)` 行为 D66 补录的 D09 changeset
+> 总变动行数（精确 +/- 拆分以 `git diff --numstat fb20064c0f4 HEAD -- <file>` 为准）；
+> `+A/-D` 行记录的是该行来源所示 D-number 落地时点的 diff 规模，后续 PR 的继续改动不
+> 回溯刷新（D66 评审实测若干行已漂移）。需要当前值时以 `git diff --numstat` 输出为准。
 | `.agents/goal/codex-desktop.json` | A | +338/-0 | D04 | 覆盖层 | **覆盖层**：编排目标状态 |
 | `.agents/research/codex-desktop/00-FINDINGS.md` | A | +390/-0 | D01,D17 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/01-ACCEPTANCE-CORE.md` | A | +213/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
@@ -237,6 +242,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `build/agent-sdk/test/verifyStagedTree.test.ts` | A | +134/-0 | D09 | 覆盖层 | 测试（新增文件）：暂存树校验 |
 | `build/agent-sdk/upload.ts` | M | ±151 (D09) | D09 | 源码改动 | SDK 上传（HEAD-then-decide 幂等、Azure/HTTP 双后端；D66 起 Azure SDK 延迟加载）；管线行为 |
 | `build/filters.ts` | M | +5/-0 | D09,D14 | 源码改动 | D09：hygiene copyright 豁免 `build/agent-sdk/licenses/**`（vendored 法律文本不能加注释头）；D14：豁免 UPSTREAM_COMMIT/VERSION；filters.ts 是上游既有的豁免注册表 |
+| `build/gulpfile.reh.ts` | M | +14/-0 | D66 | 源码改动 | D66（M7）：REH packageTask 在 mixin 设置 `excludeCopilotFromPackaging` 时 fail loud（REH 超出品牌化桌面路线范围，见 Issue #11）；守卫只能写在打包任务本体 |
 | `build/gulpfile.vscode.ts` | M | +25/-0 | D09 | 源码改动 | 桌面 packageTask：消费 mixin 的 `excludeCopilotFromPackaging`/`copilotPackagingBlocklist`（D66 起 blocklist 为 mixin 数据）并盖章 `product.agentSdks`；gulp 任务本体只能改在定义处 |
 | `build/agent-sdk/test/cdnEndpoint.test.ts` | A | +85/-0 | D02,D14 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `build/hygiene.ts` | M | +26/-2 | D15 | 源码改动 | D15：hygiene 的 extensionsGallery 检查改为 mixin 感知（工作树应用态放行、提交/暂存态仍红）；该检查是上游对产品 gallery 的硬约束，只能改在检查本体；覆盖层机制无法拦截构建脚本 |
@@ -312,7 +318,8 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/common/meta/codexAccount.ts` | M | +14/-0 | D03 | 源码改动 | D03 OpenAI 原生登录的账号元数据类型；协议元数据本体 |
 | `src/vs/platform/agentHost/node/agentSdkDownloader.ts` | M | ±40 (D09) | D09 | 源码改动 | D09：SDK 下载器——urlTemplate 解析、缓存布局、（round-1）sha256 完整性校验（D66 起按 target 键控）；运行时行为，无扩展点 |
 | `src/vs/platform/agentHost/node/codex/codexAccountState.ts` | M | +4/-1 | D03 | 源码改动 | D03 登录状态机；运行时行为 |
-| `src/vs/platform/agentHost/node/codex/codexAgent.ts` | M | +173/-16 | D03,D04,D05,D08,D13,D14 | 源码改动 | 最大源码改动（+173/-16）：D03 登录、D04 去 GitHub 耦合、D05 策略、D08 clientInfo 身份与遥测隔离、D13 负向路径；D14 追加 1 字符注释修复（§→section，hygiene）。会话宿主核心行为，无扩展点可覆盖 |
+| `src/vs/platform/agentHost/node/codex/codexAgent.ts` | M | +173/-16 | D03,D04,D05,D08,D13,D14,D66 | 源码改动 | 最大源码改动（+173/-16）：D03 登录、D04 去 GitHub 耦合、D05 策略、D08 clientInfo 身份与遥测隔离、D13 负向路径；D14 追加 1 字符注释修复（§→section，hygiene）；D66（M3）品牌化构建隐藏 Copilot 登录资源并短路 CAPI 路径。会话宿主核心行为，无扩展点可覆盖 |
+| `src/vs/platform/agentHost/node/codex/codexProxyService.ts` | M | +8/-0 | D66 | 源码改动 | D66（M3）：`start()` 的文档注释声明品牌化构建永不启动该 proxy（其 CAPI 读路径依赖未随包发布的 @vscode/copilot-api） |
 | `src/vs/platform/agentHost/node/shared/copilotApiService.ts` | M | ±36 (D09) | D09 | 源码改动 | D09：`loadCopilotApi()` 延迟解析——@vscode/copilot-api 是 D10 section 5 硬阻断包，静态 value import 会让缺包构建启动即崩；延迟解析把失败收敛到被调用的 CAPI 路径（D66 起品牌化构建进一步隐藏入口） |
 | `src/vs/platform/agentHost/node/sshRemoteAgentHostHelpers.ts` | M | ±33 (D09) | D09 | 源码改动 | D09：`buildCLIDownloadUrl` 默认端点从 Microsoft update CDN 改为 fork 自有 releases（deny-by-default——见 §4 处置说明）；URL 构造必须改在定义处 |
 | `src/vs/platform/agentHost/test/common/agentService.test.ts` | M | +57/-0 | D07 | 源码改动(测试) | 随对应源文件更新的测试/数据 |

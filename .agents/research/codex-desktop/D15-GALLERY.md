@@ -117,3 +117,86 @@
 | AC6 workspace trust | D15-05 |
 | AC7 builtInExtensions | D15-04 |
 | AC8 D10 checklist 勾销 | 上文「D10 checklist 勾销支持」 |
+
+---
+
+## 附录 B — 第二轮独立实测（complement PR，2026-09-20 晚）
+
+> 由独立于首轮实现的会话完成：不同扩展（redhat.vscode-yaml，Open VSX 报 license: MIT）、
+> 不同 profile、全程 `--log-net-log` 抓包。结论与首轮一致，并补强 AC4/AC5/AC6/AC7 的
+> 运行时证据。首轮（tombi）与本轮（yaml）互为独立复现。
+
+### B.1 搜索 / 安装 / 启用（AC1 复现 + 激活证据）
+
+- Extensions 视图搜 `yaml` → Open VSX 结果实时返回（Red Hat YAML 7.6M 安装量置顶，
+  截图 `evidence/d15-extensions-search-yaml.png`）。
+- 列表项下拉 "Install Release Version" → shared process 日志：
+  `Extension installed successfully: redhat.vscode-yaml`（1.24.0 稳定版；
+  `extensions.json` 记录 `metadata.source: "gallery"`）。
+- 打开 `test.yaml` → 状态栏语言模式 = **YAML**；exthost 日志
+  `ExtensionService#_doActivateExtension redhat.vscode-yaml, activationEvent: 'onLanguage:yaml'`。
+- 安装日志含 `Could not load vsce-sign module … Extension signature verification is not done`：
+  OSS 构建无 `@vscode/vsce-sign`（MS 专有模块），签名验证不可用——与 VSCodium 同形态，
+  如实登记；缓解 = Open VSX 发布侧审核 + namespace 所有权 + builtInExtensions sha256 pin。
+
+### B.2 重启持久（AC4，两轮重启）
+
+同一 `--user-data-dir/--extensions-dir` 连续重启两次：
+`@installed` 均列出 YAML；再次打开 `test.yaml` 在新会话 exthost 日志重新激活；
+`extensions/redhat.vscode-yaml-1.24.0-universal/` 在盘持久
+（截图 `evidence/d15-extensions-installed-after-restart.png`）。
+后续在本 PR 基底（main 合并态）上再次复验：已装扩展在列、搜索实时返回（netlog4 抓包）。
+
+### B.3 Agents 窗口不激活未列入扩展（AC5 运行时证据）
+
+同一 profile（已装 redhat.vscode-yaml）以 Agents 窗口打开 `test.yaml`：文件正常打开，
+但该窗口 exthost 日志**无** `redhat.vscode-yaml` 激活记录（对照：常规窗口同操作有）。
+激活的仅有内置扩展（vscode.git、vscode.emmet 等）。
+截图 `evidence/d15-agents-window-yaml-not-activated.png`。
+静态断言：`agentsWindowStartup.test.ts` "sessionsWindowAllowedExtensions is an
+explicitly empty allow-list"（首轮已挂）。
+
+### B.4 Workspace trust 双向实测（AC6）
+
+- 全新 profile 打开新文件夹 → **Restricted Mode** banner 出现
+  （截图 `evidence/d15-workspace-trust-restricted-mode.png`）。
+- 同形态加 `--disable-workspace-trust` → 无 Restricted Mode（自动化路径可用）。
+
+### B.5 builtInExtensions 三项 sha256 对 Open VSX 逐一比对（AC7 补强 + 一处更正）
+
+| 扩展 | 版本 | pin（root product.json） | Open VSX 实拉 sha256 | 结论 |
+|---|---|---|---|---|
+| ms-vscode.js-debug-companion | 1.1.3 | `7380a890…de93` | `7380a890…de93` | 一致 |
+| ms-vscode.js-debug | 1.117.0 | `854eeb8a…c7fb8` | `854eeb8a…c7fb8` | 一致 |
+| ms-vscode.vscode-js-profile-table | 1.0.11 | `a962a1e6…48ae9` | `a962a1e6…48ae9` | 一致 |
+
+（`https://open-vsx.org/vscode/gallery/publishers/ms-vscode/vsextensions/{name}/{version}/vspackage`
+实拉 + `shasum -a 256`，2026-09-20。）
+
+**更正 D15-04 的拉取来源表述**：`build/lib/builtInExtensions.ts` 的
+`syncMarketplaceExtension` 在 gallery 已配置时走 `fromMarketplace(serviceUrl, …)`，
+即出厂形态（mixin 应用后）三项 js-debug 实际从 **Open VSX** 拉取并以 pin 校验
+（dev 首启日志 `[marketplace] ms-vscode.js-debug@1.117.0 ✔︎` 实测）；
+`fromGithub` 仅在 gallery 未配置时回退。结论（保留三项、无需自托管镜像）不变，
+且上表证明两条来源的 bits 逐字节一致。
+
+### B.6 守卫补强：gallery 存在性断言（G9 回归门）
+
+首轮 `audit-network-egress.sh` 的 gallery 断言在 `extensionsGallery` **缺失**时静默通过
+（`if (gallery)` 只检字段、不检存在）。本 PR 补 `else` 分支：合并配置无
+`extensionsGallery` 即红——删除 mixin 中的 gallery 键必须连同该断言一起删（显式回滚），
+防止 G9 静默回归。
+
+### B.7 补充配置项：`publisherUrl`
+
+`product/product.json` overlay 增补 `"publisherUrl": "https://open-vsx.org/namespace"`
+（实测 `…/namespace/redhat` → 200），补齐扩展详情页的发布者外链
+（`extensionGalleryManifestService.ts` 的 `PublisherViewUri`）。
+
+### B.8 本轮 netlog 主机聚合（AC2/AC3 复测）
+
+| 运行 | open-vsx.org | openvsx.eclipsecontent.org | MS Marketplace 主机 | 备注 |
+|---|---|---|---|---|
+| 搜索+安装（首轮分支构建） | 201 | 101 | **0** | img.shields.io / raw.githubusercontent.com 均为 readme 内容渲染 |
+| 重启×2 + Agents 窗口 | 10 / 0 | 1 / 0 | **0** | 重启轮为扩展更新检查；Agents 窗口零 gallery 请求 |
+| main 合并态复验 | 49 | 17 | **0** | 含 4 次 `main.vscode-cdn.net/extensions/copilotChat.json`——dev 形态在仓 extensions/copilot 发出（D08 门禁其不进产物），非出厂行为 |

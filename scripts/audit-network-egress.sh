@@ -123,6 +123,10 @@ if (gallery) {
 	if (!gallery.serviceUrl) {
 		err('merged product.json extensionsGallery.serviceUrl must be set');
 	}
+} else {
+	// G9 regression gate (D15): deleting the gallery from the mixin must fail
+	// here, not silently return the shipped product to "no marketplace".
+	err('merged product.json has no extensionsGallery — D15 configured Open VSX; removing it regresses G9 (no marketplace). Delete this assertion too if that is a deliberate rollback.');
 }
 
 

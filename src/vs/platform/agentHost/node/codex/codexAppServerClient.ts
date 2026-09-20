@@ -4,6 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import type { Readable, Writable } from 'stream';
+import { timeout } from '../../../../base/common/async.js';
 import { CancellationError } from '../../../../base/common/errors.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { Disposable, type IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
@@ -67,6 +68,111 @@ export class JsonRpcError extends Error {
 		this.name = 'JsonRpcError';
 	}
 }
+
+// #region Overloaded (-32001) bounded retry
+
+/**
+ * Application-level JSON-RPC error code the codex app-server returns as
+ * `"Server overloaded; retry later."` — a backpressure signal, not a
+ * permanent failure (D13/B8).
+ *
+ * Note this code collides numerically with AHP's `SessionNotFound`
+ * (-32001), but that code lives on the agent-host ↔ renderer protocol, not
+ * on the app-server JSON-RPC wire this client speaks; within this client a
+ * -32001 response is unambiguous.
+ */
+export const CODEX_SERVER_OVERLOADED_ERROR_CODE = -32001 as const;
+
+/**
+ * Type guard for the app-server's `"Server overloaded; retry later."`
+ * rejection.
+ */
+export function isServerOverloadedError(err: unknown): err is JsonRpcError {
+	return err instanceof JsonRpcError && err.code === CODEX_SERVER_OVERLOADED_ERROR_CODE;
+}
+
+/**
+ * Tuning knobs for the bounded exponential-backoff retry applied when the
+ * app-server answers a request with -32001 (overloaded). Only
+ * {@link OVERLOADED_RETRYABLE_METHODS} are ever retried.
+ */
+export interface ICodexOverloadedRetryPolicy {
+	/** Base delay before the first retry. Subsequent delays grow by {@link backoffFactor}. */
+	readonly initialDelayMs: number;
+	/** Exponential multiplier applied per retry attempt. */
+	readonly backoffFactor: number;
+	/** Upper bound for any single (pre-jitter) delay. */
+	readonly maxDelayMs: number;
+	/**
+	 * Symmetric jitter ratio in `[0, 1]`: the effective delay is
+	 * `base * (1 - jitterRatio + random() * 2 * jitterRatio)`.
+	 */
+	readonly jitterRatio: number;
+	/** Maximum number of retries after the initial attempt (bounded). */
+	readonly maxRetries: number;
+	/**
+	 * Total wall-clock budget for one logical request, including sleeps.
+	 * A retry whose delay would push elapsed time past this budget is not
+	 * started; the last -32001 rejection propagates instead.
+	 */
+	readonly totalBudgetMs: number;
+	/** Random source for jitter. Injectable for deterministic tests. */
+	readonly random: () => number;
+}
+
+/**
+ * Default retry tuning for -32001 backpressure:
+ * `500ms → 1s → 2s → 4s` (±50% jitter, capped at 8s), at most 4 retries,
+ * never spending more than 20s on one logical request. With these values a
+ * request can never retry more than once within any 100ms window, keeping
+ * the retry stream well clear of "immediate dense retry" territory.
+ */
+export const DEFAULT_CODEX_OVERLOADED_RETRY_POLICY: ICodexOverloadedRetryPolicy = {
+	initialDelayMs: 500,
+	backoffFactor: 2,
+	maxDelayMs: 8_000,
+	jitterRatio: 0.5,
+	maxRetries: 4,
+	totalBudgetMs: 20_000,
+	random: Math.random,
+};
+
+/**
+ * The request methods that may be retried on -32001 (overloaded).
+ *
+ * Idempotency ruling (issue #31): we cannot verify from this repository
+ * whether the app-server guarantees that an overloaded request was rejected
+ * *before* being processed. If a side-effecting request such as
+ * `turn/start` were silently accepted despite the -32001 response, an
+ * automatic retry would either be refused by the per-thread write lock
+ * (surfacing a spurious failure while the user's turn is actually running)
+ * or, worse, double-apply. Read-only / query methods carry no such risk,
+ * so automatic retry is restricted to this allowlist of idempotent reads.
+ * Every other method keeps the fail-fast behavior: a -32001 rejection
+ * propagates immediately and the caller decides whether to retry (the UI
+ * maps it to an actionable "temporarily busy" message).
+ */
+export const OVERLOADED_RETRYABLE_METHODS: ReadonlySet<string> = new Set<ClientRequestMethod>([
+	'initialize',
+	'thread/list',
+	'thread/read',
+	'thread/turns/list',
+	'thread/items/list',
+	'thread/loaded/list',
+	'config/read',
+	'account/read',
+	'account/rateLimits/read',
+	'account/usage/read',
+	'model/list',
+	'skills/list',
+	'hooks/list',
+	'mcpServerStatus/list',
+	'mcpServer/resource/read',
+	'getAuthStatus',
+	'getConversationSummary',
+]);
+
+// #endregion
 
 // #region Typed method projections
 //
@@ -145,6 +251,13 @@ export interface ICodexAppServerClient extends IDisposable {
 	 * Issue a request. Resolves with the typed response payload, or
 	 * rejects with {@link JsonRpcError} for protocol-level errors and
 	 * {@link CancellationError} on dispose.
+	 *
+	 * When the server answers with -32001 ("Server overloaded; retry
+	 * later.") and the method is an idempotent read
+	 * ({@link OVERLOADED_RETRYABLE_METHODS}), the request is retried with
+	 * bounded exponential backoff + jitter before the rejection
+	 * propagates. Side-effecting methods are never auto-retried — their
+	 * -32001 rejection surfaces immediately (D13/B8, issue #31).
 	 */
 	request<M extends ClientRequestMethod, R = unknown>(
 		method: M,
@@ -211,13 +324,16 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 	private _exited = false;
 	private _disposed = false;
 	private _buf = '';
+	private readonly _overloadedRetryPolicy: ICodexOverloadedRetryPolicy;
 
 	constructor(
 		private readonly _transport: ICodexAppServerTransport,
 		private readonly _onLog?: (level: 'info' | 'warn' | 'error', message: string) => void,
 		private readonly _graceKillMs = GRACE_KILL_MS,
+		overloadedRetry: Partial<ICodexOverloadedRetryPolicy> = {},
 	) {
 		super();
+		this._overloadedRetryPolicy = { ...DEFAULT_CODEX_OVERLOADED_RETRY_POLICY, ...overloadedRetry };
 		this._register(this._transport.onExit(e => this._handleExit(e)));
 		this._transport.stdout.setEncoding?.('utf8');
 		this._register(this._listenToStdout());
@@ -360,6 +476,57 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 	}
 
 	request<M extends ClientRequestMethod, R = unknown>(
+		method: M,
+		params: ClientRequestParams<M>,
+		trace?: IAgentHostTraceContext,
+	): Promise<R> {
+		if (this._overloadedRetryPolicy.maxRetries > 0 && OVERLOADED_RETRYABLE_METHODS.has(method)) {
+			return this._requestWithOverloadedRetry(method, params, trace);
+		}
+		return this._requestOnce(method, params, trace);
+	}
+
+	/**
+	 * Bounded exponential-backoff retry for -32001 (overloaded) rejections
+	 * on idempotent reads (issue #31, D13/B8 positive half). Only the
+	 * -32001 code is retried; any other error — including transport exit
+	 * and disposal — propagates immediately. The last -32001 rejection is
+	 * rethrown verbatim once retries are exhausted or the total budget is
+	 * spent, so callers can map it to a user-visible "temporarily busy"
+	 * message via {@link isServerOverloadedError}.
+	 */
+	private async _requestWithOverloadedRetry<M extends ClientRequestMethod, R = unknown>(
+		method: M,
+		params: ClientRequestParams<M>,
+		trace: IAgentHostTraceContext | undefined,
+	): Promise<R> {
+		const policy = this._overloadedRetryPolicy;
+		const startedAt = Date.now();
+		let attempt = 0;
+		for (;;) {
+			try {
+				return await this._requestOnce<M, R>(method, params, trace);
+			} catch (err) {
+				if (!isServerOverloadedError(err) || this._disposed || this._exited || attempt >= policy.maxRetries) {
+					throw err;
+				}
+				const base = Math.min(policy.maxDelayMs, policy.initialDelayMs * Math.pow(policy.backoffFactor, attempt));
+				const delay = Math.round(base * (1 - policy.jitterRatio + policy.random() * 2 * policy.jitterRatio));
+				if (Date.now() - startedAt + delay > policy.totalBudgetMs) {
+					this._log('warn', `${method}: overloaded (-32001), giving up after ${attempt} retries — total budget ${policy.totalBudgetMs}ms exhausted`);
+					throw err;
+				}
+				attempt++;
+				this._log('warn', `${method}: overloaded (-32001), retry ${attempt}/${policy.maxRetries} in ${delay}ms`);
+				await timeout(delay);
+				if (this._disposed) {
+					throw new CancellationError();
+				}
+			}
+		}
+	}
+
+	private _requestOnce<M extends ClientRequestMethod, R = unknown>(
 		method: M,
 		params: ClientRequestParams<M>,
 		trace?: IAgentHostTraceContext,

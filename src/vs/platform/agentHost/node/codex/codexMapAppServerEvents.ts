@@ -10,10 +10,11 @@ import type { IAgentModelCallCompletedSignal } from '../../common/agent.js';
 import { toToolCallMeta } from '../../common/meta/agentToolCallMeta.js';
 import { ActionType, type SessionAction, type ChatAction } from '../../common/state/sessionActions.js';
 import { createErrorResponsePart, MessageKind, ResponsePartKind, ToolCallConfirmationReason, ToolCallContributorKind, ToolResultContentType, TurnState, type ErrorInfo } from '../../common/state/sessionState.js';
-import { extractForwardedErrorInfo } from '../shared/proxyChatError.js';
+import { extractForwardedErrorInfo, toChatErrorMeta } from '../shared/proxyChatError.js';
 import { getServerToolDisplay } from '../shared/serverToolGroups.js';
 import { ActiveClientToolSet } from '../activeClientState.js';
 import { toAgentMessageDelegationMeta } from '../../common/meta/agentMessageDelegationMeta.js';
+import { isServerOverloadedError } from './codexAppServerClient.js';
 import { parseCodexDelegation } from './codexDelegation.js';
 import { unwrapShellInvocation } from './codexShellCommand.js';
 import type { AgentMessageDeltaNotification } from './protocol/generated/v2/AgentMessageDeltaNotification.js';
@@ -1273,6 +1274,36 @@ export function mapCodexTurnError(error: TurnError): ErrorInfo {
 		errorType: 'CodexError',
 		...extractForwardedErrorInfo(error.message || 'Codex turn failed'),
 		...(error.additionalDetails ? { stack: error.additionalDetails } : {}),
+	};
+}
+
+/**
+ * Maps a rejected `ICodexAppServerClient.request` promise into a protocol
+ * {@link ErrorInfo}. A -32001 "Server overloaded" rejection (which only
+ * reaches the caller once the client's bounded retry is exhausted, or
+ * immediately for non-retryable side-effecting methods — see issue #31) is
+ * surfaced as a user-actionable "temporarily busy, try again shortly"
+ * message. The forwarded `_meta.chatError` uses the `rateLimited` fetch
+ * type so core renders the localized transient-rate-limit copy at Info
+ * level instead of a raw red error. All other failures keep the caller's
+ * error type and message verbatim.
+ */
+export function mapCodexRequestError(err: unknown, fallbackErrorType: string): ErrorInfo {
+	if (isServerOverloadedError(err)) {
+		return {
+			errorType: 'CodexServerOverloaded',
+			message: localize('codex.serverOverloaded', "Codex is temporarily busy and could not process the request. Please try again in a moment."),
+			_meta: toChatErrorMeta({
+				fetchError: {
+					type: 'rateLimited',
+					reason: err.message,
+				},
+			}),
+		};
+	}
+	return {
+		errorType: fallbackErrorType,
+		...extractForwardedErrorInfo(err instanceof Error ? err.message : String(err)),
 	};
 }
 

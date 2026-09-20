@@ -985,6 +985,13 @@ suite('CodexAgent model refresh', () => {
 			child: { kill: () => true },
 		}) as never;
 
+		const published: Parameters<typeof ctx.agent['_publishAccountInfo']>[0][] = [];
+		const publishSpy = ctx.agent['_publishAccountInfo'].bind(ctx.agent);
+		ctx.agent['_publishAccountInfo'] = (account: (typeof published)[number]) => {
+			published.push(account);
+			publishSpy(account);
+		};
+
 		const signIn = ctx.agent['_signInToChatGPT']('request-early-cancel');
 		// Cancel while account/login/start is in flight: the pending sign-in is
 		// registered but the login id does not exist yet, so the cancellation must
@@ -998,6 +1005,7 @@ suite('CodexAgent model refresh', () => {
 		await signIn;
 
 		const account = readCodexAccountInfo(ctx.stateManager.rootState);
+		assert.ok(published.every(a => a.authUrl === undefined && a.authUrlNonce === undefined), 'no publish may carry the authorization URL of a cancelled login');
 		assert.strictEqual(account.authUrl, undefined, 'cancelled login must never publish the authorization URL');
 		assert.strictEqual(account.authUrlNonce, undefined);
 		assert.strictEqual(account.status, 'signedOut');

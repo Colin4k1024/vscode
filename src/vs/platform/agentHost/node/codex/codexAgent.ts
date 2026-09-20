@@ -1513,14 +1513,15 @@ export class CodexAgent extends Disposable implements IAgent {
 							return;
 						}
 						pendingSignIn.completeCancellation();
+					} else {
+						this._publishAccountInfo({
+							...this._toAccountInfo(this._openAIAccountState),
+							authUrl: response.type === 'chatgpt' ? response.authUrl : undefined,
+							authUrlNonce: request,
+							deviceVerificationUrl: response.type === 'chatgptDeviceCode' ? response.verificationUrl : undefined,
+							deviceUserCode: response.type === 'chatgptDeviceCode' ? response.userCode : undefined,
+						});
 					}
-					this._publishAccountInfo({
-						...this._toAccountInfo(this._openAIAccountState),
-						authUrl: response.type === 'chatgpt' ? response.authUrl : undefined,
-						authUrlNonce: request,
-						deviceVerificationUrl: response.type === 'chatgptDeviceCode' ? response.verificationUrl : undefined,
-						deviceUserCode: response.type === 'chatgptDeviceCode' ? response.userCode : undefined,
-					});
 					if (transient) {
 						const result = await Promise.race([
 							loginCompleted.p,

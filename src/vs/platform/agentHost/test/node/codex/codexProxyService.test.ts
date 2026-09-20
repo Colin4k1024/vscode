@@ -162,7 +162,7 @@ suite('CodexProxyService', () => {
 	test('does not listen on any port until a token-backed start() is requested (D08 AC5)', async () => {
 		const net = await import('net');
 		const activeServers = () => (process as unknown as { _getActiveHandles(): unknown[] })._getActiveHandles()
-			.filter((h): h is net.Server => h instanceof net.Server && h.listening);
+			.filter(h => h instanceof net.Server && h.listening);
 
 		const fake = new FakeCopilotApiService();
 		const service = new CodexProxyService(undefined, new NullLogService(), fake);

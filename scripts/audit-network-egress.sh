@@ -127,7 +127,7 @@ for host in "${DENYLIST_HOSTS[@]}"; do
 		fi
 	done < <(grep -rn --include='*.ts' --include='*.js' --include='*.json' \
 		--exclude-dir=test --exclude-dir=tests \
-		-F "$host" src build product product.json 2>/dev/null || true)
+		-F "$host" src build product product.json extensions 2>/dev/null || true)
 done
 
 if [ "$violations" -gt 0 ]; then

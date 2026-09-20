@@ -71,9 +71,13 @@
 
 ## D08-06 codexProxyService：绑定 token 门控（见 D08-05 断言）
 
+跟踪 issue：#39（无 GitHub token 时不绑定端口的最强形式；本裁定先落地 token 门控不变量）。
+
 同 D08-05。`codexProxyService.ts` 实现未改（硬约束）。
 
 ## D08-07 遥测：telemetryLevel 默认 off + 禁覆盖断言 + 凭据落盘扫描
+
+爆炸半径补充：上游 product.json 无 `enableTelemetry` 键，故无 mixin 的构建（含 web/dev fallback）遥测默认同样翻转为 OFF——对本产品这是意图本身，记录以防误判为回归。
 
 - **产品级默认值**：`telemetryService.ts` 中 `telemetry.telemetryLevel` schema 默认
   改为 `product.enableTelemetry ? ON : OFF`；mixin 覆盖层显式

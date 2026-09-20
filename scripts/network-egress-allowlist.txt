@@ -50,3 +50,13 @@ src/vs/platform/telemetry/common/1dsAppender.ts	events.data.microsoft.com
 # explicitly user-initiated Copilot sign-in path (D08-05 keeps the provider
 # registered as an optional path). No credentials => never contacted.
 src/vs/platform/agentHost/node/agentHostRestrictedTelemetry.ts	copilot-telemetry.githubusercontent.com
+
+# extensions/copilot is kept in-tree but excluded from the shipped product
+# (D08-01 decision (a); scripts/check-no-copilot-artifacts.sh gates packaging).
+# These references cannot produce egress in the shipped product; any NEW hit
+# outside extensions/copilot fails the audit.
+extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts	vscode-cdn.net
+extensions/copilot/src/platform/embeddings/common/embeddingsIndex.ts	vscode-cdn.net
+extensions/copilot/src/extension/log/vscode-node/loggingActions.ts	dc.services.visualstudio.com
+extensions/copilot/src/extension/log/vscode-node/loggingActions.ts	events.data.microsoft.com
+extensions/copilot/src/extension/log/vscode-node/loggingActions.ts	exp-tas.com

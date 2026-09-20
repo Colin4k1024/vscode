@@ -1242,6 +1242,9 @@ suite('CodexAgent createChat', () => {
 		agent['_configurationService'].updateRootConfig({ [AgentHostConfigKey.CodexPreferOpenAIProvider]: true });
 		const copilotEntry = agent['_models'].get()[0];
 		const openAIModelId = toCodexModelSelectionId('openai', 'gpt-test');
+		// Drain the original (already-completed) probe before swapping in the
+		// pending one, so the test never depends on implicit microtask timing.
+		await agent['_startupAccountProbe'].p;
 		// Copilot first in raw catalog order: without the probe wait the default
 		// provider would resolve to Copilot here.
 		agent['_models'].set([copilotEntry, { ...copilotEntry, id: openAIModelId }], undefined);
@@ -1314,6 +1317,47 @@ suite('CodexAgent createChat', () => {
 			model: { id: COPILOT_TEST_MODEL },
 		});
 		await probe.complete(undefined);
+	});
+
+	test('creation falls back to the Copilot default when the probe settles without an OpenAI account (#38)', async () => {
+		const agent = await createAgent(disposables);
+		const sessionUri = AgentSession.uri('codex', 'session-probe-settles-signed-out');
+		const chat = URI.parse(buildDefaultChatUri(sessionUri));
+		agent['_configurationService'].updateRootConfig({ [AgentHostConfigKey.CodexPreferOpenAIProvider]: true });
+		await agent['_startupAccountProbe'].p;
+		const probe = new DeferredPromise<void>();
+		agent['_startupAccountProbe'] = probe;
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'unknown' };
+
+		const create = createSessionBackedChat(agent, chat, { configurationResource: sessionUri, resource: chat }, {
+			workingDirectories: [URI.file('/repo/probe-settles-signed-out')],
+		});
+		// The probe settles WITHOUT an OpenAI account (failed/timed out): the
+		// default falls back to the Copilot-proxied model rather than erroring.
+		await probe.complete(undefined);
+		const result = await create;
+		assert.deepStrictEqual(result.providerData && JSON.parse(result.providerData), {
+			sessionId: AgentSession.id(sessionUri),
+			model: { id: COPILOT_TEST_MODEL },
+		});
+	});
+
+	test('disposing while creation waits on the probe rejects the create and rolls back the config scope (#38)', async () => {
+		const agent = await createAgent(disposables);
+		const sessionUri = AgentSession.uri('codex', 'session-probe-window-dispose');
+		const chat = URI.parse(buildDefaultChatUri(sessionUri));
+		agent['_configurationService'].updateRootConfig({ [AgentHostConfigKey.CodexPreferOpenAIProvider]: true });
+		await agent['_startupAccountProbe'].p;
+		agent['_startupAccountProbe'] = new DeferredPromise<void>();
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'unknown' };
+
+		const create = createSessionBackedChat(agent, chat, { configurationResource: sessionUri, resource: chat }, {
+			workingDirectories: [URI.file('/repo/probe-window-dispose')],
+		});
+		const rejected = create.then(() => 'created', () => 'rejected');
+		agent.dispose();
+		assert.strictEqual(await rejected, 'rejected', 'dispose must interrupt a probe-waiting create');
+		assert.strictEqual(agent['_sessions'].size, 0, 'no backing may be left half-registered');
 	});
 
 	test('dispose waits for an in-flight create of the same chat', async () => {

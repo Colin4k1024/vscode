@@ -79,7 +79,7 @@
 
 ## D15-06 VSIX 本地安装兜底（回滚权威口径：本节为准）
 
-- Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键——自补充 PR 起还须**同删/同改**：① `scripts/audit-network-egress.sh` 与 ② `scripts/verify-beta-gates.sh` 中的 gallery 存在性断言；③ `src/vs/code/test/node/extensionGallery.test.ts` **整个文件**（5 个 test 全部为 D15 gallery 专属：overlay pin、merged pin、G9 pin、denylist pin、overlay-vs-base pin——只删前两个仍剩 G9 pin 红，且文件命中 `test/unit/node/index.js` 的全量 glob，只删 CI 行不删文件会让全量 `npm run test-node` 红）；④ `.github/workflows/codex-desktop-baseline.yml` 中该文件的 `--run` 行；⑤ `PRE-RELEASE-CHECKLIST.md` E1/E3 的勾销回退为未勾选（勾销声明的门禁已不存在）；⑥ `LICENSE-CLEARANCE.md` §10 的"D15 起缺失=硬失败"裁定回退为"未配置即合规基线"。缺任一即撞上有意的显式回滚门或留下不一致的合规声明）后回到"无市场"状态，
+- Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键——自补充 PR 起还须**同删/同改**：① `scripts/audit-network-egress.sh` 与 ② `scripts/verify-beta-gates.sh` 中的 gallery 存在性断言；③ `src/vs/code/test/node/extensionGallery.test.ts` **整个文件**（5 个 test 全部为 D15 gallery 专属：overlay pin、merged pin、G9 pin、denylist pin、overlay-vs-base pin——只删前两个仍剩 G9 pin 红，且文件命中 `test/unit/node/index.js` 的全量 glob，只删 CI 行不删文件会让全量 `npm run test-node` 红）；④ `.github/workflows/codex-desktop-baseline.yml` 中该文件的 `--run` 行；⑤ `PRE-RELEASE-CHECKLIST.md` E1/E3 的勾销回退为未勾选（勾销声明的门禁已不存在）；⑥ `LICENSE-CLEARANCE.md` §10 的"D15 起缺失=硬失败"裁定回退为"未配置即合规基线"。缺任一即撞上有意的显式回滚门或留下不一致的合规声明；执行 ③ 后本地还须重编译或删除 `out/vs/code/test/node/extensionGallery.test.js` 陈旧产物（CI 全新 transpile 不受影响）；回滚后同步清理的其余 D15 痕迹：`01-ACCEPTANCE-CORE.md` D1 行、`UPSTREAM-SYNC.md` D15 行与计数、checklist G 段状态行、baseline workflow 步骤名注释、`build/hygiene.ts` 的豁免分支）后回到"无市场"状态，
   仍可通过 `--install-extension <path-to.vsix>` 或 GUI "Install from VSIX" 安装。
   该路径不依赖 gallery 配置。
 
@@ -187,9 +187,10 @@ explicitly empty allow-list"（首轮已挂）。
 不含 `ms-vscode.` 前缀；填全 id 会 404）。）
 
 **更正 D15-04 的拉取来源表述**：`build/lib/builtInExtensions.ts` 的
-`syncMarketplaceExtension` 在 gallery 已配置时走 `fromMarketplace(serviceUrl, …)`，
+`getExtensionDownloadStream` 在 gallery 已配置且扩展无 `vsix`/`platformSpecific`
+字段时走 `fromMarketplace(serviceUrl, …)`（三项 js-debug 均满足），
 即出厂形态（mixin 应用后）三项 js-debug 实际从 **Open VSX** 拉取并以 pin 校验
-（dev 首启日志 `[marketplace] ms-vscode.js-debug@1.117.0 ✔︎` 实测）；
+（dev 首启日志的 `[marketplace]` 标签由 serviceUrl 是否存在决定，间接佐证配置生效，实测通过；分支选择以代码为准）；
 `fromGithub` 仅在 gallery 未配置时回退。结论（保留三项、无需自托管镜像）不变，
 且上表证明两条来源的 bits 逐字节一致。
 
@@ -207,6 +208,8 @@ explicitly empty allow-list"（首轮已挂）。
 （`extensionGalleryManifestService.ts` 的 `PublisherViewUri`）。
 
 ### B.8 本轮 netlog 主机聚合（AC2/AC3 复测）
+
+**裁定（B.8-R1）**：扩展 readme/图标等**内容渲染**引入的第三方主机（如 `img.shields.io`、`raw.githubusercontent.com`）属用户触发浏览的内容驱动出口，不在 D1 白名单约束内（已同步写入 `01-ACCEPTANCE-CORE.md` D1 行）。该收窄不改变 denylist 门禁的任何行为，仅消除"白名单文本 vs 实测出口"的表面冲突。
 
 工件：`evidence/d15-netlog-hosts.txt`（四轮 `--log-net-log` 抓包的按主机计数全量）。
 

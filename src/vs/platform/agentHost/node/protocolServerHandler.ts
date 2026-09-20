@@ -27,8 +27,7 @@ import { isActionEnvelopeRelevantToSubscriptionUris } from '../common/state/agen
 import { ChatSourceKind } from '../common/state/protocol/channels-chat/commands.js';
 import type { CommandMap } from '../common/state/protocol/messages.js';
 import { ActionEnvelope, ActionType, INotification, isAnnotationsAction, isAutomationAction, isAutomationRunAction, isChangesetAction, isChatAction, isSessionAction, isTerminalAction, type ChatAction, type ClientAnnotationsAction, type ClientAutomationAction, type ClientAutomationRunAction, type ClientChangesetAction, type IRootConfigChangedAction, type SessionAction, type TerminalAction } from '../common/state/sessionActions.js';
-import { PROTOCOL_VERSION } from '../common/state/protocol/version/registry.js';
-import { isActionKnownToVersion } from '../common/state/protocol/version/registry.js';
+import { isActionKnownToVersion, PROTOCOL_VERSION } from '../common/state/protocol/version/registry.js';
 import { negotiateProtocolVersion } from '../common/state/protocol/version/negotiation.js';
 import { VSCODE_UPGRADE_METHOD, type UnsupportedProtocolVersionErrorDataEx } from '../common/state/protocolUpgrade.js';
 import { getAgentHostManagementSocketPath, requestAgentHostUpgrade } from './agentHostUpgradeChannel.js';
@@ -1036,7 +1035,10 @@ export class ProtocolServerHandler extends Disposable implements IAgentHostClien
 			for (const envelope of this._replayBuffer) {
 				if (envelope.serverSeq > params.lastSeenServerSeq) {
 					if (this._isRelevantToClient(client, envelope)) {
-						actions.push(envelope);
+						const gated = this._actionForClientVersion(envelope, client.protocolVersion);
+						if (gated !== undefined) {
+							actions.push(gated);
+						}
 					}
 				}
 			}
@@ -2156,37 +2158,10 @@ export class ProtocolServerHandler extends Disposable implements IAgentHostClien
 	}
 
 	/**
-	 * Version-gate an outgoing action envelope for the client's negotiated
-	 * protocol version (#56). Returns `undefined` when the client cannot
-	 * handle the action at all.
-	 *
-	 * Actions introduced after the client's negotiated version are dropped —
-	 * except {@link ActionType.ChatTurnUncertain} (#34), which is *degraded*
-	 * to a semantically equivalent {@link ActionType.ChatError} (the honest
-	 * 0.9.x presentation of "the turn was lost; do not retry blindly") so a
-	 * crashed turn never renders as a never-ending spinner on old clients.
-	 * Dropping rather than degrading is correct for every other unknown action:
-	 * the client would soft-assert and ignore it, so sending it is wire noise.
+	 * Delegates to {@link actionForClientVersion}; see its doc for semantics.
 	 */
 	private _actionForClientVersion(envelope: ActionEnvelope, clientVersion: string): ActionEnvelope | undefined {
-		if (isActionKnownToVersion(envelope.action, clientVersion)) {
-			return envelope;
-		}
-		if (envelope.action.type === ActionType.ChatTurnUncertain) {
-			const uncertain = envelope.action;
-			this._logService.debug(`[ProtocolServer] Degrading chat/turnUncertain to chat/error for protocol ${clientVersion} (turn ${uncertain.turnId})`);
-			return {
-				...envelope,
-				action: {
-					type: ActionType.ChatError,
-					turnId: uncertain.turnId,
-					duration: uncertain.duration,
-					part: uncertain.part,
-				},
-			};
-		}
-		this._logService.trace(`[ProtocolServer] Dropping action ${envelope.action.type} for protocol ${clientVersion} (introduced later)`);
-		return undefined;
+		return actionForClientVersion(envelope, clientVersion, this._logService);
 	}
 
 	private _broadcastNotification(notification: INotification): void {
@@ -2343,4 +2318,39 @@ export class ProtocolServerHandler extends Disposable implements IAgentHostClien
 		this._replayBuffer.length = 0;
 		super.dispose();
 	}
+}
+
+/**
+ * Version-gate an outgoing action envelope for the client's negotiated
+ * protocol version (#56). Exported so the gate is unit-testable without
+ * driving a full client handshake.
+ *
+ * Semantics: actions introduced after the client's negotiated version are
+ * dropped (dropping is what a soft-asserting client would do anyway) —
+ * except {@link ActionType.ChatTurnUncertain} (#34), which is *degraded* to
+ * a semantically equivalent {@link ActionType.ChatError} (the honest
+ * presentation of "the turn was lost; do not retry blindly") so a crashed
+ * turn never renders as a never-ending spinner on older clients. Dropping
+ * rather than degrading is correct for every other unknown action: the
+ * client would soft-assert and ignore it, so sending it is wire noise.
+ */
+export function actionForClientVersion(envelope: ActionEnvelope, clientVersion: string, logService?: { debug(message: string, ...args: unknown[]): void; trace(message: string, ...args: unknown[]): void }): ActionEnvelope | undefined {
+	if (isActionKnownToVersion(envelope.action, clientVersion)) {
+		return envelope;
+	}
+	if (envelope.action.type === ActionType.ChatTurnUncertain) {
+		const uncertain = envelope.action;
+		logService?.debug(`[ProtocolServer] Degrading chat/turnUncertain to chat/error for protocol ${clientVersion} (turn ${uncertain.turnId})`);
+		return {
+			...envelope,
+			action: {
+				type: ActionType.ChatError,
+				turnId: uncertain.turnId,
+				duration: uncertain.duration,
+				part: uncertain.part,
+			},
+		};
+	}
+	logService?.trace(`[ProtocolServer] Dropping action ${envelope.action.type} for protocol ${clientVersion} (introduced later)`);
+	return undefined;
 }

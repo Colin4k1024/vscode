@@ -10,6 +10,7 @@ import { isCancellationError } from '../../../../base/common/errors.js';
 import { StopWatch } from '../../../../base/common/stopwatch.js';
 import { URI } from '../../../../base/common/uri.js';
 import { isWindows, isMacintosh, isLinux } from '../../../../base/common/platform.js';
+import { assertDefined } from '../../../../base/common/types.js';
 import { FileAccess } from '../../../../base/common/network.js';
 import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
 import { KeyCode } from '../../../../base/common/keyCodes.js';
@@ -28,7 +29,6 @@ import { INotificationService, Severity } from '../../../../platform/notificatio
 import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
 import { defaultInputBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
 import product from '../../../../platform/product/common/product.js';
-import type { IDefaultChatAgent } from '../../../../base/common/product.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
 import { IPathService } from '../../../services/path/common/pathService.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
@@ -77,53 +77,8 @@ type OnboardingActionEvent = {
 
 type EnterpriseSignInUiState = 'options' | 'instance' | 'progress';
 
-// The default chat agent is optional after D08 (this product removes GitHub
-// Copilot as the default chat agent); the sign-in steps below fall back to the
-// neutral GitHub-branded configuration when the product doesn't name one.
-// The fallback only carries the fields this file reads (account-provider
-// labels and GHE instance configuration) — it never touches Copilot URLs or
-// scopes, which are dead without the Copilot extensions anyway.
-const FALLBACK_DEFAULT_CHAT_AGENT: IDefaultChatAgent = {
-	extensionId: '',
-	chatExtensionId: '',
-	chatExtensionOutputId: '',
-	chatExtensionOutputExtensionStateCommand: '',
-	chatQuotaExceededContext: '',
-	chatRefreshTokenCommand: '',
-	completionsAdvancedSetting: '',
-	completionsEnablementSetting: '',
-	completionsMenuCommand: '',
-	completionsQuotaExceededContext: '',
-	documentationUrl: '',
-	entitlementSignupLimitedUrl: '',
-	entitlementUrl: '',
-	generateCommitMessageCommand: '',
-	managePlanUrl: '',
-	managedSettingsUrl: '',
-	mcpRegistryDataUrl: '',
-	nextEditSuggestionsSetting: '',
-	optimizeUsageDocumentationUrl: '',
-	privacyStatementUrl: '',
-	providerExtensionId: 'vscode.github-authentication',
-	providerUriSetting: 'github-enterprise.uri',
-	providerScopes: [['read:user', 'user:email', 'repo', 'workflow'], ['user:email'], ['read:user']],
-	publicCodeMatchesUrl: '',
-	resolveMergeConflictsCommand: '',
-	signUpUrl: '',
-	skusDocumentationUrl: '',
-	termsStatementUrl: '',
-	tokenEntitlementUrl: '',
-	upgradePlanUrl: '',
-	walkthroughCommand: '',
-	provider: {
-		default: { id: 'github', name: 'GitHub' },
-		enterprise: { id: 'github-enterprise', name: 'GHE' },
-		google: { id: 'google', name: 'Google' },
-		apple: { id: 'apple', name: 'Apple' },
-		microsoft: { id: 'microsoft', name: 'Microsoft' },
-	},
-};
-const defaultChat: IDefaultChatAgent = product.defaultChatAgent ?? FALLBACK_DEFAULT_CHAT_AGENT;
+assertDefined(product.defaultChatAgent, 'Onboarding requires a default chat agent product configuration.');
+const defaultChat = product.defaultChatAgent;
 
 /**
  * Variation A — Classic Wizard Modal

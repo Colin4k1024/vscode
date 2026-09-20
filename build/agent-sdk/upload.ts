@@ -38,8 +38,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { ClientAssertionCredential } from '@azure/identity';
-import { BlobServiceClient } from '@azure/storage-blob';
 import { buildCdnUrl, getAgentMeta, parseFlags, type Sdk, sha256OfFile } from './common.ts';
 
 const SCRIPT = 'upload.ts';
@@ -89,6 +87,13 @@ export function selectBackend(): 'azure' | 'http' {
 }
 
 async function uploadOneAzure(args: IUploadArgs, sha256: string): Promise<IUploadResult> {
+	// Lazy imports (L10): the Azure SDK is only needed on the Azure backend —
+	// a static import would make the http backend (and its test suite)
+	// unrunnable on a machine without the Azure packages installed.
+	const [{ ClientAssertionCredential }, { BlobServiceClient }] = await Promise.all([
+		import('@azure/identity'),
+		import('@azure/storage-blob'),
+	]);
 	const account = requireEnv('AZURE_STORAGE_ACCOUNT');
 	const tenantId = requireEnv('AZURE_TENANT_ID');
 	const clientId = requireEnv('AZURE_CLIENT_ID');

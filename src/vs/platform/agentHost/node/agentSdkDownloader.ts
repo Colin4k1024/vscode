@@ -420,13 +420,29 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 		}
 		this._logService.info(`[AgentSdkDownloader] ${pkg.id}: cache miss for version ${config.version} (${sdkTarget}); a download is required`);
 
+		// Integrity chain (HIGH-1): the expected hash is per-target — the
+		// tarballs' bytes differ per target (per-target native binaries), so a
+		// single scalar hash stamped into product.json would fail closed for
+		// every target except the one that stamped it (the macOS Universal
+		// case, where one product.json serves both darwin-arm64 and
+		// darwin-x64). Fall back to the legacy scalar `sha256` for
+		// product.json files stamped before per-target keying existed.
+		const expectedSha256 = config.sha256ByTarget?.[sdkTarget] ?? config.sha256;
+		if (expectedSha256 === undefined && config.sha256ByTarget !== undefined) {
+			// A per-target map that lacks THIS target (e.g. a product.json
+			// stamped before this target's build ran) must not silently fall
+			// through to an unverified download without a trace — warn loudly.
+			// Proceeding matches the legacy no-hash semantics.
+			this._logService.warn(`[AgentSdkDownloader] ${pkg.id}: product.agentSdks.${pkg.id}.sha256ByTarget has no entry for sdkTarget '${sdkTarget}' (have: ${Object.keys(config.sha256ByTarget).join(', ') || '<none>'}) — downloading without integrity verification`);
+		}
+
 		// Download (deduped across concurrent callers in the same process).
 		// cacheDir is already unique per (pkg, version, sdkTarget) — within
 		// a single downloader instance userDataPath is fixed, so it serves
 		// as the dedup key without an extra string allocation.
 		let pending = this._pendingDownloads.get(cacheDir);
 		if (!pending) {
-			pending = this._download(pkg, url, cacheDir, sentinel, token, config.sha256).finally(() => {
+			pending = this._download(pkg, url, cacheDir, sentinel, token, expectedSha256).finally(() => {
 				this._pendingDownloads.delete(cacheDir);
 			});
 			this._pendingDownloads.set(cacheDir, pending);
@@ -506,7 +522,7 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 				// field existed (or by an out-of-band publisher) carries no hash.
 				// Already-distributed artifacts keep working; the warning makes
 				// the missing integrity guarantee visible in logs.
-				this._logService.warn(`[AgentSdkDownloader] ${pkg.id}: product.agentSdks.${pkg.id} carries no sha256 — downloading ${url} without integrity verification`);
+				this._logService.warn(`[AgentSdkDownloader] ${pkg.id}: product.agentSdks.${pkg.id} carries no sha256 (neither sha256ByTarget nor the legacy scalar) — downloading ${url} without integrity verification`);
 			}
 			await this._extractTarGz(tarballPath, tmpDir);
 			await this._fileService.del(URI.file(tarballPath));

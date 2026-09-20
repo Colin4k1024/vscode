@@ -81,6 +81,19 @@ esac
 RESULTS_FILE="${AGENT_SDK_RESULTS_FILE:-$REPO_ROOT/.build/agent-sdk/results.json}"
 TARBALLS_DIR="$REPO_ROOT/.build/agent-sdk/tarballs"
 
+SDK_VERSION="$(node -p "const d=JSON.parse(require('fs').readFileSync('build/agent-sdk/agents/$SDK/package.json','utf8')).dependencies; d[Object.keys(d)[0]]")"
+
+# The results file accumulates per-target entries across invocations
+# (produce.ts merges). A file stamped for a DIFFERENT SDK version is
+# incoherent with what we are about to build — drop it before producing so
+# the merge never mixes versions (mergeAgentSdkResults would fail loud).
+if [ -f "$RESULTS_FILE" ]; then
+	if [ "$(node -p "const r=JSON.parse(require('fs').readFileSync('$RESULTS_FILE','utf8')); r['$SDK'] ? r['$SDK'].version : ''")" != "$SDK_VERSION" ]; then
+		echo "    removing stale results file $RESULTS_FILE (recorded $SDK version differs from the pinned $SDK_VERSION)"
+		rm -f "$RESULTS_FILE"
+	fi
+fi
+
 # D09 ruling 1: default distribution endpoint = this repo's GitHub Releases.
 # Assets are flat file names under the tag `agent-sdk-<sdk>-<version>`, so a
 # full URL template (not a CDN base) is required — buildCdnUrlTemplate honors
@@ -102,7 +115,6 @@ echo "    results file: $RESULTS_FILE"
 
 node build/agent-sdk/produce.ts --vscode-platform="$VSCODE_PLATFORM" --arch="$ARCH" --sdks="$SDK"
 
-SDK_VERSION="$(node -p "const d=JSON.parse(require('fs').readFileSync('build/agent-sdk/agents/$SDK/package.json','utf8')).dependencies; d[Object.keys(d)[0]]")"
 TGZ="$TARBALLS_DIR/$SDK-$SDK_VERSION-$TARGET.tgz"
 [ -f "$TGZ" ] || fail "expected tarball missing: $TGZ"
 
@@ -155,24 +167,65 @@ fi
 
 # HIGH-1 integrity chain: results.json must carry the sha256 of the FINAL
 # tarball bytes — the license-injection repack above changes them, so the
-# hash produce.ts wrote (computed pre-injection) would be stale. Recompute
-# and restamp unconditionally; when no injection happened this rewrites the
-# same value. The runtime downloader verifies the download against this
-# hash before extracting, and publish-sdk-release.sh publishes exactly
-# these bytes — so product.json, the release asset digest, and the runtime
-# check all agree.
+# hash produce.ts wrote (computed pre-injection) would be stale for THIS
+# target. Recompute and restamp per target, merging with whatever other
+# targets earlier invocations recorded (sequential --target=... runs must
+# accumulate, not overwrite each other — a macOS Universal product.json
+# reads both). The legacy scalar `sha256` key is dropped so a stamped
+# product.json never carries a hash that is valid for only one target.
+# The runtime downloader verifies the download against this hash before
+# extracting, and publish-sdk-release.sh publishes exactly these bytes — so
+# product.json, the release asset digest, and the runtime check all agree.
 FINAL_SHA="$(shasum -a 256 "$TGZ" | awk '{print $1}')"
-node - "$RESULTS_FILE" "$SDK" "$FINAL_SHA" <<'NODE_EOF'
+node - "$RESULTS_FILE" "$SDK" "$TARGET" "$FINAL_SHA" <<'NODE_EOF'
 const fs = require('fs');
-const [resultsFile, sdk, sha] = process.argv.slice(2);
+const [resultsFile, sdk, target, sha] = process.argv.slice(2);
 const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
 if (!results[sdk]) {
 	console.error(`ERROR: results file ${resultsFile} has no entry for sdk '${sdk}'`);
 	process.exit(1);
 }
-results[sdk].sha256 = sha;
+const entry = results[sdk];
+delete entry.sha256; // legacy scalar: valid for at most one target — never stamp it (H1)
+entry.sha256ByTarget = { ...(entry.sha256ByTarget ?? {}), [target]: sha };
 fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2) + '\n');
-console.log(`    results.json sha256 stamped: ${sha}`);
+console.log(`    results.json sha256ByTarget['${target}'] stamped: ${sha}`);
+NODE_EOF
+
+# M5: the tarballs dir is a content-addressed staging area, not an archive —
+# a stale .tgz from an older version would be published by
+# publish-sdk-release.sh's whole-dir glob (creating/updating its release tag)
+# and listed in package.sh's SHA256SUMS. Prune anything the current results
+# file does not reference so the dir always equals "what product.json
+# points at". Tarball names are `<sdk>-<version>-<sdkTarget>.tgz` (the
+# convention package.ts/publish-sdk-release.sh share).
+node - "$RESULTS_FILE" "$TARBALLS_DIR" <<'NODE_EOF'
+const fs = require('fs');
+const path = require('path');
+const [resultsFile, tarballsDir] = process.argv.slice(2);
+const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+const keep = new Set();
+for (const [sdk, entry] of Object.entries(results)) {
+	for (const target of Object.keys(entry.sha256ByTarget ?? {})) {
+		keep.add(`${sdk}-${entry.version}-${target}.tgz`);
+	}
+	// A results entry whose hashes were never restamped (no sha256ByTarget
+	// yet) still corresponds to a just-built tarball; keep the version's
+	// tarballs rather than pruning what produce.ts just wrote.
+	if (!entry.sha256ByTarget) {
+		for (const f of fs.readdirSync(tarballsDir)) {
+			if (f.startsWith(`${sdk}-${entry.version}-`) && f.endsWith('.tgz')) {
+				keep.add(f);
+			}
+		}
+	}
+}
+for (const f of fs.readdirSync(tarballsDir)) {
+	if (f.endsWith('.tgz') && !keep.has(f)) {
+		fs.rmSync(path.join(tarballsDir, f));
+		console.log(`    pruned stale tarball: ${f}`);
+	}
+}
 NODE_EOF
 
 echo

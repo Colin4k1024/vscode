@@ -103,7 +103,7 @@ function makeEnvService(userDataPath: string): INativeEnvironmentService {
 	return { userDataPath, args: { 'force-disable-user-env': true } as never } as unknown as INativeEnvironmentService;
 }
 
-function makeProductService(config: { version: string; urlTemplate: string; sha256?: string } | undefined): IProductService {
+function makeProductService(config: { version: string; urlTemplate: string; sha256?: string; sha256ByTarget?: { readonly [sdkTarget: string]: string } } | undefined): IProductService {
 	return {
 		agentSdks: config ? { claude: config } : undefined,
 	} as unknown as IProductService;
@@ -287,7 +287,7 @@ suite('AgentSdkDownloader', () => {
 	 * entirely (the "no product config" case).
 	 */
 	function makeDownloader(
-		productConfig?: { version?: string; urlTemplate?: string; sha256?: string } | null,
+		productConfig?: { version?: string; urlTemplate?: string; sha256?: string; sha256ByTarget?: { readonly [sdkTarget: string]: string } } | null,
 		telemetryService: ITelemetryService = NullTelemetryService,
 		storageService?: IAgentHostStorageService,
 		logService: ILogService = new NullLogService(),
@@ -296,6 +296,7 @@ suite('AgentSdkDownloader', () => {
 			version: productConfig?.version ?? '1.0.0',
 			urlTemplate: productConfig?.urlTemplate ?? `http://127.0.0.1:${server.port}/sdk-{sdkTarget}.tgz`,
 			...(productConfig?.sha256 !== undefined ? { sha256: productConfig.sha256 } : {}),
+			...(productConfig?.sha256ByTarget !== undefined ? { sha256ByTarget: productConfig.sha256ByTarget } : {}),
 		};
 		const storage = storageService ?? disposables.add(new AgentHostStorageService(undefined, new NullLogService()));
 		return disposables.add(new AgentSdkDownloader(
@@ -375,6 +376,53 @@ suite('AgentSdkDownloader', () => {
 			logService.warnings.some(w => /no sha256/.test(w)),
 			`expected a no-sha256 warning, got: ${JSON.stringify(logService.warnings)}`,
 		);
+	});
+
+	test('loadSdkRoot: sha256ByTarget entry for this target verifies and completes (H1)', async () => {
+		// H1 (issue #66): hashes are keyed per target. The entry for the
+		// host's own target must verify — this is the shape a macOS Universal
+		// product.json takes (one map, one key per served target).
+		const sha256 = createHash('sha256').update(await fsp.readFile(fixture.tarballPath)).digest('hex');
+		const root = await makeDownloader({ sha256ByTarget: { [hostSdkTarget]: sha256, 'win32-x64': 'deadbeef'.repeat(8) } }).loadSdkRoot(ClaudeSdkPackage, newToken());
+		assert.ok(fs.existsSync(path.join(root, '.complete')));
+	});
+
+	test('loadSdkRoot: sha256ByTarget entry for a DIFFERENT target fails loud for this one (H1 regression)', async () => {
+		// The exact H1 bug: a hash stamped by another target's build must not
+		// be applied to this target's bytes. Before per-target keying this
+		// was the macOS Universal failure — the arm64-stamped scalar made
+		// every x64 launch fail closed.
+		await assert.rejects(
+			() => makeDownloader({ sha256ByTarget: { [hostSdkTarget]: 'deadbeef'.repeat(8) } }).loadSdkRoot(ClaudeSdkPackage, newToken()),
+			/sha256 mismatch/,
+		);
+		const cacheDir = path.join(userDataPath, 'agent-host', 'sdk-cache', 'claude', '1.0.0', hostSdkTarget);
+		assert.ok(!fs.existsSync(path.join(cacheDir, '.complete')), 'sentinel must not be written for a failed verification');
+	});
+
+	test('loadSdkRoot: sha256ByTarget without this target warns and proceeds (H1)', async () => {
+		// A product.json stamped before this target's build ran has a map that
+		// lacks the key. Warn-and-proceed matches the legacy no-hash semantics —
+		// availability is preserved and the missing integrity guarantee is
+		// visible in the log.
+		const logService = new RecordingLogService();
+		const root = await makeDownloader(
+			{ sha256ByTarget: { 'win32-x64': 'ab12cd34'.repeat(8) } },
+			NullTelemetryService,
+			undefined,
+			logService,
+		).loadSdkRoot(ClaudeSdkPackage, newToken());
+		assert.ok(fs.existsSync(path.join(root, '.complete')));
+		assert.ok(
+			logService.warnings.some(w => w.includes(`no entry for sdkTarget '${hostSdkTarget}'`)),
+			`expected a missing-target warning, got: ${JSON.stringify(logService.warnings)}`,
+		);
+	});
+
+	test('loadSdkRoot: legacy scalar sha256 still verifies when no per-target map exists (H1 backward compatibility)', async () => {
+		const sha256 = createHash('sha256').update(await fsp.readFile(fixture.tarballPath)).digest('hex');
+		const root = await makeDownloader({ sha256 }).loadSdkRoot(ClaudeSdkPackage, newToken());
+		assert.ok(fs.existsSync(path.join(root, '.complete')));
 	});
 
 	test('loadSdkRoot: reports monotonic download progress ending at totalBytes', async () => {

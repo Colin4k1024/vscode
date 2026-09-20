@@ -300,24 +300,74 @@ export function parseFlags(argv: readonly string[]): Map<string, string> {
  * `src/vs/base/common/product.ts` so the values can be dropped straight
  * into `product.agentSdks`.
  *
- * Every platform job emits the SAME `{version, urlTemplate, sha256}` per
- * SDK — the `{sdkTarget}` placeholder is resolved at runtime per launch
- * (see `resolveSdkTarget` in `agentSdkDownloader.ts`). This is what lets a
+ * Every platform job emits the SAME `{version, urlTemplate}` per SDK — the
+ * `{sdkTarget}` placeholder is resolved at runtime per launch (see
+ * `resolveSdkTarget` in `agentSdkDownloader.ts`). This is what lets a
  * macOS Universal bundle share one `product.json` across arm64+x64.
  *
- * `sha256` is the hash of the tarball bytes the urlTemplate resolves to
- * (every target's tarball under one SDK version share the version, but
- * each platform job ships only its own target's tarball — the hash covers
- * the bytes THAT job published). The runtime downloader verifies the
- * downloaded bytes against it before extracting (HIGH-1 integrity chain:
- * build computes → results.json → product.json → runtime verifies).
+ * `sha256ByTarget` keys the tarball hash by the `{sdkTarget}` it was built
+ * for: per-target tarballs carry per-target native binaries, so their
+ * bytes differ per target and a single scalar hash would fail closed for
+ * every target but the one that stamped it (the macOS Universal hazard).
+ * `produce.ts` merges successive per-target invocations into one map (see
+ * {@link mergeAgentSdkResults}), so a pipeline that builds several targets
+ * accumulates one entry per target. The runtime downloader verifies the
+ * downloaded bytes against `sha256ByTarget[resolvedSdkTarget]` before
+ * extracting (HIGH-1 integrity chain: build computes → results.json →
+ * product.json → runtime verifies).
+ *
+ * `sha256` (scalar) is the legacy shape from before per-target keying; it
+ * is read back for backward compatibility only — new writes must use
+ * `sha256ByTarget`.
  */
 export interface IAgentSdkResults {
 	[packageId: string]: {
 		readonly version: string;
 		readonly urlTemplate: string;
-		readonly sha256: string;
+		readonly sha256ByTarget?: { readonly [sdkTarget: string]: string };
+		/** Legacy pre-per-target hash. Read-only backward compatibility; never written by current tooling. */
+		readonly sha256?: string;
 	};
+}
+
+/**
+ * Merges the SDK entries a produce run just built (`produced`) into the
+ * contents of a pre-existing results file (`existing`), accumulating
+ * per-target hashes: the run that builds `darwin-arm64` and the run that
+ * builds `darwin-x64` each contribute their own `sha256ByTarget` entry, so
+ * the file a Universal product.json is stamped from covers both.
+ *
+ * Fail-loud on cross-run drift: a results file that names the same SDK at
+ * two different versions (or two different urlTemplates) is incoherent as
+ * one product.json — the caller must start from a clean file instead of
+ * silently mixing (bundle-codex-sdk.sh deletes a version-drifted file
+ * before producing).
+ *
+ * A legacy scalar `sha256` in `existing` is dropped on merge: it is valid
+ * for at most one target and would poison the others; the per-target map
+ * replaces it.
+ */
+export function mergeAgentSdkResults(existing: IAgentSdkResults, produced: IAgentSdkResults): IAgentSdkResults {
+	const merged: IAgentSdkResults = { ...existing };
+	for (const [sdk, entry] of Object.entries(produced)) {
+		const prior = merged[sdk];
+		if (!prior) {
+			merged[sdk] = entry;
+			continue;
+		}
+		if (prior.version !== entry.version) {
+			throw new Error(`results file has ${sdk}@${prior.version} but this run produced ${entry.version} — refusing to mix versions in one results file. Delete the stale results file and re-run.`);
+		}
+		if (prior.urlTemplate !== entry.urlTemplate) {
+			throw new Error(`results file has ${sdk} urlTemplate '${prior.urlTemplate}' but this run produced '${entry.urlTemplate}' — refusing to mix distribution endpoints in one results file. Delete the stale results file and re-run.`);
+		}
+		merged[sdk] = {
+			version: entry.version,
+			urlTemplate: entry.urlTemplate,
+			sha256ByTarget: { ...prior.sha256ByTarget, ...entry.sha256ByTarget },
+		};
+	}
+	return merged;
 }
 
 /**
@@ -331,9 +381,18 @@ export function readAgentSdkResults(): IAgentSdkResults {
 	if (!filePath || !fs.existsSync(filePath)) {
 		return {};
 	}
+	return readAgentSdkResultsFile(filePath);
+}
+
+/**
+ * Reads and minimally validates a results file at an explicit path (the
+ * env-var-independent half of {@link readAgentSdkResults}, exported so
+ * `produce.ts` can merge into a file it is about to rewrite).
+ */
+export function readAgentSdkResultsFile(filePath: string): IAgentSdkResults {
 	const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
-	if (typeof parsed !== 'object' || parsed === null) {
-		throw new Error(`AGENT_SDK_RESULTS_FILE at ${filePath} is not a JSON object`);
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+		throw new Error(`agent SDK results file at ${filePath} is not a JSON object`);
 	}
 	return parsed as IAgentSdkResults;
 }

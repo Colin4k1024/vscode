@@ -58,7 +58,9 @@ import {
 	getSdkTargetForBuild,
 	type IAgentSdkResults,
 	KNOWN_VSCODE_PLATFORMS,
+	mergeAgentSdkResults,
 	parseFlags,
+	readAgentSdkResultsFile,
 	type Sdk,
 	type VscodeBuildPlatform,
 } from './common.ts';
@@ -172,8 +174,16 @@ async function main(): Promise<void> {
 	}
 
 	fs.mkdirSync(path.dirname(args.resultsFile), { recursive: true });
-	fs.writeFileSync(args.resultsFile, JSON.stringify(results, null, 2) + '\n');
-	const sdkCount = Object.keys(results).length;
+	// Merge into a pre-existing results file rather than overwriting it: a
+	// sequence of per-target invocations (bundle-codex-sdk.sh --target=a then
+	// --target=b) must accumulate one sha256ByTarget entry per target, not
+	// clobber the previous target's — the single results file is what a
+	// multi-target product.json (macOS Universal) is stamped from. Merge is
+	// fail-loud on version/urlTemplate drift (see mergeAgentSdkResults).
+	const prior = fs.existsSync(args.resultsFile) ? readAgentSdkResultsFile(args.resultsFile) : {};
+	const merged = mergeAgentSdkResults(prior, results);
+	fs.writeFileSync(args.resultsFile, JSON.stringify(merged, null, 2) + '\n');
+	const sdkCount = Object.keys(merged).length;
 	console.log(`[${SCRIPT}] Wrote ${sdkCount} SDK entr${sdkCount === 1 ? 'y' : 'ies'} to ${args.resultsFile}`);
 
 	// Tell Azure Pipelines: subsequent steps in this job see
@@ -212,7 +222,12 @@ async function produceOne(
 			sha256: built.sha256,
 		});
 	}
-	return { version: built.sdkVersion, urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion), sha256: built.sha256 };
+	// The hash is keyed by THIS run's sdkTarget: per-target tarballs carry
+	// per-target native binaries, so their bytes differ per target. A scalar
+	// `sha256` here would fail closed for every other target the urlTemplate
+	// resolves to (macOS Universal). Successive per-target runs accumulate
+	// into one map via the merge at the write site above.
+	return { version: built.sdkVersion, urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion), sha256ByTarget: { [sdkTarget]: built.sha256 } };
 }
 
 main().catch(err => {

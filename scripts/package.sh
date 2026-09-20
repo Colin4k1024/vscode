@@ -19,7 +19,8 @@
 # Outputs:
 #   ../VSCode-<platform>-<arch>/            the packaged app (gulp output)
 #   .build/dist/<name>-<version>-<platform>-<arch>.zip
-#   .build/dist/SHA256SUMS.txt              sha256 manifest (app zip + SDK tarballs)
+#   .build/dist/SHA256SUMS.txt              sha256 manifest for the app zip
+#   .build/agent-sdk/tarballs/SHA256SUMS.txt  sha256 manifest for the SDK tarballs
 #   .build/agent-sdk/tarballs/*.tgz         self-hostable SDK tarballs
 #   .build/agent-sdk/results.json           product.agentSdks stamping input
 set -euo pipefail
@@ -77,10 +78,14 @@ fi
 
 # The full extension compile + esbuild bundle OOMs node's default ~4GB heap
 # (observed: Ineffective mark-compacts near heap limit at ~4.1GB during
-# bundle-non-native-extensions-build). 32GB cap — node only commits what it needs (dev machines have the headroom; CI runners peak lower because their node_modules are real dirs, not the symlinked overlay used locally).
+# bundle-non-native-extensions-build). 8GB cap: comfortably above the observed
+# peak, and within the RAM of a 16GB runner (a 32GB reserve is not committable
+# there — node only commits pages it touches, but the address-space reservation
+# itself can fail on smaller machines). Override via NODE_OPTIONS if a future
+# step needs more.
 case " ${NODE_OPTIONS:-} " in
 	*" --max-old-space-size"*) ;;
-	*) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=32768" ;;
+	*) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192" ;;
 esac
 
 DIST_DIR="$REPO_ROOT/.build/dist"
@@ -105,6 +110,33 @@ if [ "$SKIP_SDK" -eq 0 ]; then
 else
 	echo "==> [3/6] bundle Codex agent SDK — SKIPPED (--skip-sdk)"
 	[ -f "$RESULTS_FILE" ] || fail "--skip-sdk given but no prior results file at $RESULTS_FILE"
+	# H1: a pre-existing results file is only valid for THIS build when every
+	# SDK it names is at the pinned version AND carries a hash for this
+	# platform's sdkTarget. Without the check, --skip-sdk would happily stamp
+	# product.json from a stale or wrong-platform results file.
+	node - "$RESULTS_FILE" "$PLATFORM-$ARCH" <<'NODE_EOF'
+const fs = require('fs');
+const [resultsFile, target] = process.argv.slice(2);
+const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+let bad = 0;
+for (const [sdk, entry] of Object.entries(results)) {
+	const pinned = JSON.parse(fs.readFileSync(`build/agent-sdk/agents/${sdk}/package.json`, 'utf8'));
+	const pinnedVersion = Object.values(pinned.dependencies ?? {})[0];
+	if (entry.version !== pinnedVersion) {
+		console.error(`ERROR: --skip-sdk: results file has ${sdk}@${entry.version} but the pin is ${pinnedVersion} — re-run without --skip-sdk`);
+		bad = 1;
+		continue;
+	}
+	const hasTargetHash = Boolean(entry.sha256ByTarget?.[target]) || typeof entry.sha256 === 'string';
+	if (!hasTargetHash) {
+		const have = Object.keys(entry.sha256ByTarget ?? {}).join(', ') || '<none>';
+		console.error(`ERROR: --skip-sdk: results file has no sha256 for ${sdk} target '${target}' (have: ${have}) — re-run bundle-codex-sdk.sh for this target first`);
+		bad = 1;
+	}
+}
+process.exit(bad);
+NODE_EOF
+	echo "    results file verified against the pins for target $PLATFORM-$ARCH"
 fi
 # The local/GHA equivalent of Azure's `##vso[task.setvariable ...]` handoff:
 # gulp's packageTask reads this env var and stamps product.agentSdks.
@@ -159,33 +191,43 @@ if [ "$SKIP_ZIP" -eq 0 ]; then
 	else
 		(cd "$APP_OUT" && zip -q -r -y "$ZIP" .)
 	fi
-	echo "    zip: $ZIP ($(stat -f%z "$ZIP") bytes)"
+	# Portable byte count: `stat -f%z` is BSD-only and fails on the Linux
+	# runners this script also supports (L3).
+	echo "    zip: $ZIP ($(wc -c < "$ZIP" | tr -d ' ') bytes)"
 fi
 
+# One manifest per artifact directory, with BARE file names: the CI
+# artifacts flatten (.build/dist/* and .build/agent-sdk/tarballs/* each land
+# at the download root), so builder-relative paths would make
+# `shasum -a 256 -c SHA256SUMS.txt` fail on a downloaded artifact (L6/AC10).
+# Verification: cd into the directory and run `shasum -a 256 -c SHA256SUMS.txt`.
 SUMS="$DIST_DIR/SHA256SUMS.txt"
 {
-	# Repo-root-relative paths (review round-1, LOW-2): absolute paths bake
-	# the builder's home directory into a published artifact and leak the
-	# machine layout. With relative paths the manifest is verifiable via
-	# `shasum -a 256 -c SHA256SUMS.txt` from the repo root.
 	if [ "$SKIP_ZIP" -eq 0 ]; then
-		(cd "$REPO_ROOT" && shasum -a 256 "${ZIP#"$REPO_ROOT"/}")
+		(cd "$DIST_DIR" && shasum -a 256 "$(basename "$ZIP")")
 	fi
+} > "$SUMS"
+TARBALL_SUMS="$REPO_ROOT/.build/agent-sdk/tarballs/SHA256SUMS.txt"
+{
 	for t in "$REPO_ROOT"/.build/agent-sdk/tarballs/*.tgz; do
 		if [ -e "$t" ]; then
-			(cd "$REPO_ROOT" && shasum -a 256 "${t#"$REPO_ROOT"/}")
+			(cd "$(dirname "$t")" && shasum -a 256 "$(basename "$t")")
 		fi
 	done
-} > "$SUMS"
+} > "$TARBALL_SUMS"
 echo "    manifest: $SUMS"
 cat "$SUMS"
+[ ! -s "$TARBALL_SUMS" ] || { echo "    manifest: $TARBALL_SUMS"; cat "$TARBALL_SUMS"; }
+
+ZIP_DISPLAY="(skipped)"
+[ "$SKIP_ZIP" -eq 1 ] || ZIP_DISPLAY="$ZIP"
 
 cat <<-EOT
 
 ================================================================
 BUILD COMPLETE
 app:      $APP_PATH
-zip:      ${ZIP%-skip}
+zip:      $ZIP_DISPLAY
 manifest: $SUMS
 
 Known limitations (D09 ruling 3, recorded per AC11):

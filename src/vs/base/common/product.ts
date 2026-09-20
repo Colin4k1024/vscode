@@ -82,15 +82,27 @@ export interface IAgentSdkProductConfig {
 	readonly version: string;
 	readonly urlTemplate: string;
 	/**
-	 * sha256 of the tarball the urlTemplate resolves to (stamped from the
-	 * build pipeline's results file — the hash of the exact bytes that were
-	 * published). The downloader verifies the fetched bytes against it
-	 * before extracting; a mismatch discards the download and fails loud.
+	 * sha256 of the per-target tarballs the urlTemplate resolves to, keyed by
+	 * the `{sdkTarget}` the runtime substitutes (e.g. `darwin-arm64`,
+	 * `linux-x64-musl`). Per-target tarballs carry per-target native binaries,
+	 * so their bytes — and hashes — differ per target; a single scalar hash
+	 * would fail closed for every target except the one that stamped it
+	 * (macOS Universal serves both `darwin-arm64` and `darwin-x64` from one
+	 * product.json).
 	 *
-	 * Optional for backward compatibility: product.json files stamped
-	 * before this field existed carry no hash — the downloader logs a
-	 * warning and proceeds, matching the previous behavior for
-	 * already-distributed artifacts.
+	 * The downloader verifies the fetched bytes against
+	 * `sha256ByTarget[resolvedSdkTarget]` before extracting; a mismatch
+	 * discards the download and fails loud. A missing key (a product.json
+	 * stamped before that target's build ran) warns and proceeds, matching
+	 * the previous no-hash behavior.
+	 */
+	readonly sha256ByTarget?: { readonly [sdkTarget: string]: string };
+	/**
+	 * Legacy single-target hash, stamped by builds predating
+	 * {@link IAgentSdkProductConfig.sha256ByTarget}. The downloader falls
+	 * back to it when no per-target entry exists. New builds must not stamp
+	 * it: on a multi-target product.json it is correct for at most one
+	 * target and poisons the others.
 	 */
 	readonly sha256?: string;
 }

@@ -186,7 +186,7 @@ async function uploadOneHttp(args: IUploadArgs, sha256: string): Promise<IUpload
 				`Use an https endpoint, or unset the token for an unauthenticated endpoint.`,
 			);
 		}
-		headers['authorization'] = `Bearer ${token}`;
+		headers.authorization = `Bearer ${token}`;
 	}
 
 	console.log(`[${SCRIPT}] target: ${url}`);
@@ -212,6 +212,7 @@ async function uploadOneHttp(args: IUploadArgs, sha256: string): Promise<IUpload
 	}
 
 	console.log(`[${SCRIPT}] uploading ${fs.statSync(args.tgzPath).size} bytes…`);
+	// eslint-disable-next-line local/code-no-dangerous-type-assertions -- fs.ReadStream is a valid undici request body but is not typed as BodyInit.
 	const put = await fetch(url, {
 		method: 'PUT',
 		headers: {

@@ -1051,6 +1051,16 @@ export class AgentHostE2EServerLease {
 		return this._server?.capiReplay?.observedModelRequestBodies ?? [];
 	}
 
+	/**
+	 * The isolated Codex home the target was launched with. Exposed so
+	 * isolation tests can prove the provider confined its state here rather
+	 * than to an ambient `CODEX_HOME` (part of the {@link IAgentHostTarget}
+	 * launch contract, not an implementation internal).
+	 */
+	get isolatedCodexHomeDir(): string {
+		return this._startOptions.codexHomeDir;
+	}
+
 	/** The bundled `@github/copilot` CLI is the only provider whose own runtime logs we capture / run verbosely. */
 	private get _isCopilotProvider(): boolean {
 		return this._config.provider === 'copilotcli';

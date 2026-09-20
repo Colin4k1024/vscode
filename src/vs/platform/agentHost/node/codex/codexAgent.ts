@@ -31,7 +31,7 @@ import { CHATGPT_SUBSCRIPTION_MODEL_SOURCE_ID, createAgentModelGroupMeta, create
 import { AgentSystemNotificationKind, toAgentSystemNotificationMeta } from '../../common/meta/agentSystemNotificationMeta.js';
 import { AgentHostConfigKey, agentHostCustomizationConfigSchema } from '../../common/agentHostCustomizationConfig.js';
 import { AgentSdkSetupChannel } from '../agentSdkSetupChannel.js';
-import { CODEX_ACCOUNT_META_KEY, CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY, CODEX_ACCOUNT_SIGN_OUT_REQUEST_KEY, type ICodexAccountInfo } from '../../common/codexAccount.js';
+import { CODEX_ACCOUNT_META_KEY, CODEX_ACCOUNT_SIGN_IN_CANCEL_REQUEST_KEY, CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY, CODEX_ACCOUNT_SIGN_OUT_REQUEST_KEY, CODEX_DEVICE_CODE_SIGN_IN_PREFIX, type ICodexAccountInfo } from '../../common/codexAccount.js';
 import { getReasoningEffortDescription, getReasoningEffortLabel, resolveDefaultReasoningEffort } from '../../common/reasoningEffort.js';
 import { AgentChatMigrationDeferred, type AgentChatMigrationResult, AgentSession, AgentSignal, AgentWorkingDirectoryChangedError, CODEX_AGENT_PROVIDER_ID, IActiveClient, IAgent, IAgentChatConfigCompletionsParams, IAgentChatContext, IAgentChatDataChange, IAgentChatMetadata, type IAgentChatMetadataOptions, IAgentChats, IAgentCreateChatForkSource, IAgentCreateChatResult, IAgentCreateChatOptions, IAgentDescriptor, IAgentDiscoveredChat, IAgentMaterializeChatEvent, IAgentModelInfo, IAgentResolveChatConfigParams, IAgentSpawnChatEvent, IMcpNotification, resolveAgentChatContext, resolveAgentHostInstructions, type AgentProvider, type AuthenticateParams } from '../../common/agent.js';
 import { AgentHostCodexAgentBinaryArgsEnvVar, AgentHostCodexAgentCodexHomeEnvVar, AgentHostCodexAgentSdkRootEnvVar } from '../../common/agentService.js';
@@ -123,6 +123,7 @@ import type { GetAccountResponse } from './protocol/generated/v2/GetAccountRespo
 import type { GetAccountRateLimitsResponse } from './protocol/generated/v2/GetAccountRateLimitsResponse.js';
 import type { GetAuthStatusResponse } from './protocol/generated/GetAuthStatusResponse.js';
 import type { LoginAccountResponse } from './protocol/generated/v2/LoginAccountResponse.js';
+import type { CancelLoginAccountResponse } from './protocol/generated/v2/CancelLoginAccountResponse.js';
 import type { ModelListResponse } from './protocol/generated/v2/ModelListResponse.js';
 import type { Thread } from './protocol/generated/v2/Thread.js';
 import type { ThreadListResponse } from './protocol/generated/v2/ThreadListResponse.js';
@@ -1266,7 +1267,21 @@ export class CodexAgent extends Disposable implements IAgent {
 	private _codexModels: readonly IAgentModelInfo[] = [];
 	private readonly _metadataStore: CodexSessionMetadataStore;
 	private _lastSignInRequest: string | undefined;
+	private _lastSignInCancelRequest: string | undefined;
 	private _lastSignOutRequest: string | undefined;
+	/**
+	 * Tracks an in-flight ChatGPT login so a cancel request can reach it without
+	 * queueing behind the on-demand connection the login itself is holding.
+	 * Cleared when the login completes (transient flow), when the persistent
+	 * connection's completion handler observes it, or when a cancel lands.
+	 */
+	private _pendingChatGPTSignIn: {
+		readonly request: string;
+		readonly client: ICodexAppServerClient;
+		loginId: string | undefined;
+		cancelRequested: boolean;
+		completeCancellation?: () => void;
+	} | undefined;
 	private readonly _worktree: IAgentHostWorktreePendingState;
 
 	/**
@@ -1351,6 +1366,12 @@ export class CodexAgent extends Disposable implements IAgent {
 				this._configurationService.updateRootConfig({ [CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY]: undefined });
 				void this._signInToChatGPT(signInRequest);
 			}
+			const signInCancelRequest = this._configurationService.getRootConfigValues?.()[CODEX_ACCOUNT_SIGN_IN_CANCEL_REQUEST_KEY];
+			if (typeof signInCancelRequest === 'string' && signInCancelRequest !== this._lastSignInCancelRequest) {
+				this._lastSignInCancelRequest = signInCancelRequest;
+				this._configurationService.updateRootConfig({ [CODEX_ACCOUNT_SIGN_IN_CANCEL_REQUEST_KEY]: undefined });
+				void this._cancelChatGPTSignIn(signInCancelRequest);
+			}
 			const signOutRequest = this._configurationService.getRootConfigValues?.()[CODEX_ACCOUNT_SIGN_OUT_REQUEST_KEY];
 			if (typeof signOutRequest === 'string' && signOutRequest !== this._lastSignOutRequest) {
 				this._lastSignOutRequest = signOutRequest;
@@ -1432,7 +1453,12 @@ export class CodexAgent extends Disposable implements IAgent {
 				// A standalone sign-in connection lives only until this login attempt
 				// completes. A session-owned connection already has its permanent
 				// account/login/completed handler, so it can return after publishing the URL.
+				const deviceCode = request.startsWith(CODEX_DEVICE_CODE_SIGN_IN_PREFIX);
 				const loginCompleted = new DeferredPromise<{ readonly success: boolean; readonly error: string | null }>();
+				const pendingSignIn = { request, client, loginId: undefined as string | undefined, cancelRequested: false, completeCancellation: undefined as (() => void) | undefined };
+				pendingSignIn.completeCancellation = () => {
+					void loginCompleted.complete({ success: false, error: null });
+				};
 				let loginId: string | undefined;
 				let earlyLoginCompletions: Array<{ readonly loginId: string | null; readonly success: boolean; readonly error: string | null }> = [];
 				const completionListener = transient ? client.onNotification('account/login/completed', params => {
@@ -1445,12 +1471,18 @@ export class CodexAgent extends Disposable implements IAgent {
 					}
 					void loginCompleted.complete(params);
 				}) : undefined;
+				this._pendingChatGPTSignIn = pendingSignIn;
 				try {
-					const response = await client.request<'account/login/start', LoginAccountResponse>('account/login/start', { type: 'chatgpt' });
-					if (response.type !== 'chatgpt') {
+					const response = await client.request<'account/login/start', LoginAccountResponse>('account/login/start', deviceCode ? { type: 'chatgptDeviceCode' } : { type: 'chatgpt' });
+					if (deviceCode) {
+						if (response.type !== 'chatgptDeviceCode') {
+							return;
+						}
+					} else if (response.type !== 'chatgpt') {
 						return;
 					}
 					loginId = response.loginId;
+					pendingSignIn.loginId = loginId;
 					const earlyCompletion = earlyLoginCompletions.find(completion => completion.loginId === loginId);
 					earlyLoginCompletions = [];
 					if (earlyCompletion) {
@@ -1463,19 +1495,56 @@ export class CodexAgent extends Disposable implements IAgent {
 						this._publishAccountInfo(this._toAccountInfo(this._openAIAccountState));
 						return;
 					}
-					this._publishAccountInfo({ ...this._toAccountInfo(this._openAIAccountState), authUrl: response.authUrl, authUrlNonce: request });
+					if (pendingSignIn.cancelRequested) {
+						// The cancel request beat `account/login/start`; cancel now that
+						// the login id exists. Never publish the authorization URL —
+						// the user already cancelled, so opening a browser would be a
+						// surprise — and settle without depending on the app-server to
+						// echo a completion for the aborted login: on a persistent
+						// connection that echo is not guaranteed, so clear the pending
+						// sign-in and refresh back to the signed-out account state here.
+						await this._requestChatGPTLoginCancel(client, loginId);
+						if (!transient) {
+							if (this._pendingChatGPTSignIn === pendingSignIn) {
+								this._pendingChatGPTSignIn = undefined;
+							}
+							await this._refreshAccount(client, true, transient);
+							this._queueModelRefresh();
+							return;
+						}
+						pendingSignIn.completeCancellation();
+					} else {
+						this._publishAccountInfo({
+							...this._toAccountInfo(this._openAIAccountState),
+							authUrl: response.type === 'chatgpt' ? response.authUrl : undefined,
+							authUrlNonce: request,
+							deviceVerificationUrl: response.type === 'chatgptDeviceCode' ? response.verificationUrl : undefined,
+							deviceUserCode: response.type === 'chatgptDeviceCode' ? response.userCode : undefined,
+						});
+					}
 					if (transient) {
 						const result = await Promise.race([
 							loginCompleted.p,
 							Event.toPromise(client.onExit).then(event => { throw new Error(`Codex app-server exited during ChatGPT sign-in (code=${event.code}, signal=${event.signal})`); }),
 						]);
 						if (!result.success) {
+							if (pendingSignIn.cancelRequested) {
+								// A user cancel is not an error: the account is simply back to
+								// signed-out once the app-server settles the aborted login.
+								await this._refreshAccount(client, true, true);
+								return;
+							}
 							throw new Error(result.error ?? 'ChatGPT sign-in failed');
 						}
 						await this._refreshAccount(client, true, true);
 					}
 				} finally {
 					completionListener?.dispose();
+					// A persistent connection keeps the pending sign-in alive after
+					// publishing; its global completion handler (or a cancel) clears it.
+					if (transient && this._pendingChatGPTSignIn === pendingSignIn) {
+						this._pendingChatGPTSignIn = undefined;
+					}
 				}
 			});
 		} catch (error) {
@@ -1483,6 +1552,41 @@ export class CodexAgent extends Disposable implements IAgent {
 			this._setOpenAIAccountState({ usageSource: 'openai', status: 'error', error: message });
 		} finally {
 			progressInterest.dispose();
+		}
+	}
+
+	private async _cancelChatGPTSignIn(request: string): Promise<void> {
+		const pending = this._pendingChatGPTSignIn;
+		if (!pending || pending.request !== request) {
+			return;
+		}
+		pending.cancelRequested = true;
+		const loginId = pending.loginId;
+		if (loginId === undefined) {
+			// `account/login/start` has not returned yet; the sign-in flow sends the
+			// cancel as soon as the login id arrives.
+			return;
+		}
+		// No pending loginId may outlive the cancel, whether or not the app-server
+		// still knows the login.
+		if (this._pendingChatGPTSignIn === pending) {
+			this._pendingChatGPTSignIn = undefined;
+		}
+		const cancelled = await this._requestChatGPTLoginCancel(pending.client, loginId);
+		pending.completeCancellation?.();
+		if (cancelled) {
+			await this._refreshAccount(pending.client, true);
+			this._queueModelRefresh();
+		}
+	}
+
+	private async _requestChatGPTLoginCancel(client: ICodexAppServerClient, loginId: string): Promise<boolean> {
+		try {
+			const response = await client.request<'account/login/cancel', CancelLoginAccountResponse>('account/login/cancel', { loginId });
+			return response.status === 'canceled';
+		} catch (error) {
+			this._logService.warn(`[Codex] account/login/cancel failed: ${error instanceof Error ? error.message : String(error)}`);
+			return false;
 		}
 	}
 
@@ -1504,6 +1608,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	private _toAccountInfo(state: ICodexAccountState): ICodexAccountInfo {
 		return {
 			status: state.status,
+			authType: state.authType,
 			email: state.authType === 'chatgpt' ? state.email : undefined,
 			planType: state.authType === 'chatgpt' ? state.planType : undefined,
 			profileImage: state.authType === 'chatgpt' ? this._openAIAccountProfileImage : undefined,
@@ -2596,7 +2701,13 @@ export class CodexAgent extends Disposable implements IAgent {
 		// Wire global notification → SessionAction dispatch.
 		this._registerIgnoredNotifications(client, subscriptions);
 		this._registerWorkingDirectoryNotifications(client, subscriptions);
-		subscriptions.add(client.onNotification('account/login/completed', () => {
+		subscriptions.add(client.onNotification('account/login/completed', params => {
+			// The login this connection started has settled one way or another —
+			// success, failure, or cancel — so no cancel may target it anymore.
+			if (this._pendingChatGPTSignIn && this._pendingChatGPTSignIn.client === client
+				&& (params.loginId === null || this._pendingChatGPTSignIn.loginId === undefined || params.loginId === this._pendingChatGPTSignIn.loginId)) {
+				this._pendingChatGPTSignIn = undefined;
+			}
 			void this._refreshAccount(client).then(() => this._queueModelRefresh());
 		}));
 		subscriptions.add(client.onNotification('account/updated', () => {

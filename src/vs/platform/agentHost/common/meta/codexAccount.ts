@@ -8,7 +8,15 @@ import type { RootState } from '../state/protocol/state.js';
 
 export const CODEX_ACCOUNT_META_KEY = 'vscode.codexAccount';
 export const CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY = 'vscode.codexAccount.signInRequest';
+export const CODEX_ACCOUNT_SIGN_IN_CANCEL_REQUEST_KEY = 'vscode.codexAccount.signInCancelRequest';
 export const CODEX_ACCOUNT_SIGN_OUT_REQUEST_KEY = 'vscode.codexAccount.signOutRequest';
+/**
+ * Sign-in request prefix selecting the device-code login flow. A bare nonce
+ * keeps the default browser flow; `deviceCode:<nonce>` asks the app-server for
+ * a `chatgptDeviceCode` login so browserless/remote environments can complete
+ * authorization on another machine.
+ */
+export const CODEX_DEVICE_CODE_SIGN_IN_PREFIX = 'deviceCode:';
 export const CODEX_PROFILE_IMAGE_SCHEME = 'vscode-codex-profile-image';
 export const MAX_CODEX_PROFILE_IMAGE_BYTES = 1024 * 1024;
 
@@ -35,6 +43,7 @@ export interface ICodexAccountRateLimitInfo {
 
 export interface ICodexAccountInfo {
 	readonly status: 'unknown' | 'downloading' | 'signedIn' | 'signedOut' | 'unavailable' | 'error';
+	readonly authType?: 'chatgpt' | 'apiKey' | 'other';
 	readonly email?: string;
 	readonly planType?: string;
 	readonly profileImage?: ICodexProfileImageReference;
@@ -42,6 +51,8 @@ export interface ICodexAccountInfo {
 	readonly rateLimit?: ICodexAccountRateLimitInfo;
 	readonly authUrl?: string;
 	readonly authUrlNonce?: string;
+	readonly deviceVerificationUrl?: string;
+	readonly deviceUserCode?: string;
 }
 
 export function readCodexAccountInfo(state: RootState | undefined): ICodexAccountInfo {
@@ -65,6 +76,7 @@ export function readCodexAccountInfo(state: RootState | undefined): ICodexAccoun
 		&& (rateLimit.resetsAt === undefined || (typeof rateLimit.resetsAt === 'number' && Number.isFinite(rateLimit.resetsAt) && rateLimit.resetsAt > 0));
 	return {
 		status: account.status,
+		authType: account.authType === 'chatgpt' || account.authType === 'apiKey' || account.authType === 'other' ? account.authType : undefined,
 		email: typeof account.email === 'string' ? account.email : undefined,
 		planType: typeof account.planType === 'string' ? account.planType : undefined,
 		profileImage: readProfileImageReference(account.profileImage),
@@ -76,6 +88,8 @@ export function readCodexAccountInfo(state: RootState | undefined): ICodexAccoun
 		} : undefined,
 		authUrl: typeof account.authUrl === 'string' ? account.authUrl : undefined,
 		authUrlNonce: typeof account.authUrlNonce === 'string' ? account.authUrlNonce : undefined,
+		deviceVerificationUrl: typeof account.deviceVerificationUrl === 'string' ? account.deviceVerificationUrl : undefined,
+		deviceUserCode: typeof account.deviceUserCode === 'string' ? account.deviceUserCode : undefined,
 	};
 }
 

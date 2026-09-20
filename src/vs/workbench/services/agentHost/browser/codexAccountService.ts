@@ -9,7 +9,7 @@ import { Action, IAction, SubmenuAction, toAction } from '../../../../base/commo
 import { generateUuid } from '../../../../base/common/uuid.js';
 import { URI } from '../../../../base/common/uri.js';
 import { localize } from '../../../../nls.js';
-import { CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY, CODEX_ACCOUNT_SIGN_OUT_REQUEST_KEY, MAX_CODEX_PROFILE_IMAGE_BYTES, readCodexAccountInfo, type ICodexAccountInfo, type ICodexProfileImageReference } from '../../../../platform/agentHost/common/codexAccount.js';
+import { CODEX_ACCOUNT_SIGN_IN_CANCEL_REQUEST_KEY, CODEX_ACCOUNT_SIGN_IN_REQUEST_KEY, CODEX_ACCOUNT_SIGN_OUT_REQUEST_KEY, CODEX_DEVICE_CODE_SIGN_IN_PREFIX, MAX_CODEX_PROFILE_IMAGE_BYTES, readCodexAccountInfo, type ICodexAccountInfo, type ICodexProfileImageReference } from '../../../../platform/agentHost/common/codexAccount.js';
 import { CODEX_AGENT_PROVIDER_ID } from '../../../../platform/agentHost/common/agent.js';
 import { AgentHostCodexAgentEnabledSettingId, CodexPreferAgentHostEditorSettingId, IAgentHostService } from '../../../../platform/agentHost/common/agentService.js';
 import { ChatAIDisabledSettingId } from '../../../../platform/chat/common/chatSettings.js';
@@ -39,12 +39,27 @@ export interface ICodexAccountService {
 	 */
 	readonly agent: string;
 	readonly account: ICodexAccountViewInfo;
+	/**
+	 * Exposed so menu actions built from this service can open the device-code
+	 * verification URL without each call site injecting its own opener.
+	 */
+	readonly openerService: Pick<IOpenerService, 'open'>;
 	readonly onDidChangeAccount: Event<ICodexAccountViewInfo>;
 	signIn(): void;
+	signInWithDeviceCode(): void;
+	cancelSignIn(): void;
 	signOut(): void;
 }
 
 export function hasSignedInCodexChatGPTAccount(account: ICodexAccountInfo, visible = true): boolean {
+	return visible && account.status === 'signedIn' && account.authType === 'chatgpt';
+}
+
+/**
+ * Any completed OpenAI authentication loop — ChatGPT subscription or API key —
+ * as opposed to {@link hasSignedInCodexChatGPTAccount}'s ChatGPT-only semantics.
+ */
+export function hasSignedInCodexOpenAIAccount(account: ICodexAccountInfo, visible = true): boolean {
 	return visible && account.status === 'signedIn';
 }
 
@@ -59,12 +74,36 @@ export function createCodexAccountMenuActions(service: ICodexAccountService, vis
 		return [];
 	}
 	const account = service.account;
+	if (account.authUrlNonce) {
+		// A sign-in attempt is in flight. There is no node-side timeout — the
+		// pending state and this Cancel action are the escape hatch.
+		const actions: IAction[] = [];
+		if (account.deviceUserCode) {
+			const verificationUrl = account.deviceVerificationUrl;
+			actions.push(new Action(
+				'codex.chatGPTDeviceCodeSignIn',
+				localize('chatGPTDeviceCodeSignIn', "Enter Code {0} to Finish Signing In", account.deviceUserCode),
+				undefined,
+				!!verificationUrl,
+				async () => {
+					if (verificationUrl) {
+						await openCodexAuthUrl(service.openerService, verificationUrl);
+					}
+				},
+			));
+		}
+		actions.push(new Action('codex.cancelChatGPTSignIn', localize('cancelChatGPTSignIn', "Cancel Sign In"), undefined, true, () => service.cancelSignIn()));
+		return actions;
+	}
 	if (account.status === 'signedIn') {
 		const signOut = toAction({
 			id: 'codex.signOutOfChatGPT',
 			label: localize('signOutOfChatGPT', "Sign Out"),
 			run: () => service.signOut(),
 		});
+		if (account.authType === 'apiKey') {
+			return [new SubmenuAction('codex.openAIApiKeyAccount', localize('openAIApiKeyAccount', "OpenAI API Key"), [signOut])];
+		}
 		const accountLabel = account.email
 			? localize('chatGPTAccountWithProvider', "{0} (ChatGPT)", account.email)
 			: localize('chatGPTAccount', "ChatGPT");
@@ -74,7 +113,10 @@ export function createCodexAccountMenuActions(service: ICodexAccountService, vis
 		return [new Action('codex.downloadingAgent', localize('downloadingCodexAgent', "Downloading Codex Agent…"), undefined, false)];
 	}
 	if (account.status === 'unknown' || account.status === 'signedOut' || account.status === 'error') {
-		return [new Action('codex.signInToChatGPT', localize('signInToChatGPT', "Sign in to ChatGPT"), undefined, true, () => service.signIn())];
+		return [
+			new Action('codex.signInToChatGPT', localize('signInToChatGPT', "Sign in to ChatGPT"), undefined, true, () => service.signIn()),
+			new Action('codex.signInToChatGPTWithDeviceCode', localize('signInToChatGPTWithDeviceCode', "Sign in with Device Code"), undefined, true, () => service.signInWithDeviceCode()),
+		];
 	}
 	return [];
 }
@@ -123,6 +165,10 @@ export class CodexAccountService extends Disposable implements ICodexAccountServ
 
 	readonly agent = CODEX_AGENT_PROVIDER_ID;
 
+	get openerService(): Pick<IOpenerService, 'open'> {
+		return this._openerService;
+	}
+
 	private readonly _onDidChangeAccount = this._register(new Emitter<ICodexAccountViewInfo>());
 	readonly onDidChangeAccount = this._onDidChangeAccount.event;
 
@@ -149,7 +195,26 @@ export class CodexAccountService extends Disposable implements ICodexAccountServ
 	}
 
 	signIn(): void {
-		const request = generateUuid();
+		this._requestSignIn(generateUuid());
+	}
+
+	signInWithDeviceCode(): void {
+		this._requestSignIn(`${CODEX_DEVICE_CODE_SIGN_IN_PREFIX}${generateUuid()}`);
+	}
+
+	cancelSignIn(): void {
+		const nonce = this._account.authUrlNonce;
+		if (!nonce) {
+			return;
+		}
+		this._pendingSignInRequests.delete(nonce);
+		this._agentHostService.dispatch(ROOT_STATE_URI, {
+			type: ActionType.RootConfigChanged,
+			config: { [CODEX_ACCOUNT_SIGN_IN_CANCEL_REQUEST_KEY]: nonce },
+		});
+	}
+
+	private _requestSignIn(request: string): void {
 		this._pendingSignInRequests.add(request);
 		this._agentHostService.dispatch(ROOT_STATE_URI, {
 			type: ActionType.RootConfigChanged,
@@ -173,6 +238,8 @@ export class CodexAccountService extends Disposable implements ICodexAccountServ
 		this._onDidChangeAccount.fire(this._account);
 		this._updateProfileImage(account.profileImage);
 		if (account.authUrlNonce && this._pendingSignInRequests.delete(account.authUrlNonce) && account.authUrl) {
+			// Device-code sign-ins deliberately skip the auto-open: the user must
+			// read the one-time code from the menu before visiting the URL.
 			void openCodexAuthUrl(this._openerService, account.authUrl);
 		}
 	}

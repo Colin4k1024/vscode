@@ -1110,6 +1110,14 @@ function narrowFileChangeDecision(decision: CommandExecutionApprovalDecision): F
 	}
 }
 
+/**
+ * Marker for the concurrent-turn refusal raised by the claim-site assertion.
+ * Routed to a dedicated catch branch so a losing send performs zero session
+ * mutation (the generic catch's stopwatch/merge-flag cleanup belongs to the
+ * OWNING send — the one that claimed the turn).
+ */
+class CodexTurnConflictError extends Error { }
+
 export class CodexAgent extends Disposable implements IAgent {
 
 	readonly id: AgentProvider = CODEX_AGENT_PROVIDER_ID;
@@ -5915,7 +5923,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	 */
 	private _assertTurnClaimable(session: ICodexSession): void {
 		if (session.currentTurnId !== undefined || session.currentAppTurnId !== undefined) {
-			throw new Error(`Codex session already has an active turn; concurrent turn rejected (active host turn=${session.currentTurnId ?? 'none'}, app turn=${session.currentAppTurnId ?? 'none'})`);
+			throw new CodexTurnConflictError(`Codex session already has an active turn; concurrent turn rejected (active host turn=${session.currentTurnId ?? 'none'}, app turn=${session.currentAppTurnId ?? 'none'})`);
 		}
 	}
 
@@ -5959,6 +5967,13 @@ export class CodexAgent extends Disposable implements IAgent {
 			return;
 		}
 		const configResource = operationContext?.configurationResource ?? sessionUri;
+		// Residual race, documented and accepted: two sends that both pass the
+		// entry check write shared session fields (`agentMergeTurn` here,
+		// `workingDirectories` below) during preparation, before the claim-site
+		// assertion rejects the loser. The loser's writes land after the
+		// winner's but the winner only reads them during prep, so the window is
+		// bounded by prep duration; closing it would require deferring these
+		// writes past the claim, which the prep consumers currently depend on.
 		session.agentMergeTurn = operationContext?.agentMergeTurn === true;
 		this._ensureModelProviderAuthenticated(session.model);
 		// The host hands us the complete resolved snapshot (index 0 = the process
@@ -6155,6 +6170,21 @@ export class CodexAgent extends Disposable implements IAgent {
 			// We don't await turn completion here — the notification
 			// stream emits ChatTurnComplete asynchronously.
 		} catch (err) {
+			// A concurrent send that lost the claim race owns nothing: no session
+			// mutation, no stopwatch/merge-flag cleanup (those belong to the
+			// active turn's owner). Surface the same refusal shape as the
+			// entry-level check so UI/telemetry see one CodexTurnConflict语义.
+			if (err instanceof CodexTurnConflictError) {
+				this._logService.warn(`[Codex:${sessionId}] ${err.message}`);
+				this._fire(sessionUri, {
+					type: ActionType.ChatError,
+					turnId: effectiveTurnId,
+					duration: 0,
+					part: createErrorResponsePart({ errorType: 'CodexTurnConflict', message: err.message }),
+				});
+				this._fire(sessionUri, { type: ActionType.ChatTurnComplete, turnId: effectiveTurnId, duration: 0 });
+				return;
+			}
 			// A transport exit finalizes and clears an owned turn in
 			// `_handleConnectionLost`. Do not start or complete it a second time.
 			if (turnRequestStarted && session.currentTurnId !== effectiveTurnId) {

@@ -6,6 +6,7 @@
 import type { CCAModel } from '@vscode/copilot-api';
 import assert from 'assert';
 import { PassThrough } from 'stream';
+import { DeferredPromise } from '../../../../../base/common/async.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { Schemas } from '../../../../../base/common/network.js';
@@ -623,6 +624,68 @@ suite('CodexAgent D13 crash / concurrency / recovery negatives (issue #15)', () 
 			assert.ok(allActions.some(a => a.type === ActionType.ChatTurnComplete && (a as { turnId?: string }).turnId === 'turn-1'),
 				'the active turn must still reach its terminal state after the contender is refused');
 			assert.strictEqual(sessionEntry.currentTurnId, undefined, 'all turn tracking settles once both turns terminate');
+		} finally {
+			disposables.dispose();
+		}
+	});
+
+	test('AC15c (issue #30, review): a send that loses the claim inside the prep window mutates nothing of the active turn', async () => {
+		const disposables = new DisposableStore();
+		try {
+			const agent = await createAgent(disposables);
+			const peer = new WirePeer(disposables);
+			await connectAgent(agent, peer);
+			const { session } = await createSession(agent, { workingDirectories: [URI.file('/repo')], model: { id: COPILOT_TEST_MODEL } });
+			const chat = defaultChatOf(session);
+
+			// Stall the contender inside its preparation (past the entry check,
+			// before the claim), then let a full send claim and start a turn.
+			// The contender's claim-site assertion must route to the dedicated
+			// conflict branch: zero session mutation, CodexTurnConflict, duration 0.
+			const releasePrep = new DeferredPromise<void>();
+			let stalled = false;
+			const adopt = agent['_adoptWorkingDirectoryBeforeSend'].bind(agent);
+			agent['_adoptWorkingDirectoryBeforeSend'] = (async (...a: unknown[]) => {
+				if (!stalled) {
+					stalled = true;
+					await releasePrep.p;
+				}
+				return (adopt as (...args: unknown[]) => Promise<void>)(...a);
+			}) as never;
+
+			const signals: AgentSignal[] = [];
+			disposables.add(agent.onDidChatProgress(signal => signals.push(signal)));
+			const contender = agent.chats.sendMessage(chat, 'contender in prep', [URI.file('/repo')], undefined, 'turn-2');
+			// Let the contender reach the stall (past its entry check).
+			while (!stalled) {
+				await new Promise(r => setImmediate(r));
+			}
+
+			// The winner claims and starts a turn while the contender is in prep.
+			await startTurn(peer, agent, session);
+			peer.push({ method: 'turn/started', params: { threadId: 'thread-1', turn: { id: 'appTurn-1', items: [] } } });
+			await new Promise(r => setImmediate(r));
+
+			releasePrep.complete();
+			await contender;
+
+			assert.strictEqual(peer.pendingMessageCount, 0, 'the claim-losing send must not reach the wire');
+			const actions = actionSignals(signals);
+			assert.ok(actions.some(a => a.type === ActionType.ChatError && (a as { turnId?: string }).turnId === 'turn-2'
+				&& (a as { part?: { error?: { errorType?: string } } }).part?.error?.errorType === 'CodexTurnConflict'),
+				'the claim-losing send must surface CodexTurnConflict (not the generic turn error)');
+			const contenderComplete = actions.find(a => a.type === ActionType.ChatTurnComplete && (a as { turnId?: string }).turnId === 'turn-2');
+			assert.ok(contenderComplete, 'the claim-losing turn must be terminated');
+			assert.strictEqual((contenderComplete as { duration?: number }).duration, 0, 'the loser never owned the stopwatch');
+
+			const sessionEntry = agent['_sessions'].get(AgentSession.id(session))!;
+			assert.strictEqual(sessionEntry.currentTurnId, 'turn-1', 'the active turn tracking must survive the claim-losing send');
+			assert.strictEqual(sessionEntry.currentAppTurnId, 'appTurn-1');
+			assert.ok(sessionEntry.turnStopWatch, 'the active turn stopwatch must survive (the loser must not clear it)');
+
+			peer.push({ method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'appTurn-1', items: [] } } });
+			await new Promise(r => setImmediate(r));
+			assert.strictEqual(sessionEntry.currentTurnId, undefined, 'the active turn settles normally afterwards');
 		} finally {
 			disposables.dispose();
 		}

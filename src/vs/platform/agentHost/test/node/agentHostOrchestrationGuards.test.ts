@@ -45,6 +45,42 @@ function listTsRecursive(dir: string): string[] {
 	return out;
 }
 
+/**
+ * Strip string literals and `//` line comments from a single source line so the
+ * static guards match code only — a violation spelled inside a comment or a
+ * string literal must never trip the guard (and a `//` inside a string must
+ * not hide real code after it).
+ *
+ * Known boundary: multi-line block comments and interpolation expressions
+ * inside template literals are not analyzed; both are rare in the guarded
+ * files and would show up in code review.
+ */
+function stripLineNoise(line: string): string {
+	const noStrings = line.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`/g, '');
+	const commentIdx = noStrings.indexOf('//');
+	return commentIdx >= 0 ? noStrings.slice(0, commentIdx) : noStrings;
+}
+
+/**
+ * Reading INTO the blob (`x.providerData.foo`, `x.providerData?.foo`,
+ * `x.providerData[k]`) or parsing it. Reads of the entry field itself
+ * (`entry.providerData`) and the local Map variable named `providerData`
+ * (Map.get) are fine — the regex requires a leading `.` before `providerData`.
+ */
+function findProviderDataOpacityViolations(rel: string, source: string): string[] {
+	const violations: string[] = [];
+	source.split('\n').forEach((rawLine, i) => {
+		const line = stripLineNoise(rawLine);
+		if (/JSON\.parse\s*\([^)]*providerData/.test(line)) {
+			violations.push(`${rel}:${i + 1}: JSON.parse of providerData`);
+		}
+		if (/\.providerData\s*\??\s*[.\[]/.test(line)) {
+			violations.push(`${rel}:${i + 1}: property/index access into providerData`);
+		}
+	});
+	return violations;
+}
+
 /** Track the enclosing one-tab-indented method for each line of a class body. */
 function methodPerLine(source: string): string[] {
 	const lines = source.split('\n');
@@ -59,6 +95,28 @@ function methodPerLine(source: string): string[] {
 		result.push(method);
 	}
 	return result;
+}
+
+/**
+ * Direct writes to the `_chatEntries` catalog: mutating method calls
+ * (`set`/`delete`/`clear`), index writes (`_chatEntries[k] = ...` — flagged
+ * conservatively on any index access), and whole-map reassignment
+ * (`_chatEntries = ...`; `==`/`===` comparisons and `=>` arrow params are
+ * excluded).
+ *
+ * Known boundary: aliased writes (`const entries = this._chatEntries;
+ * entries.set(...)`) are NOT caught — detecting them needs dataflow analysis,
+ * which is out of scope for a line-based guard. The baseline review process
+ * (this guard fails on any NEW direct writer) plus code review cover it.
+ */
+const CHAT_ENTRIES_WRITE_RE = /_chatEntries\s*(?:\.(?:set|delete|clear)\s*\(|\[|=(?![=>]))/;
+
+/** Field declarations (`private readonly _chatEntries = new Map(...)`) are not writes. */
+const CHAT_ENTRIES_DECL_RE = /\b(?:private|public|protected|readonly)\b[^=]*_chatEntries\s*[:=]/;
+
+/** True when the (already comment/string-stripped) line writes `_chatEntries`. */
+function isChatEntriesWrite(line: string): boolean {
+	return CHAT_ENTRIES_WRITE_RE.test(line) && !CHAT_ENTRIES_DECL_RE.test(line);
 }
 
 suite('agentHostOrchestrationGuards (D12 / A4)', () => {
@@ -77,21 +135,32 @@ suite('agentHostOrchestrationGuards (D12 / A4)', () => {
 		test('no JSON.parse of providerData and no property/index access into the blob', () => {
 			const violations: string[] = [];
 			for (const rel of GUARDED) {
-				const lines = readSource(rel).split('\n');
-				lines.forEach((line, i) => {
-					// Parsing the blob.
-					if (/JSON\.parse\s*\([^)]*providerData/.test(line)) {
-						violations.push(`${rel}:${i + 1}: JSON.parse of providerData`);
-					}
-					// Reading INTO the blob (`x.providerData.foo`, `x.providerData[k]`).
-					// Reads of the entry field itself (`entry.providerData`) and the
-					// local Map variable named `providerData` (Map.get) are fine.
-					if (/\.providerData\s*[.\[]/.test(line)) {
-						violations.push(`${rel}:${i + 1}: property/index access into providerData`);
-					}
-				});
+				violations.push(...findProviderDataOpacityViolations(rel, readSource(rel)));
 			}
 			assert.deepStrictEqual(violations, [], 'providerData must stay opaque to AgentService/AgentHostStateManager');
+		});
+
+		test('guard self-check: catches optional-chaining/index bypasses, ignores comment/string noise', () => {
+			const flagged = [
+				'const t = entry.providerData.threadId;',
+				'const t = entry.providerData?.threadId;', // optional-chaining bypass
+				'const t = entry.providerData ?. threadId;',
+				'const t = entry.providerData[k];',
+				'const t = JSON.parse(entry.providerData);',
+			];
+			for (const line of flagged) {
+				assert.ok(findProviderDataOpacityViolations('fake.ts', line).length > 0, `guard must flag: ${line}`);
+			}
+			const clean = [
+				'// const t = entry.providerData.threadId;', // comment noise
+				'const s = "entry.providerData.threadId";', // string noise
+				'const blob = entry.providerData;', // reading the blob field itself is fine
+				'const blob = entry.providerData ?? undefined;',
+				'providerData.get(k)', // the local Map named `providerData` is fine
+			];
+			for (const line of clean) {
+				assert.deepStrictEqual(findProviderDataOpacityViolations('fake.ts', line), [], `guard must not flag: ${line}`);
+			}
 		});
 
 		test('registerRestoredChatSummary round-trips the blob byte-for-byte into the resolver', async () => {
@@ -150,7 +219,7 @@ suite('agentHostOrchestrationGuards (D12 / A4)', () => {
 		});
 
 		test('property-based: random session URIs are never classified as chat channels, and roundtrip holds', () => {
-			// Deterministic PRNG (mulberry32) — property-based without flakiness.
+			// Deterministic PRNG — an LCG (Numerical Recipes constants), not mulberry32 — property-based without flakiness.
 			let seed = 0xD12;
 			const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 0x100000000;
 			const alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~:/?#[]@!$&\'()*+,;=% 世界✓';
@@ -174,6 +243,26 @@ suite('agentHostOrchestrationGuards (D12 / A4)', () => {
 			for (const garbage of ['', 'ahp-chat://', 'not a uri', 'ahp-chat://default', '://', 'ahp-chat://default/!!!not-base64!!!']) {
 				assert.strictEqual(parseDefaultChatUri(garbage), undefined, `'${garbage}' must not parse`);
 			}
+		});
+
+		test('ahp-chat scheme collision vectors', () => {
+			// `ahp-chat` is RESERVED for chat channels: classification is by
+			// scheme alone, so any URI carrying it IS a chat channel and no
+			// session provider may ever adopt it as a session scheme.
+			assert.strictEqual(isAhpChatChannel('ahp-chat://some-session/x'), true,
+				'ahp-chat is reserved: any URI with this scheme classifies as a chat channel');
+			// A session URI that merely EMBEDS a chat URI in its path is not a
+			// chat channel — the scheme, not the content, classifies.
+			const nesting = URI.from({ scheme: 'codex', path: '/ahp-chat://default/abc' }).toString();
+			assert.strictEqual(isAhpChatChannel(nesting), false, 'an embedded ahp-chat path must not misclassify the outer session URI');
+			const chatUri = buildDefaultChatUri(nesting);
+			assert.ok(isAhpChatChannel(chatUri));
+			assert.strictEqual(parseDefaultChatUri(chatUri), nesting, 'roundtrip recovers the nesting session URI verbatim');
+			// Even a chat URI wrapping another chat URI unwraps exactly one level.
+			const inner = buildDefaultChatUri('codex:/thread_1');
+			const outer = buildDefaultChatUri(inner);
+			assert.strictEqual(parseDefaultChatUri(outer), inner, 'one unwrap level');
+			assert.strictEqual(parseDefaultChatUri(parseDefaultChatUri(outer)!), 'codex:/thread_1', 'two unwrap levels recover the session');
 		});
 	});
 
@@ -217,10 +306,9 @@ suite('agentHostOrchestrationGuards (D12 / A4)', () => {
 			const rel = 'src/vs/platform/agentHost/node/agentHostStateManager.ts';
 			const source = readSource(rel);
 			const methods = methodPerLine(source);
-			const writeRe = /_chatEntries\s*(?:\.(?:set|delete|clear)\s*\(|\[)/;
 			const writers = new Set<string>();
-			source.split('\n').forEach((line, i) => {
-				if (writeRe.test(line)) {
+			source.split('\n').forEach((rawLine, i) => {
+				if (isChatEntriesWrite(stripLineNoise(rawLine))) {
 					writers.add(methods[i]);
 				}
 			});
@@ -230,6 +318,31 @@ suite('agentHostOrchestrationGuards (D12 / A4)', () => {
 			const removed = baseline.allowedWriters.filter(w => !writers.has(w));
 			assert.deepStrictEqual(added, [], `new _chatEntries writer(s) bypass the single catalog path: ${added.join(', ')} — route through addChat/registerRestoredChatSummary/removeChat`);
 			assert.deepStrictEqual(removed, [], `baseline entry no longer writes _chatEntries: ${removed.join(', ')} — shrink the baseline file`);
+		});
+
+		test('guard self-check: catches whole-map reassignment and index writes, ignores comment noise', () => {
+			const flagged = [
+				'this._chatEntries.set(key, entry);',
+				'this._chatEntries.delete(key);',
+				'this._chatEntries.clear();',
+				'this._chatEntries[key] = entry;',
+				'this._chatEntries = new Map();', // whole-map reassignment bypass
+				'this._chatEntries  =  restoreFromDisk();',
+			];
+			for (const line of flagged) {
+				assert.ok(isChatEntriesWrite(stripLineNoise(line)), `guard must flag: ${line}`);
+			}
+			const clean = [
+				'// this._chatEntries.set(key, entry);', // comment noise
+				'const s = "this._chatEntries.set(k, v)";', // string noise
+				'this._chatEntries.get(key);',
+				'if (this._chatEntries === other) {', // comparison is not a write
+				'return this._chatEntries.size;',
+				'private readonly _chatEntries = new Map<string, IChatEntry>();', // field declaration is not a write
+			];
+			for (const line of clean) {
+				assert.ok(!isChatEntriesWrite(stripLineNoise(line)), `guard must not flag: ${line}`);
+			}
 		});
 
 		test('DR1: the spawn-sequencing listener is registered before the AgentSideEffects listener', () => {

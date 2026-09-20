@@ -105,6 +105,29 @@ function turnCompletedParams(turnId: string, status: 'completed' | 'failed' | 'i
 	} as TurnCompletedNotification;
 }
 
+/**
+ * `TurnState` is a terminal-only enum (`Complete` / `Cancelled` / `Error`) — a
+ * turn still in flight is represented by `activeTurn`, never by an entry in
+ * `turns[]`. Pin the full terminal set so "no non-terminal turn" assertions
+ * compare against real values (a mistyped member such as `TurnState.InProgress`
+ * would compile to `undefined` and make the assertion vacuous).
+ */
+const TERMINAL_TURN_STATES: readonly TurnState[] = [TurnState.Complete, TurnState.Cancelled, TurnState.Error];
+
+/**
+ * Non-terminal `ToolCallStatus` values. Terminal statuses are `Completed` and
+ * `Cancelled`; everything else means the tool call is still open and must be
+ * force-finalized when its turn ends. (There is no `ToolCallStatus.InProgress`
+ * member — asserting against it would be vacuous.)
+ */
+const NON_TERMINAL_TOOL_STATUSES: readonly ToolCallStatus[] = [
+	ToolCallStatus.Streaming,
+	ToolCallStatus.PendingConfirmation,
+	ToolCallStatus.Running,
+	ToolCallStatus.AuthRequired,
+	ToolCallStatus.PendingResultConfirmation,
+];
+
 // ---- Harness: mapper → reducer ----------------------------------------------
 
 function makeChatState(): ChatState {
@@ -312,7 +335,13 @@ suite('codexTurnLifecycleInvariants (D12 / A1)', () => {
 			harness.turnStarted('turn_a');
 			harness.turnStarted('turn_b');
 			assert.strictEqual(harness.chat.activeTurn?.id, 'turn_b');
-			assert.ok(harness.chat.turns.every(t => t.state !== TurnState.InProgress), 'no in-progress turn can coexist with the replacement');
+			// A turn still in flight is `activeTurn`; `turns[]` only ever holds
+			// finalized turns. Assert that positively against the real terminal
+			// set (TurnState has no `InProgress` member — comparing against it
+			// would be vacuous) and that no finalized turn shares identity with
+			// the active one.
+			assert.ok(harness.chat.turns.every(t => TERMINAL_TURN_STATES.includes(t.state)), 'finalized turns only ever carry a terminal state');
+			assert.ok(!harness.chat.turns.some(t => t.id === harness.chat.activeTurn?.id), 'no finalized turn can share identity with the active turn');
 		});
 	});
 
@@ -388,8 +417,12 @@ suite('codexTurnLifecycleInvariants (D12 / A1)', () => {
 			harness.turnCompleted('turn_a', 'interrupted');
 			const turn = harness.chat.turns.at(-1)!;
 			const toolParts = turn.responseParts.filter((p): p is ToolCallResponsePart => p.kind === ResponsePartKind.ToolCall);
+			assert.ok(toolParts.length > 0, 'fixture must contain at least one tool call for this assertion to be meaningful');
 			for (const part of toolParts) {
-				assert.notStrictEqual(part.toolCall.status, ToolCallStatus.InProgress, 'no tool call left running after interrupt');
+				// Assert against the real non-terminal set — there is no
+				// `ToolCallStatus.InProgress` member, so a single-value
+				// comparison against it would be vacuous.
+				assert.ok(!NON_TERMINAL_TOOL_STATUSES.includes(part.toolCall.status), `no tool call left in non-terminal status '${part.toolCall.status}' after interrupt`);
 			}
 		});
 	});

@@ -4,7 +4,9 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import { readFileSync, readdirSync } from 'fs';
 import { PassThrough } from 'stream';
+import { fileURLToPath } from 'url';
 import { Emitter } from '../../../../../base/common/event.js';
 import { CancellationError } from '../../../../../base/common/errors.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
@@ -29,6 +31,21 @@ import { CodexSessionConfigKey } from '../../../common/codexSessionConfigKeys.js
  * harness `this`, the same pattern `codexAgent.test.ts` uses, so no app-server
  * process, filesystem, or network is involved.
  */
+
+const REPO_ROOT = fileURLToPath(new URL('../../../../../../../', import.meta.url));
+
+function listTsRecursive(dir: string): string[] {
+	const out: string[] = [];
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		const full = `${dir}/${entry.name}`;
+		if (entry.isDirectory()) {
+			out.push(...listTsRecursive(full));
+		} else if (entry.name.endsWith('.ts')) {
+			out.push(full);
+		}
+	}
+	return out;
+}
 
 // ---- CodexAgent prototype seams ----------------------------------------------
 
@@ -528,7 +545,7 @@ suite('codexApprovalInvariants (D12 / A3)', () => {
 			const requested = harness.fired.find(f => f.action.type === ActionType.ChatInputRequested)!.action as { request: { id: string } };
 			session.pendingUserInputs.respond(requested.request.id, {
 				response: ChatInputResponseKind.Accept,
-				answers: { q1: { state: ChatInputAnswerState.Settled, value: { kind: ChatInputAnswerValueKind.Text, value: 'yes' } } } as never,
+				answers: { q1: { state: ChatInputAnswerState.Submitted, value: { kind: ChatInputAnswerValueKind.Text, value: 'yes' } } } as never,
 			});
 			const response = await responsePromise;
 			assert.deepStrictEqual(response.result, { answers: { q1: { answers: ['yes'] } } });
@@ -560,6 +577,24 @@ suite('codexApprovalInvariants (D12 / A3)', () => {
 			assert.deepStrictEqual(response.result, { answers: { q1: { answers: [] } } });
 			assert.strictEqual(harness.fired.length, 0, 'no input card for a dead turn');
 		});
+
+		test('static: autoResolutionMs is never read outside the generated protocol types', () => {
+			// `autoResolutionMs` is a deprecated wire field. The dynamic tests
+			// above pin that the agent never honors it; this scan pins the
+			// static side: no implementation code may reference it at all (only
+			// the generated protocol type declares it, and tests may name it to
+			// prove it is ignored).
+			const offenders: string[] = [];
+			for (const file of listTsRecursive(`${REPO_ROOT}src/vs/platform/agentHost`)) {
+				if (file.includes('/protocol/generated/') || file.includes('/test/')) {
+					continue;
+				}
+				if (/\bautoResolutionMs\b/.test(readFileSync(file, 'utf8'))) {
+					offenders.push(file.slice(REPO_ROOT.length));
+				}
+			}
+			assert.deepStrictEqual(offenders, [], 'autoResolutionMs is deprecated — implementation code must never read it');
+		});
 	});
 
 	// -- A3.8: elicitation accept+content is never a permission grant --------------
@@ -589,7 +624,7 @@ suite('codexApprovalInvariants (D12 / A3)', () => {
 			// Answer with content that LOOKS like a permission vocabulary.
 			session.pendingUserInputs.respond(requested.request.id, {
 				response: ChatInputResponseKind.Accept,
-				answers: { token: { state: ChatInputAnswerState.Settled, value: { kind: ChatInputAnswerValueKind.Text, value: 'acceptForSession' } } } as never,
+				answers: { token: { state: ChatInputAnswerState.Submitted, value: { kind: ChatInputAnswerValueKind.Text, value: 'acceptForSession' } } } as never,
 			});
 			const response = await responsePromise;
 

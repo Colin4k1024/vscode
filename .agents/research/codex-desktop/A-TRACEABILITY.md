@@ -31,17 +31,17 @@
 | A3.4 | `acceptForSession` 不跨 session 泄漏 | `acceptedForSession` memo 为 per-`ICodexSession` 字段（`codexAgent.ts`）；live 双 session 用例属 D11 e2e（`AGENT_HOST_REAL_CODEX=1`） | live(e2e) |
 | A3.5 | writeStdin 审批不改变父 commandExecution 状态 | 同文件 `A3.5 writeStdin isolation`（guardian 审批铸造全新 toolCallId，父 item 追踪与终态零改动） | unit |
 | A3.6 | 权限授予子集语义 + 配置 narrowing | 同文件 `A3.6 permissions subset semantics`（accept 恰好授予所请求、decline/cancel 授予空、scope:'session' 仅 acceptForSession、null 项不可授予、Agent Merge 禁网络提权；`resolveCodexPermissions`/`narrowAdditionalDirectories` 穷举） | unit |
-| A3.7 | `isBlocking:true` 无限等待，不读 `autoResolutionMs` | 同文件 `A3.7 blocking user input`（`autoResolutionMs:1` 仍挂起至显式应答；isBlocking:false 同样无自动应答；无 active turn 立即空答）。静态佐证：`autoResolutionMs` 仅在 generated 协议类型中出现 | unit |
+| A3.7 | `isBlocking:true` 无限等待，不读 `autoResolutionMs` | 同文件 `A3.7 blocking user input`（`autoResolutionMs:1` 仍挂起至显式应答；isBlocking:false 同样无自动应答；无 active turn 立即空答）+ 静态断言 `static: autoResolutionMs is never read outside the generated protocol types`（扫描 agentHost 全部实现源码，字段仅允许出现在 generated 协议类型与测试中） | unit |
 | A3.8 | elicitation ≠ 权限授予 | 同文件 `A3.8 elicitation ≠ permission`（accept+content 不触碰 pendingCommandApprovals/acceptedForSession/confirmation 卡；unknown thread → decline） | unit |
 
 ## A4. 编排不变量 I1–I8
 
 | # | 不变量 | 断言位置 | 类型 |
 |---|--------|----------|------|
-| I1 | `providerData` 对 host 不透明 | `agentHostOrchestrationGuards.test.ts` → `I1`（静态：agentService/agentHostStateManager 无 `JSON.parse(providerData)`、无 `.providerData.x[...]` 访问；动态：`registerRestoredChatSummary` blob 字节级 round-trip 进 resolver） | 静态 + unit |
-| I2 | session URI ≠ chat channel URI | 同文件 `I2`（build/parse 往返；500 例 property-based 随机 session URI 永不被判为 chat channel 且往返恒等；垃圾输入拒识） | unit |
+| I1 | `providerData` 对 host 不透明 | `agentHostOrchestrationGuards.test.ts` → `I1`（静态：agentService/agentHostStateManager 无 `JSON.parse(providerData)`、无 `.providerData.x` / `?.x` / `[k]` 访问——含可选链与索引绕过，注释/字符串剥离防误报，守卫自带 self-check；动态：`registerRestoredChatSummary` blob 字节级 round-trip 进 resolver） | 静态 + unit |
+| I2 | session URI ≠ chat channel URI | 同文件 `I2`（build/parse 往返；500 例 property-based 随机 session URI 永不被判为 chat channel 且往返恒等；`ahp-chat` scheme 碰撞向量——保留 scheme 语义、嵌套路径不误判、双层包裹逐层解包；垃圾输入拒识） | unit |
 | I3 | 不假设 `sessionId === threadId` | 同文件 `I3`（绑定缺失 → `undefined` 拒绝；绑定与 URI 拼写不同 → 绑定胜）；既有 `codexAgent.test.ts` `_resolveConversationSession` 系列 | unit |
-| I4 | 单一 catalog 入口 + DR1 顺序 | 同文件 `I4`（`_chatEntries` 写入点 == baseline 集合 `d12-i4-chat-entries-writers.json`，新增/消失即败；`_initializeProvider` 内 spawn 序监听先于 AgentSideEffects 的源码序断言） | 静态 |
+| I4 | 单一 catalog 入口 + DR1 顺序 | 同文件 `I4`（`_chatEntries` 写入点 == baseline 集合 `d12-i4-chat-entries-writers.json`——覆盖 set/delete/clear、索引写与整体重赋值，注释剥离防误报，守卫自带 self-check，别名写为已知边界见源码注释；`_initializeProvider` 内 spawn 序监听先于 AgentSideEffects 的源码序断言） | 静态 |
 | I5 | 中央 catalog 唯一真源 | 既有：`agentService.test.ts`（`central list uses eligible catalogs…` L5332、`restart restores central peer membership…` L17120 等）、`agentHostPeerChatStore.test.ts` authoritative 系列 | unit（既有覆盖） |
 | I6 | 经 `IAgentHostProviderService` 路由 | 同文件 `I6`（codex/claude/copilot 切片禁止引用 `_sessionToProvider` / 直接 import `agentHostProviderService.js`） | 静态 |
 | I7 | backingSession 不进 `listSessions`；`_markChatBacking` 失败 → 进程内抑制 | 既有：`agentService.test.ts` L15306（backing 被过滤且跨重启保持）、L15518（一次写失败仍创建成功并持久化）、L15570（持续失败 → `_unpersistedChatBackings` 进程内抑制）、L17527 | unit（既有覆盖） |

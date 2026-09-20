@@ -135,14 +135,14 @@ bash scripts/sync-upstream.sh [--ref <ref>]
   文档、新增测试/模块）。新增文件在 merge 时天然不与上游冲突。
 - **源码改动**：修改上游既有文件（M）。每项必须回答"为什么不能走覆盖层"。
 
-42 个源码改动文件的理由汇总（逐文件全表见 §4.1；清单为手工维护的快照，非实时生成——生成时点见本节顶部口径行）：
+71 个源码改动文件的理由汇总（42 源码 + 29 测试）（逐文件全表见 §4.1；清单为手工维护的快照，非实时生成——生成时点见本节顶部口径行）：
 
 - **类型/枚举/接口契约本体**（4 个）：`base/common/product.ts`、`platform/window/common/window.ts`、`agentHostSchema.ts`、`meta/codexAccount.ts`——类型成员必须改在定义处，无覆盖层概念。D09 给 `base/common/product.ts` 追加 `IAgentSdkProductConfig`（agent SDK 下载配置；D66 改为按 target 键控 sha256）与 `excludeCopilotFromPackaging` 运行时语义。
 - **行为逻辑/策略裁决**（D09 后 14 个）：`agentService.ts`、`codexAgent.ts`、`codexAccountState.ts`、`agentHostCustomizationConfig.ts`、`codexAccountService.ts`、`defaultAccount.ts`、`telemetryService.ts`、`extensionGalleryService.ts`、`agentSessionsWelcome.ts`、`sessionsActions.ts`、`account.contribution.ts`——fork 改变的是运行时行为，不是数据；上游无对应扩展点。D09 追加 3 个：`node/agentSdkDownloader.ts`（按 urlTemplate 下载并校验 SDK——完整性校验是运行时行为）、`node/shared/copilotApiService.ts`（`loadCopilotApi()` 延迟解析——D10 section 5 要求缺包时 agent host 仍可启动，D66 起品牌化构建隐藏 Copilot 登录入口并短路 CAPI 路径）、`node/sshRemoteAgentHostHelpers.ts`（CLI 下载默认端点改为 fork 自有 releases——deny-by-default 策略，见下）。
 - **上游内嵌默认值的空值守卫/移除**（5 个）：`platform/product/common/product.ts`（移除 `defaultChatAgent`）、`abstractExtensionManagementService.ts`、`extensionsWorkbenchService.ts`、`chatStatusEntry.ts`、`chatWidget.ts`（各 1 行空值守卫）——上游假设 `defaultChatAgent` 必存在，守卫只能写在判读处。
 - **入口/contribution 注册**（5 个）：`app.ts`、`agentHostStarter.config.contribution.ts`、`agentHost.contribution.ts`、`chat.shared.contribution.ts`、`chatStatusDashboard.ts`——注册点本体。
-- **测试文件**（25 个，含 D09 的 4 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。D09 的 4 个：`agentSdkDownloader.test.ts`（HIGH-1 运行时校验链；D66 追加 sha256ByTarget 用例）、`devContainerAgentHostService.test.ts`、`sshRemoteAgentHostHelpers.test.ts`、`sshRemoteAgentHostService.test.ts`（CLI 下载端点改为 fork 默认的跟随测试）。
-- **构建/工具链/配置**（8 个，含 D09 的 4 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制；D09 追加自托管端点/结果字段）、`build/filters.ts`（D14 pin 文件 hygiene 豁免；D09 追加 vendored license 豁免）、`build/hygiene.ts`（D15 extensionsGallery 检查 mixin 感知豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）、`build/gulpfile.vscode.ts`（D09：packageTask 消费 mixin 的 `excludeCopilotFromPackaging`/`copilotPackagingBlocklist` 并盖章 `agentSdks`——gulp 任务本体只能改在定义处）。D09 的 `build/agent-sdk/{package.ts,produce.ts,upload.ts}` 属管线行为逻辑（见 §4.1 逐行）。
+- **测试文件**（29 个，含 D09 的 4 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。D09 的 4 个：`agentSdkDownloader.test.ts`（HIGH-1 运行时校验链；D66 追加 sha256ByTarget 用例）、`devContainerAgentHostService.test.ts`、`sshRemoteAgentHostHelpers.test.ts`、`sshRemoteAgentHostService.test.ts`（CLI 下载端点改为 fork 默认的跟随测试）。
+- **构建/工具链/配置**（14 个，含 D09 的 6 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制；D09 追加自托管端点/结果字段）、`build/filters.ts`（D14 pin 文件 hygiene 豁免；D09 追加 vendored license 豁免）、`build/hygiene.ts`（D15 extensionsGallery 检查 mixin 感知豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）、`build/gulpfile.vscode.ts`（D09：packageTask 消费 mixin 的 `excludeCopilotFromPackaging`/`copilotPackagingBlocklist` 并盖章 `agentSdks`——gulp 任务本体只能改在定义处）。D09 的 `build/agent-sdk/{package.ts,produce.ts,upload.ts}` 属管线行为逻辑（见 §4.1 逐行）。
 
 **D09 两个"可移出上游文件"项的处置（M8 结论）**：
 
@@ -166,6 +166,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 > 总变动行数（精确 +/- 拆分以 `git diff --numstat fb20064c0f4 HEAD -- <file>` 为准）；
 > `+A/-D` 行记录的是该行来源所示 D-number 落地时点的 diff 规模，后续 PR 的继续改动不
 > 回溯刷新（D66 评审实测若干行已漂移）。需要当前值时以 `git diff --numstat` 输出为准。
+
 | 文件 | 变更 | 行数 | 来源 | 分类 | 理由 |
 |---|---|---|---|---|---|
 | `.agents/goal/codex-desktop.json` | A | +338/-0 | D04 | 覆盖层 | **覆盖层**：编排目标状态 |

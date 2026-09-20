@@ -1310,6 +1310,11 @@ export function mapCodexRequestError(err: unknown, fallbackErrorType: string): E
 /**
  * Build a {@link TurnState} from a codex `Turn.status`. Mostly useful
  * for replay (Phase 3).
+ *
+ * Unknown statuses fail **closed** (Uncertain) rather than pretending
+ * success: a status we do not recognize comes from a newer app-server
+ * than this client was generated against, and the honest outcome for a
+ * turn in an unknown state is "unknown" (#56).
  */
 export function turnStateFromStatus(status: string): TurnState {
 	switch (status) {
@@ -1325,6 +1330,6 @@ export function turnStateFromStatus(status: string): TurnState {
 			// outcome is unknown (issue #34): it must not default to Complete.
 			return TurnState.Uncertain;
 		default:
-			return TurnState.Complete;
+			return TurnState.Uncertain;
 	}
 }

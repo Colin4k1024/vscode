@@ -84,6 +84,15 @@ export function elicitationResponseFromAnswers(
 	if (response !== ChatInputResponseKind.Accept) {
 		return { action: 'cancel', content: null, _meta: null };
 	}
+	if (params.mode === 'openai/userVerification') {
+		// Fails closed (issue #54): codex-rs ≥0.155.1's `validate_response`
+		// requires a real passkey proof (credentialId + base64url signature)
+		// for `accept`, and silently degrades a proof-less accept to Cancel —
+		// the user would have clicked "Accept" and gotten a cancel. We cannot
+		// produce a proof (no passkey/WebAuthn wiring here), so decline
+		// honestly instead of promising an accept the server will not honor.
+		return { action: 'decline', content: null, _meta: null };
+	}
 	if (params.mode !== 'form') {
 		// `url` and `openai/form` acceptances carry no projected content.
 		return { action: 'accept', content: null, _meta: null };

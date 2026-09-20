@@ -482,12 +482,43 @@ async function startHost(options: IRemoteDevContainerFixtureOptions, resources: 
 	return { child, port, ...handshake };
 }
 
+/**
+ * Seed the isolated fixture HOME with a legacy-layout VS Code CLI
+ * (`~/.vscode-cli-insider/code-insiders`). The Agent Host CLI installer
+ * resolves its download URL from product metadata, and on this fork that
+ * endpoint serves no CLI artifact yet (see buildCLIDownloadUrl), so the
+ * install step falls back to a CLI the remote already has — the same role
+ * the devcontainer fixture's postCreateCommand plays inside the container.
+ */
+async function seedLegacyFallbackCli(home: string, resources: FixtureResources): Promise<void> {
+	const cliOs = process.platform === 'darwin' ? 'darwin' : 'linux';
+	const cliArch = process.arch === 'arm64' ? 'arm64' : 'x64';
+	const legacyDir = path.join(home, '.vscode-cli-insider');
+	const legacyBin = path.join(legacyDir, 'code-insiders');
+	if (fs.existsSync(legacyBin)) {
+		return;
+	}
+	fs.mkdirSync(legacyDir, { recursive: true, mode: 0o700 });
+	const url = `https://update.code.visualstudio.com/latest/cli-${cliOs}-${cliArch}/insider`;
+	resources.log(`Seeding the fallback VS Code CLI from ${url} into the isolated fixture HOME.`);
+	await new Promise<void>((resolve, reject) => {
+		cp.execFile('/bin/bash', ['--noprofile', '--norc', '-c', `curl -fsSL ${shellQuote(url)} | tar xz -C ${shellQuote(legacyDir)}`], { timeout: 180_000 },
+			error => error ? reject(new Error(`Fallback CLI seed download failed: ${error.message}`)) : resolve());
+	});
+	fs.chmodSync(legacyBin, 0o755);
+}
+
 async function createSshFixture(options: IRemoteDevContainerFixtureOptions, resources: FixtureResources, runtime: IHostRuntime): Promise<IRemoteDevContainerFixture> {
 	if (process.platform === 'win32') {
 		throw new Error('The local SSH fixture requires a POSIX host with bash (Linux or macOS).');
 	}
 	const preflight = await startHost(options, resources, runtime);
 	await stopProcess(preflight.child);
+	const remoteHome = runtime.env.HOME;
+	if (!remoteHome) {
+		throw new Error('The SSH fixture host runtime carries no HOME to seed the fallback CLI into.');
+	}
+	await seedLegacyFallbackCli(remoteHome, resources);
 	const password = randomBytes(24).toString('hex');
 	resources.addSecret(password);
 	const username = 'vscode-smoke';

@@ -1348,6 +1348,43 @@ suite('SSHRemoteAgentHostMainService - connect flow', () => {
 			'should download CLI when not installed');
 	});
 
+	// D09 fix: the fork does not publish CLI artifacts at the default download
+	// endpoint yet, so the dev-build (non-pinned) download 404s. The loose path
+	// must recover from a pre-existing CLI exactly like the pinned path does.
+	test('falls back to a pre-installed CLI when the dev-build download fails', async () => {
+		const fallbackBin = '~/.vscode-cli-insider/code-insiders';
+		service.execResponses = [
+			{ stdout: 'Linux\n', code: 0 },       // uname -s
+			{ stdout: 'x86_64\n', code: 0 },      // uname -m
+			{ stdout: '', code: 127 },             // CLI --version fails (not found)
+			{ stdout: '', code: 7 },               // curl | tar install fails (404)
+			{ stdout: `${fallbackBin}\n`, code: 0 }, // fallback finder lists the legacy install
+			{ stdout: '1.0.0\n', code: 0 },       // fallback --version succeeds
+			{ stdout: agentEndpointsStdout([makeEndpoint({ type: 'standalone', pid: 1234, instanceId: 'inst-1' })]), code: 0 }, // agent endpoints
+			{ stdout: '', code: 0 },                // kill -0 (alive)
+		];
+
+		await service.connect(makeConfig({ sshConfigHost: 'myhost' }));
+
+		const execCalls = service.mockClients[0].execCalls;
+		assert.ok(execCalls.some(c => /ls -1t .*code-insiders-/.test(c) && c.includes('.vscode-cli-insider/code-insiders')),
+			`should have run fallback finder; saw: ${JSON.stringify(execCalls)}`);
+		assert.ok(execCalls.some(c => c.includes(`${fallbackBin} --version`)),
+			`should --version-validate the fallback; saw: ${JSON.stringify(execCalls)}`);
+	});
+
+	test('propagates the install error when the dev-build download fails and no fallback exists', async () => {
+		service.execResponses = [
+			{ stdout: 'Linux\n', code: 0 },       // uname -s
+			{ stdout: 'x86_64\n', code: 0 },      // uname -m
+			{ stdout: '', code: 127 },             // CLI --version fails (not found)
+			{ stdout: '', code: 7 },               // curl | tar install fails (404)
+			{ stdout: '', code: 0 },               // fallback finder returns nothing
+		];
+
+		await assert.rejects(service.connect(makeConfig({ sshConfigHost: 'myhost' })));
+	});
+
 	test('warns and reuses the installed CLI when refresh fails', async () => {
 		const logService = new RecordingLogService();
 		const productService: Pick<IProductService, '_serviceBrand' | 'quality' | 'dataFolderName'> = {

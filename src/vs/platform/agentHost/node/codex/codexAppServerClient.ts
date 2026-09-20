@@ -184,7 +184,9 @@ export const OVERLOADED_RETRYABLE_METHODS: ReadonlySet<string> = new Set<ClientR
 // }`, so a discriminated-union pick works as a method-keyed lookup.
 
 type MethodOf<U> = U extends { method: infer M } ? M : never;
-type ParamsOf<U, M> = U extends { method: M; params: infer P } ? P : never;
+// 0.155.1 made some params optional (`params?: P`), so match with an
+// optional `params` and infer from there; required params still infer P.
+type ParamsOf<U, M> = U extends { method: M; params?: infer P } ? P : never;
 
 export type ClientRequestMethod = MethodOf<ClientRequest>;
 export type ClientNotificationMethod = MethodOf<ClientNotification>;

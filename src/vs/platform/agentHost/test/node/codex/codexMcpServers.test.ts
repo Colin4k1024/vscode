@@ -24,6 +24,7 @@ suite('codexMcpServers', () => {
 		pluginId: null,
 		serverInfo: null,
 		tools: Object.fromEntries(tools.map(t => [t.name, t])),
+		toolsError: null,
 		resources: [{ name: `${name}-res`, uri: `mem://${name}/r` }],
 		resourceTemplates: [{ name: `${name}-tpl`, uriTemplate: `mem://${name}/{id}` }],
 		authStatus: 'unsupported',

@@ -78,6 +78,21 @@ suite('codexElicitationMapper', () => {
 		});
 	});
 
+	test('buildElicitationRequest (openai/userVerification) surfaces title and description', () => {
+		const verificationParams: McpServerElicitationRequestParams = {
+			threadId: 't1', turnId: null, serverName: 'srv', mode: 'openai/userVerification',
+			title: 'Verify it is you', description: 'Enter the code shown in your browser', challenge: '1234',
+		};
+		assert.deepStrictEqual(buildElicitationRequest('req-3', verificationParams), {
+			id: 'req-3', _meta: { purpose: ChatInputRequestPurpose.Elicitation },
+			message: 'Verify it is you\n\nEnter the code shown in your browser',
+		});
+		assert.deepStrictEqual(
+			elicitationResponseFromAnswers(verificationParams, ChatInputResponseKind.Accept, undefined),
+			{ action: 'accept', content: null, _meta: null },
+		);
+	});
+
 	test('elicitationResponseFromAnswers (url accept) carries no content', () => {
 		assert.deepStrictEqual(
 			elicitationResponseFromAnswers(urlParams, ChatInputResponseKind.Accept, undefined),

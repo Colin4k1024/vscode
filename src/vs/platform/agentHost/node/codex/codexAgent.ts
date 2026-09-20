@@ -3519,7 +3519,7 @@ export class CodexAgent extends Disposable implements IAgent {
 	private async _refreshAccountRateLimits(client: ICodexAppServerClient, accountEmail = this._openAIAccountState.email): Promise<void> {
 		const request = ++this._openAIAccountRateLimitRequest;
 		try {
-			const response = await client.request<'account/rateLimits/read', GetAccountRateLimitsResponse>('account/rateLimits/read', undefined);
+			const response = await client.request<'account/rateLimits/read', GetAccountRateLimitsResponse>('account/rateLimits/read', {});
 			if (request !== this._openAIAccountRateLimitRequest || !this._isCurrentChatGPTAccountClient(client, accountEmail)) {
 				return;
 			}

@@ -52,9 +52,11 @@ suite('CodexAccountState', () => {
 
 	test('prefers the Codex weekly rate-limit window', () => {
 		assert.deepStrictEqual(codexAccountRateLimitFromResponse({
+			ordinaryUsageAllowed: null,
 			rateLimits: {
 				limitId: null,
 				limitName: null,
+				normalModelSlug: null,
 				primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: 100 },
 				secondary: null,
 				credits: null,
@@ -67,6 +69,7 @@ suite('CodexAccountState', () => {
 				codex: {
 					limitId: 'codex',
 					limitName: 'Codex',
+					normalModelSlug: null,
 					primary: { usedPercent: 21, windowDurationMins: 300, resetsAt: 200 },
 					secondary: { usedPercent: 42.4, windowDurationMins: 7 * 24 * 60, resetsAt: 300 },
 					credits: null,
@@ -88,9 +91,11 @@ suite('CodexAccountState', () => {
 
 	test('falls back to available rate-limit data and clamps percentages', () => {
 		assert.deepStrictEqual(codexAccountRateLimitFromResponse({
+			ordinaryUsageAllowed: null,
 			rateLimits: {
 				limitId: null,
 				limitName: null,
+				normalModelSlug: null,
 				primary: { usedPercent: 125, windowDurationMins: null, resetsAt: null },
 				secondary: null,
 				credits: null,
@@ -109,9 +114,11 @@ suite('CodexAccountState', () => {
 	test('rejects non-finite used percentages instead of zeroing them', () => {
 		for (const usedPercent of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
 			assert.strictEqual(codexAccountRateLimitFromResponse({
+				ordinaryUsageAllowed: null,
 				rateLimits: {
 					limitId: null,
 					limitName: null,
+					normalModelSlug: null,
 					primary: { usedPercent, windowDurationMins: 10080, resetsAt: 400 },
 					secondary: null,
 					credits: null,
@@ -130,9 +137,11 @@ suite('CodexAccountState', () => {
 
 	test('prefers the explicit weekly window over shorter windows', () => {
 		assert.deepStrictEqual(codexAccountRateLimitFromResponse({
+			ordinaryUsageAllowed: null,
 			rateLimits: {
 				limitId: null,
 				limitName: null,
+				normalModelSlug: null,
 				primary: { usedPercent: 90, windowDurationMins: 300, resetsAt: 100 },
 				secondary: { usedPercent: 12, windowDurationMins: 10080, resetsAt: 200 },
 				credits: null,
@@ -154,9 +163,11 @@ suite('CodexAccountState', () => {
 
 	test('clamps an exhausted window to 100 percent', () => {
 		assert.deepStrictEqual(codexAccountRateLimitFromResponse({
+			ordinaryUsageAllowed: null,
 			rateLimits: {
 				limitId: null,
 				limitName: null,
+				normalModelSlug: null,
 				primary: null,
 				secondary: { usedPercent: 100.4, windowDurationMins: 10080, resetsAt: 200 },
 				credits: null,
@@ -178,9 +189,11 @@ suite('CodexAccountState', () => {
 
 	test('falls back when the Codex bucket has no windows', () => {
 		assert.deepStrictEqual(codexAccountRateLimitFromResponse({
+			ordinaryUsageAllowed: null,
 			rateLimits: {
 				limitId: null,
 				limitName: null,
+				normalModelSlug: null,
 				primary: { usedPercent: 30, windowDurationMins: 10080, resetsAt: 400 },
 				secondary: null,
 				credits: null,
@@ -193,6 +206,7 @@ suite('CodexAccountState', () => {
 				codex: {
 					limitId: 'codex',
 					limitName: 'Codex',
+					normalModelSlug: null,
 					primary: null,
 					secondary: null,
 					credits: null,

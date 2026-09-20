@@ -36,6 +36,14 @@ suite('codexElicitationMapper', () => {
 		message: 'Authorize', url: 'https://example.com/auth', elicitationId: 'e1',
 	};
 
+	// B17 (acceptance-core): a mode whose input semantics we cannot project —
+	// `openai/form` carries an opaque OpenAI-specific schema.
+	const unknownModeParams: McpServerElicitationRequestParams = {
+		threadId: 't1', turnId: null, serverName: 'srv', mode: 'openai/form', _meta: null,
+		message: 'Provide opaque values',
+		requestedSchema: { type: 'object', required: ['opaque'], properties: { opaque: { type: 'string', title: 'Opaque' } } },
+	};
+
 	test('buildElicitationRequest (form) projects every primitive field kind', () => {
 		assert.deepStrictEqual(buildElicitationRequest('req-1', formParams), {
 			id: 'req-1',
@@ -55,6 +63,31 @@ suite('codexElicitationMapper', () => {
 	test('buildElicitationRequest (url) surfaces the url with no questions', () => {
 		assert.deepStrictEqual(buildElicitationRequest('req-2', urlParams), {
 			id: 'req-2', _meta: { purpose: ChatInputRequestPurpose.Elicitation }, message: 'Authorize', url: 'https://example.com/auth',
+		});
+	});
+
+	test('buildElicitationRequest (unknown mode) surfaces the message only, never a half-rendered form', () => {
+		// B17: `openai/form` (or any mode that is not `form`/`url`) cannot be
+		// projected into typed questions. The request must stay message-only so
+		// the user can still accept or decline — no partial form, no error.
+		const request = buildElicitationRequest('req-3', unknownModeParams);
+		assert.deepStrictEqual(request, {
+			id: 'req-3',
+			_meta: { purpose: ChatInputRequestPurpose.Elicitation },
+			message: 'Provide opaque values',
+		});
+		assert.strictEqual(request.questions, undefined, 'an unprojectable mode must not render partial questions');
+	});
+
+	test('elicitationResponseFromAnswers (unknown mode) waits for the user: decline and cancel map to MCP actions', () => {
+		// B17: the host must answer the MCP server with the user's choice —
+		// decline/cancel — and never with a JSON-RPC error.
+		assert.deepStrictEqual({
+			decline: elicitationResponseFromAnswers(unknownModeParams, ChatInputResponseKind.Decline, undefined),
+			cancel: elicitationResponseFromAnswers(unknownModeParams, ChatInputResponseKind.Cancel, undefined),
+		}, {
+			decline: { action: 'decline', content: null, _meta: null },
+			cancel: { action: 'cancel', content: null, _meta: null },
 		});
 	});
 

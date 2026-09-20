@@ -21,12 +21,12 @@
  *    whose binary is not executable, and a host launched with no Codex SDK
  *    configuration at all. Both must fail with actionable errors over AHP
  *    while healthy providers keep working.
- * 3. **Provider-behavior negatives** (acceptance-core B16/B17/B18) — a broken
+ * 3. **Provider-behavior negatives** (acceptance-core B16/B18) — a broken
  *    plugin MCP server must surface a startup error without blocking the turn;
- *    an elicitation whose mode cannot be projected into questions must wait
- *    for the user instead of erroring or half-rendering; a dynamic tool result
- *    with no output must still complete the turn (codex rejects empty tool
- *    bodies).
+ *    and a dynamic tool result with no output must still complete the turn
+ *    (codex rejects empty tool bodies). (B17 — an elicitation with an
+ *    unprojectable mode — is not replay-reachable for codex; see the comment
+ *    at its former site below and REPLAY_MATRIX.md.)
  *
  * Every test launches its own server lease: each scenario needs its own launch
  * options or its own fixture window, and none of them may leak state into a
@@ -36,22 +36,18 @@
 import assert from 'assert';
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { createRequire } from 'module';
 import { join } from '../../../../../../base/common/path.js';
 import { retry } from '../../../../../../base/common/async.js';
 import { URI } from '../../../../../../base/common/uri.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { SubscribeResult } from '../../../../common/state/protocol/commands.js';
-import { PROTOCOL_VERSION } from '../../../../common/state/protocol/version/registry.js';
 import { CustomizationEnablementKind, McpServerStatus } from '../../../../common/state/protocol/state.js';
 import { buildDefaultChatUri, customizationId, CustomizationType, ROOT_STATE_URI, type McpServerCustomization, type PluginCustomization, type RootState, type SessionState } from '../../../../common/state/sessionState.js';
 import { ActionType } from '../../../../common/state/sessionActions.js';
-import { AgentHostE2EServerLease, createRealSession, dispatchTurn, driveTurnToCompletion, driveTurnWithCancelledInputToCompletion, removeTempDirs, resolveGitHubToken, textFromContent } from '../harness/agentHostE2ETestHarness.js';
+import { AgentHostE2EServerLease, createRealSession, dispatchTurn, driveTurnToCompletion, removeTempDirs } from '../harness/agentHostE2ETestHarness.js';
 import { getActionEnvelope, isActionNotification, TestProtocolClient, type IServerHandle } from '../../serverIntegrationTestHelpers.js';
-import { CODEX_CONFIG, CODEX_SDK_ROOT } from './codexTestConfiguration.js';
+import { CODEX_CONFIG } from './codexTestConfiguration.js';
 import { COPILOT_CONFIG } from './copilotTestConfiguration.js';
-
-const nodeRequire = createRequire(import.meta.url);
 
 (CODEX_CONFIG.enabled ? suite : suite.skip)('Agent Host E2E — Codex (acceptance matrix)', function () {
 
@@ -224,9 +220,13 @@ const nodeRequire = createRequire(import.meta.url);
 		process.env['CODEX_HOME'] = probe;
 
 		let isolatedHome: string | undefined;
+		let isolatedHomeRealPath: string | undefined;
 		try {
 			await withStandaloneLease(title, { codexSdkRoot: CODEX_CONFIG.codexSdkRoot }, 'recorded', async ({ client, createdSessions, lease, release }) => {
 				isolatedHome = lease.codexHomeDir;
+				// The lease deletes its temp tree on dispose, so resolve the real
+				// path while it still exists.
+				isolatedHomeRealPath = realpathSync(isolatedHome);
 				const workspace = mkdtempSync(join(tmpdir(), 'e2e-codex-isolation-'));
 				tempDirs.push(workspace);
 				const sessionUri = await createRealSession(client, CODEX_CONFIG, 'codex-home-probe', createdSessions, URI.file(workspace));
@@ -250,7 +250,7 @@ const nodeRequire = createRequire(import.meta.url);
 		} catch {
 			// keep the literal path
 		}
-		assert.ok(realpathSync(isolatedHome).startsWith(tempRoot), 'the isolated codex home must live under the system temp root');
+		assert.ok(isolatedHomeRealPath?.startsWith(tempRoot), `the isolated codex home must live under the system temp root, got ${isolatedHomeRealPath}`);
 		assert.strictEqual(snapshotDir(probe), probeBefore, 'the ambient CODEX_HOME path must not be written to');
 	});
 
@@ -258,9 +258,10 @@ const nodeRequire = createRequire(import.meta.url);
 
 	(process.platform === 'win32' ? test.skip : test)('a codex sdk root with a non executable binary fails sessions with an actionable error', async function () {
 		this.timeout(180_000);
-		// B1: the binary exists but lacks the execute bit. Session creation must
-		// fail with the documented error naming the binary path; the host must
-		// stay alive and serve a healthy provider afterwards. (Skipped on
+		// B1: the binary exists but lacks the execute bit. The codex provider
+		// materializes lazily on the first turn, so the documented error must
+		// surface as a `chat/error` naming the binary path — and the host must
+		// stay alive and keep serving a healthy provider afterwards. (Skipped on
 		// Windows, where `access(X_OK)` cannot distinguish a non-executable
 		// regular file.)
 		const fakeRoot = mkdtempSync(join(tmpdir(), 'e2e-codex-broken-sdk-'));
@@ -277,23 +278,50 @@ const nodeRequire = createRequire(import.meta.url);
 		await withStandaloneLease(this.test?.title ?? 'unknown', { codexSdkRoot: fakeRoot }, 'none', async ({ client, createdSessions, release }) => {
 			const workspace = mkdtempSync(join(tmpdir(), 'e2e-codex-b1-'));
 			tempDirs.push(workspace);
-			await client.call('initialize', { channel: ROOT_STATE_URI, protocolVersions: [PROTOCOL_VERSION], clientId: 'codex-b1' }, 30_000);
-			await client.call('authenticate', { channel: ROOT_STATE_URI, resource: 'https://api.github.com', token: resolveGitHubToken() }, 30_000);
-
-			await assert.rejects(
-				client.call('createSession', {
-					channel: URI.from({ scheme: CODEX_CONFIG.scheme, path: `/${generateUuid()}` }).toString(),
-					provider: CODEX_CONFIG.provider,
-					workingDirectories: [URI.file(workspace).toString()],
-				}, 60_000),
-				/Codex binary not executable/,
-				'B1: the host must surface the documented actionable error',
-			);
 
 			// The failure must not take the host down or degrade healthy
-			// providers: a Copilot session still materializes on the same server.
+			// providers: a Copilot session materializes on the same server first.
+			// (This also performs the one initialize/authenticate handshake the
+			// connection gets; a second `initialize` would be rejected.)
 			const healthySession = await createRealSession(client, COPILOT_CONFIG, 'codex-b1-healthy-copilot', createdSessions, URI.file(join(workspace, 'healthy')));
 			assert.ok(healthySession.startsWith('copilotcli:'));
+
+			// The codex session itself is accepted (`createSession` only carries
+			// configuration); the broken binary fails the first turn.
+			const sessionUri = URI.from({ scheme: CODEX_CONFIG.scheme, path: `/${generateUuid()}` }).toString();
+			createdSessions.push(sessionUri);
+			await client.call('createSession', {
+				channel: sessionUri,
+				provider: CODEX_CONFIG.provider,
+				workingDirectories: [URI.file(workspace).toString()],
+				config: { isolation: 'folder', ...CODEX_CONFIG.sessionConfig },
+			}, 30_000);
+			const chat = buildDefaultChatUri(sessionUri);
+			await client.call<SubscribeResult>('subscribe', { channel: sessionUri }, 30_000);
+			await client.call<SubscribeResult>('subscribe', { channel: chat }, 30_000);
+			client.clearReceived();
+			dispatchTurn(client, sessionUri, 'turn-b1', 'Say exactly "hello" and nothing else', 2);
+			const errorNotification = await client.waitForNotification(n =>
+				isActionNotification(n, 'chat/error') && getActionEnvelope(n).channel === chat, 90_000);
+			const errorPart = (getActionEnvelope(errorNotification).action as { part?: { error?: { message?: string } } }).part;
+			assert.match(errorPart?.error?.message ?? '', /Codex binary not executable/, 'B1: the first turn must fail with the documented actionable error');
+			assert.ok(errorPart?.error?.message?.includes(binaryPath), 'B1: the error must name the offending binary path');
+
+			// The host is still alive and healthy providers keep working after
+			// the codex failure: the connection answers `ping`, and another
+			// Copilot session is accepted and tracked (its channel snapshot
+			// comes back with the copilotcli provider).
+			await client.call('ping', undefined, 30_000);
+			const healthyAfterUri = URI.from({ scheme: COPILOT_CONFIG.scheme, path: `/${generateUuid()}` }).toString();
+			createdSessions.push(healthyAfterUri);
+			await client.call('createSession', {
+				channel: healthyAfterUri,
+				provider: COPILOT_CONFIG.provider,
+				workingDirectories: [URI.file(join(workspace, 'healthy-after')).toString()],
+				config: { isolation: 'folder', ...COPILOT_CONFIG.sessionConfig },
+			}, 30_000);
+			const healthyAfter = await client.call<SubscribeResult>('subscribe', { channel: healthyAfterUri }, 30_000);
+			assert.strictEqual((healthyAfter.snapshot!.state as SessionState).provider, 'copilotcli', 'a copilot session must still materialize after the codex failure');
 			await release();
 		});
 	});
@@ -309,12 +337,19 @@ const nodeRequire = createRequire(import.meta.url);
 		await withStandaloneLease(this.test?.title ?? 'unknown', {}, 'none', async ({ client, createdSessions, release }) => {
 			const workspace = mkdtempSync(join(tmpdir(), 'e2e-codex-b2-'));
 			tempDirs.push(workspace);
-			await client.call('initialize', { channel: ROOT_STATE_URI, protocolVersions: [PROTOCOL_VERSION], clientId: 'codex-b2' }, 30_000);
-			await client.call('authenticate', { channel: ROOT_STATE_URI, resource: 'https://api.github.com', token: resolveGitHubToken() }, 30_000);
+
+			// A healthy provider still registers and serves sessions on this
+			// launch. `createRealSession` performs the one initialize/authenticate
+			// handshake the connection gets; a second `initialize` (as
+			// `createRealSession` after a manual handshake would issue) is rejected
+			// by the protocol, so the handshake lives here only.
+			const healthySession = await createRealSession(client, COPILOT_CONFIG, 'codex-b2-healthy-copilot', createdSessions, URI.file(join(workspace, 'healthy')));
+			assert.ok(healthySession.startsWith('copilotcli:'));
 
 			const root = await client.call<SubscribeResult>('subscribe', { channel: ROOT_STATE_URI }, 30_000);
 			const providers = ((root.snapshot!.state as RootState).agents ?? []).map(agent => agent.provider);
 			assert.ok(!providers.includes('codex'), `codex must not appear in the agent catalog, got: ${providers.join(', ')}`);
+			assert.ok(providers.includes('copilotcli'), `the healthy copilot provider must be listed, got: ${providers.join(', ')}`);
 
 			await assert.rejects(
 				client.call('createSession', {
@@ -325,14 +360,11 @@ const nodeRequire = createRequire(import.meta.url);
 				/No agent provider registered for: codex/,
 				'B2: creating a codex session without any SDK configuration must fail with the documented provider error',
 			);
-
-			const healthySession = await createRealSession(client, COPILOT_CONFIG, 'codex-b2-healthy-copilot', createdSessions, URI.file(join(workspace, 'healthy')));
-			assert.ok(healthySession.startsWith('copilotcli:'));
 			await release();
 		});
 	});
 
-	// ── Provider-behavior negatives (acceptance-core B16/B17/B18) ────────────
+	// ── Provider-behavior negatives (acceptance-core B16/B18) ────────────────
 
 	interface IPluginProbe {
 		readonly sessionUri: string;
@@ -419,82 +451,37 @@ const nodeRequire = createRequire(import.meta.url);
 			const result = await driveTurnToCompletion(client, sessionUri, 'turn-b16', 'Say exactly "hello" and nothing else', 2);
 			assert.strictEqual(result.responseText, 'hello');
 
-			const state = await mcpServerState(client, sessionUri, pluginUri);
-			assert.strictEqual(state.state.kind, McpServerStatus.Error, `the broken MCP server must surface an error state, got: ${JSON.stringify(state.state)}`);
-			assert.strictEqual((state.state as { error?: { errorType?: string } }).error?.errorType, 'mcp-server-failed');
+			// The failure surfaces through the plugin child's state: it flips to
+			// `error` with the documented error type via
+			// `session/mcpServerStateChanged`. Its *terminal* state may later
+			// move on (codex can report the failed server as cancelled
+			// afterwards), so wait on the emitted notification rather than
+			// asserting a point-in-time snapshot: the buffered-and-future
+			// stream cannot miss the transition the way a poll can.
+			const server = await mcpServerState(client, sessionUri, pluginUri);
+			await client.waitForNotification(n => {
+				if (!isActionNotification(n, 'session/mcpServerStateChanged')) {
+					return false;
+				}
+				const action = getActionEnvelope(n).action as { id?: string; state?: { kind?: string; error?: { errorType?: string } } };
+				return action.id === server.id
+					&& action.state?.kind === McpServerStatus.Error
+					&& action.state.error?.errorType === 'mcp-server-failed';
+			}, 60_000);
 			await release();
 		});
 	});
 
-	test('an elicitation with an unsupported mode waits for the user instead of erroring', async function () {
-		this.timeout(240_000);
-		// B17: the plugin MCP server elicits with `mode: "openai/form"`, an
-		// opaque schema the host cannot project into typed questions. The host
-		// must surface a message-only input request (no partial form), must not
-		// answer the JSON-RPC request with an error, and must wait for the
-		// user's decline before the turn continues.
-		const plugin = mkdtempSync(join(tmpdir(), 'e2e-codex-matrix-plugin-b17-'));
-		tempDirs.push(plugin);
-		const mcpScript = join(plugin, 'probe-mcp.cjs');
-		const mcpServerModule = nodeRequire.resolve('@modelcontextprotocol/sdk/server/index.js');
-		const mcpStdioModule = nodeRequire.resolve('@modelcontextprotocol/sdk/server/stdio.js');
-		const mcpTypesModule = nodeRequire.resolve('@modelcontextprotocol/sdk/types.js');
-		writeFileSync(mcpScript, [
-			`const { Server } = require(${JSON.stringify(mcpServerModule)});`,
-			`const { StdioServerTransport } = require(${JSON.stringify(mcpStdioModule)});`,
-			`const { CallToolRequestSchema, ListToolsRequestSchema } = require(${JSON.stringify(mcpTypesModule)});`,
-			`const server = new Server({ name: "e2e-matrix-mcp", version: "1.0.0" }, { capabilities: { tools: {} } });`,
-			`server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: [`,
-			`  { name: "customization_elicit_unknown", description: "Asks with an opaque schema", inputSchema: { type: "object", properties: {} } },`,
-			`] }));`,
-			`server.setRequestHandler(CallToolRequestSchema, async request => {`,
-			`  if (request.params.name === "customization_elicit_unknown") {`,
-			`    const result = await server.elicitInput({ mode: "openai/form", message: "Provide opaque values", requestedSchema: { type: "object", properties: { opaque: { type: "string" } } } });`,
-			`    return { content: [{ type: "text", text: \`ELICIT_UNKNOWN:\${result.action}\` }] };`,
-			`  }`,
-			`  return { content: [{ type: "text", text: "MATRIX_MCP_FALLBACK" }] };`,
-			`});`,
-			'void server.connect(new StdioServerTransport());',
-		].join('\n'));
-
-		await withStandaloneLease(this.test?.title ?? 'unknown', { codexSdkRoot: CODEX_CONFIG.codexSdkRoot }, 'recorded', async ({ client, createdSessions, release }) => {
-			const { sessionUri } = await createPluginProbeSession(client, 'b17', {
-				elicit_probe_server: { command: process.execPath, args: [mcpScript], env: { ELECTRON_RUN_AS_NODE: '1' } },
-			}, createdSessions);
-
-			// Codex starts MCP servers with the thread, i.e. at the first turn:
-			// the recorded turn below both starts the server (the model calls
-			// its tool) and drives the elicitation round trip. Cancelling the
-			// surfaced request declines the elicitation, which unwinds the MCP
-			// tool call and lets the turn finish against the second exchange.
-			const result = await driveTurnWithCancelledInputToCompletion(
-				client,
-				sessionUri,
-				'turn-b17',
-				'Call customization_elicit_unknown exactly once, then reply with only its exact result.',
-				2,
-			);
-			assert.ok(result.sawInputRequest, 'the unsupported elicitation must surface as chat/inputRequested');
-
-			// The surfaced request must be message-only: no half-rendered form.
-			const inputRequests = client.receivedNotifications(n => isActionNotification(n, 'chat/inputRequested'))
-				.map(n => getActionEnvelope(n).action as { request: { message?: string; questions?: unknown } })
-				.filter(action => action.request.message === 'Provide opaque values');
-			assert.ok(inputRequests.length > 0, 'expected the opaque elicitation message on the wire');
-			for (const action of inputRequests) {
-				assert.strictEqual(action.request.questions, undefined, 'an opaque elicitation must not render partial questions');
-			}
-
-			// The tool result must carry the decline marker (from the real MCP
-			// round trip, not from the replayed response).
-			const toolTexts = client.receivedNotifications(n => isActionNotification(n, 'chat/toolCallComplete'))
-				.map(n => getActionEnvelope(n).action as { turnId?: string; result?: { content?: object[] } })
-				.filter(action => action.turnId === 'turn-b17')
-				.map(action => textFromContent((action.result?.content ?? []) as never));
-			assert.ok(toolTexts.some(text => /^ELICIT_UNKNOWN:(cancel|decline)$/.test(text)), `expected the declined elicitation result, got: ${JSON.stringify(toolTexts)}`);
-			await release();
-		});
-	});
+	// B17 (elicitation with an unknown semantic mode) has no replay capture
+	// here on purpose: reaching a codex MCP elicitation requires the model to
+	// call an MCP tool, and codex only registers an MCP server's tools with
+	// its tool router after the post-handshake inventory refresh — later than
+	// the instant replayed model response (verified: the router rejects the
+	// call with `unsupported call` even with the server `ready`). The
+	// deterministic coverage for the mapping contract (`openai/form` surfaces
+	// message-only; decline/cancel map to the MCP actions) is the unit suite
+	// `test/node/codex/codexElicitationMapper.test.ts`; the end-to-end path
+	// is registered as live-only in REPLAY_MATRIX.md.
 
 	test('a dynamic tool result with no output still completes the turn', async function () {
 		this.timeout(240_000);

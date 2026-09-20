@@ -199,22 +199,30 @@ A user can restart Agent Host after a Copilot request fails and expects the reop
     --grep "request error survives a host restart"
   ```
 
-### Changeset discard state does not refresh on Windows
+### Changeset discard state does not refresh on Windows and macOS
 
-A user can discard changed files from a session. On Windows, the discard restores the requested files on disk but affected changesets and session summaries do not refresh, leaving the UI stale.
+A user can discard changed files from a session. On Windows and macOS, the discard restores the requested files on disk but affected changesets and session summaries do not refresh, leaving the UI stale.
 
 - Tests:
   - `discarding one file preserves sibling changes`
   - `discarding the last tracked change clears changeset and list summaries`
-- Scope: Agent Host conformance on Windows.
+- Scope: Agent Host conformance on Windows and macOS. The macOS variant was observed while extending the replay matrix (D11 #13, tracked in #24): the server log shows the `git restore` succeeding and the Node.js file watcher receiving the raw `rename` event without normalizing it into a change event, so the changeset never recomputes.
 - Expected: discarding one file removes it from the changeset while preserving siblings; discarding the final change clears branch and uncommitted changesets plus the session-list summary.
 - Observed: the discard operation completes, but the discarded entries and aggregate summary remain unchanged after the synchronization retry expires.
-- Gate: both Windows variants are disabled through `conformanceTest` platform conditions in `changesetSuite.ts`.
+- Gate: the Windows variants are disabled through `conformanceTest` platform conditions in `changesetSuite.ts`; the macOS variants run only with `AGENT_HOST_RUN_KNOWN_ISSUES=1` and are expected to fail until the underlying watcher/refresh bug is fixed.
 - Reproduce on Windows:
 
   ```powershell
   .\scripts\test-integration.bat --run `
     src\vs\platform\agentHost\test\node\e2e\conformance\agentHostConformance.integrationTest.ts `
+    --grep "discarding one file preserves sibling changes|discarding the last tracked change"
+  ```
+
+- Reproduce on macOS:
+
+  ```bash
+  AGENT_HOST_RUN_KNOWN_ISSUES=1 ./scripts/test-integration.sh --run \
+    src/vs/platform/agentHost/test/node/e2e/conformance/agentHostConformance.integrationTest.ts \
     --grep "discarding one file preserves sibling changes|discarding the last tracked change"
   ```
 

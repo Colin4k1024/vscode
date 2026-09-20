@@ -11,6 +11,7 @@ import { DisposableStore } from '../../../../base/common/lifecycle.js';
 import { URI } from '../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../base/test/common/utils.js';
 import { NullLogService } from '../../../log/common/log.js';
+import type { IProductService } from '../../../../platform/product/common/productService.js';
 import { AgentHostStateManager } from '../../node/agentHostStateManager.js';
 import { AgentHostSessionTitleController } from '../../node/agentHostSessionTitleController.js';
 import { withEphemeralSessionMeta } from '../../common/meta/agentEphemeralSessionMeta.js';
@@ -170,10 +171,10 @@ suite('AgentHostSessionTitleController', () => {
 			getGitHubHost,
 			gitHubContextRequestTimeout,
 			octoKitService,
-			copilotApiService,
-			isActiveAgentTitleGenerationEnabled: () => activeAgentTitleGeneration,
-			isDeferredTitleGenerationEnabled: () => deferredTitleGeneration,
-		}, new NullLogService()));
+				copilotApiService,
+				isActiveAgentTitleGenerationEnabled: () => activeAgentTitleGeneration,
+				isDeferredTitleGenerationEnabled: () => deferredTitleGeneration,
+			}, new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 		return { controller, stateManager, session, db, titleActions, catalogSyncs, copilotApiService, octoKitService };
 	}
 
@@ -271,7 +272,7 @@ suite('AgentHostSessionTitleController', () => {
 				isDeferredTitleGenerationEnabled: () => true,
 				copilotApiService,
 				getGitHubCopilotToken: () => 'gh-token',
-			}, new NullLogService()));
+			}, new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 			const defaultChat = buildDefaultChatUri(session);
 			const pendingTitle = new DeferredPromise<string>();
 			copilotApiService.responsePromise = pendingTitle.p;
@@ -318,7 +319,7 @@ suite('AgentHostSessionTitleController', () => {
 				sessionDataService: createSessionDataService(db),
 				isActiveAgentTitleGenerationEnabled: () => activeAgent,
 				isDeferredTitleGenerationEnabled: () => deferred,
-			}, new NullLogService()));
+			}, new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 			const first = controller.getAutomaticTitleGenerationStrategy(session.toString());
 			const beforeRegistration = await db.getMetadata('titleGenerationStrategy');
 			activeAgent = !activeAgent;
@@ -340,7 +341,7 @@ suite('AgentHostSessionTitleController', () => {
 		const controller = disposables.add(new AgentHostSessionTitleController(stateManager, {
 			sessionDataService: createSessionDataService(),
 			isDeferredTitleGenerationEnabled: () => deferred,
-		}, new NullLogService()));
+		}, new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 		const first = controller.getAutomaticTitleGenerationStrategy(session.toString());
 		controller.clearSession(session.toString(), []);
 		deferred = false;
@@ -468,7 +469,7 @@ suite('AgentHostSessionTitleController', () => {
 			isActiveAgentTitleGenerationEnabled: () => false,
 			copilotApiService,
 			getGitHubCopilotToken: () => 'gh-token',
-		}, new NullLogService()));
+		}, new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 		await restored.restoreTitleGenerationStrategy(session.toString(), buildDefaultChatUri(session));
 		assert.deepStrictEqual({
 			strategy: restored.getAutomaticTitleGenerationStrategy(session.toString()),
@@ -493,7 +494,7 @@ suite('AgentHostSessionTitleController', () => {
 				sessionDataService: createSessionDataService(db),
 				copilotApiService,
 				getGitHubCopilotToken: () => 'gh-token',
-			}, new NullLogService()));
+			}, new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 			await restored.restoreTitleGenerationStrategy(session.toString(), buildDefaultChatUri(session));
 			stateManager.seedDefaultChatTurns(session.toString(), [firstTurn('Add dark mode', [textPart('Done')])]);
 			restored.refineTitleFromFirstTurn(session.toString());
@@ -513,7 +514,7 @@ suite('AgentHostSessionTitleController', () => {
 				sessionDataService: createSessionDataService(db),
 				copilotApiService,
 				getGitHubCopilotToken: () => 'gh-token',
-			}, new NullLogService()));
+			}, new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 			await restored.restoreTitleGenerationStrategy(session.toString(), buildDefaultChatUri(session));
 			stateManager.seedDefaultChatTurns(session.toString(), [firstTurn('Add dark mode', [textPart('Done')])]);
 			restored.refineTitleFromFirstTurn(session.toString());
@@ -544,7 +545,7 @@ suite('AgentHostSessionTitleController', () => {
 				sessionDataService: createSessionDataService(db),
 				copilotApiService,
 				getGitHubCopilotToken: () => 'gh-token',
-			}, new NullLogService()));
+			}, new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 			await restored.restoreTitleGenerationStrategy(session.toString(), buildDefaultChatUri(session));
 			stateManager.seedDefaultChatTurns(session.toString(), [firstTurn('Add dark mode', [textPart('Done')])]);
 			restored.refineTitleFromFirstTurn(session.toString());

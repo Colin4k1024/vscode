@@ -15,7 +15,7 @@ import type { TurnCompletedNotification } from '../../../node/codex/protocol/gen
 import type { TurnStartedNotification } from '../../../node/codex/protocol/generated/v2/TurnStartedNotification.js';
 import { ActionType, type ChatAction, type SessionAction } from '../../../common/state/sessionActions.js';
 import { chatReducer } from '../../../common/state/protocol/reducers.js';
-import { ChatOriginKind, MessageKind, ResponsePartKind, SessionStatus, ToolCallStatus, TurnState, type ChatState, type ToolCallResponsePart } from '../../../common/state/sessionState.js';
+import { ChatOriginKind, ResponsePartKind, SessionStatus, ToolCallStatus, TurnState, type ChatState, type ToolCallResponsePart } from '../../../common/state/sessionState.js';
 
 /**
  * D12 / Issue #14 — A1 turn-lifecycle invariants (state machine guards).
@@ -465,7 +465,12 @@ suite('codexTurnLifecycleInvariants (D12 / A1)', () => {
 
 				// terminal → started (next turn is legal)
 				harness.turnStarted('turn_b');
-				assert.strictEqual(harness.chat.activeTurn?.id, 'turn_b');
+				// Read through a fresh reference path: assert.strictEqual's
+				// `asserts actual is T` signature above narrowed
+				// `harness.chat.activeTurn` to `undefined`, which TS would
+				// otherwise intersect into `never` here.
+				const restarted: ChatState = harness.chat;
+				assert.strictEqual(restarted.activeTurn?.id, 'turn_b');
 			});
 		}
 

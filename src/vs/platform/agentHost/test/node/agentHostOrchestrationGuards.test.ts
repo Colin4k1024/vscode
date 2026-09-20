@@ -179,11 +179,11 @@ suite('agentHostOrchestrationGuards (D12 / A4)', () => {
 					lifecycle: SessionLifecycle.Ready,
 				} as SessionSummary;
 				manager.restoreSession(summary, []);
-				const chatUri = URI.parse(buildDefaultChatUri(sessionUri).replace('default', 'peer1'));
+				const chatUri = buildDefaultChatUri(sessionUri).replace('default', 'peer1');
 				const blob = '{"thread":"thr_x","zero":0,"unicode":"héllo 世界","nested":{"a":[1,2,null]}}';
 				let resolverSaw: string | undefined;
 				let resolverCalls = 0;
-				manager.registerRestoredChatSummary(sessionUri as never, chatUri, {
+				manager.registerRestoredChatSummary(sessionUri, chatUri, {
 					providerData: blob,
 					resolver: async providerData => {
 						resolverCalls++;

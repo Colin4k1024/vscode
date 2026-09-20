@@ -26,7 +26,7 @@ import { createAsar } from './lib/asar.ts';
 import minimist from 'minimist';
 import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask, compileCopilotExtensionBuildTask } from './gulpfile.extensions.ts';
 import { checkApiProposalNamesTask, copyCodiconsTask } from './lib/compilation.ts';
-import { ensureCopilotPlatformPackage, getCopilotExcludeFilter, getCopilotFullExcludeFilter, getCopilotRuntimePrebuildFiles, getCopilotRuntimeVersion, getCopilotTgrepExcludeFilter, getMxcExcludeFilter, getRipgrepExcludeFilter, prepareBuiltInCopilotRipgrepShim } from './lib/copilot.ts';
+import { ensureCopilotPlatformPackage, getCopilotExcludeFilter, getCopilotRuntimePrebuildFiles, getCopilotRuntimeVersion, getCopilotTgrepExcludeFilter, getMxcExcludeFilter, getRipgrepExcludeFilter, prepareBuiltInCopilotRipgrepShim } from './lib/copilot.ts';
 import { ensureOSProxyResolverPlatformPackage, getOSProxyResolverExcludeFilter, getOSProxyResolverPlatformFiles } from './lib/osProxyResolver.ts';
 import { readAgentSdkResults } from './agent-sdk/common.ts';
 import { readDictationRuntimeResults } from './dictation-runtime/common.ts';
@@ -45,11 +45,27 @@ const packageLock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.jso
 	readonly packages?: Readonly<Record<string, { readonly version?: string }>>;
 };
 // D09 (#11): the ColinCode mixin sets `excludeCopilotFromPackaging` — the
-// D10 section 5 redistribution-blocked packages (@vscode/copilot-api,
-// @github/copilot, blackbird utils) and the built-in copilot extension must
-// not ship. The MIT-licensed @github/copilot-sdk* packages DO ship: the
-// agent host imports them statically. Upstream (no flag) behavior unchanged.
+// D10 section 5 redistribution-blocked packages and the built-in copilot
+// extension must not ship. The MIT-licensed @github/copilot-sdk* packages DO
+// ship: the agent host imports them statically. Upstream (no flag) behavior
+// unchanged.
+//
+// The block list itself is mixin DATA (`copilotPackagingBlocklist` in
+// product/product.json), not code — this keeps build/lib/copilot.ts
+// upstream-pristine (D09 AC12 / issue #66 M8).
+// scripts/check-no-copilot-artifacts.sh keeps the matching scan-side list.
 const copilotExcludedFromPackaging = (product as { readonly excludeCopilotFromPackaging?: boolean }).excludeCopilotFromPackaging === true;
+const copilotPackagingBlocklist = (product as { readonly copilotPackagingBlocklist?: readonly unknown[] }).copilotPackagingBlocklist;
+if (copilotExcludedFromPackaging && (!Array.isArray(copilotPackagingBlocklist) || copilotPackagingBlocklist.length === 0)) {
+	throw new Error(`product.json sets excludeCopilotFromPackaging but declares no copilotPackagingBlocklist — the mixin must name the D10 section 5 block-listed packages so packaging can exclude them.`);
+}
+const copilotFullExcludeGlobs: string[] = [];
+for (const entry of copilotPackagingBlocklist ?? []) {
+	if (typeof entry !== 'string' || !/^@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/i.test(entry)) {
+		throw new Error(`copilotPackagingBlocklist entry ${JSON.stringify(entry)} is not a scoped npm package name — refusing to build a glob from it.`);
+	}
+	copilotFullExcludeGlobs.push(`!**/node_modules/${entry}/**`);
+}
 
 const copilotRuntimeVersion = getCopilotRuntimeVersion(path.join(root, 'node_modules'));
 if (packageJson.copilotRuntimeVersion !== copilotRuntimeVersion) {
@@ -269,7 +285,7 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			// Upstream excludes the non-target copilot-sdk platform packages;
 			// the mixin additionally excludes the D10 section 5 block-listed packages.
 			.pipe(filter(copilotExcludedFromPackaging
-				? [...getCopilotExcludeFilter(platform, arch), ...getCopilotFullExcludeFilter().slice(1)]
+				? [...getCopilotExcludeFilter(platform, arch), ...copilotFullExcludeGlobs]
 				: getCopilotExcludeFilter(platform, arch)))
 			.pipe(filter(getCopilotTgrepExcludeFilter(platform, arch)))
 			.pipe(filter(getRipgrepExcludeFilter(platform, arch)))

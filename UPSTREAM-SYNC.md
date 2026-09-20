@@ -136,12 +136,24 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 56 个源码改动文件的理由汇总（逐文件全表见 §4.1，由
 `git diff --name-status fb20064c0f4 HEAD` 实时生成）：
 
-- **类型/枚举/接口契约本体**（4 个）：`base/common/product.ts`、`platform/window/common/window.ts`、`agentHostSchema.ts`、`meta/codexAccount.ts`——类型成员必须改在定义处，无覆盖层概念。
-- **行为逻辑/策略裁决**（11 个）：`agentService.ts`、`codexAgent.ts`、`codexAccountState.ts`、`agentHostCustomizationConfig.ts`、`codexAccountService.ts`、`defaultAccount.ts`、`telemetryService.ts`、`extensionGalleryService.ts`、`agentSessionsWelcome.ts`、`sessionsActions.ts`、`account.contribution.ts`——fork 改变的是运行时行为，不是数据；上游无对应扩展点。
+- **类型/枚举/接口契约本体**（4 个）：`base/common/product.ts`、`platform/window/common/window.ts`、`agentHostSchema.ts`、`meta/codexAccount.ts`——类型成员必须改在定义处，无覆盖层概念。D09 给 `base/common/product.ts` 追加 `IAgentSdkProductConfig`（agent SDK 下载配置；D66 改为按 target 键控 sha256）与 `excludeCopilotFromPackaging` 运行时语义。
+- **行为逻辑/策略裁决**（D09 后 14 个）：`agentService.ts`、`codexAgent.ts`、`codexAccountState.ts`、`agentHostCustomizationConfig.ts`、`codexAccountService.ts`、`defaultAccount.ts`、`telemetryService.ts`、`extensionGalleryService.ts`、`agentSessionsWelcome.ts`、`sessionsActions.ts`、`account.contribution.ts`——fork 改变的是运行时行为，不是数据；上游无对应扩展点。D09 追加 3 个：`node/agentSdkDownloader.ts`（按 urlTemplate 下载并校验 SDK——完整性校验是运行时行为）、`node/shared/copilotApiService.ts`（`loadCopilotApi()` 延迟解析——D10 section 5 要求缺包时 agent host 仍可启动，D66 起品牌化构建隐藏 Copilot 登录入口并短路 CAPI 路径）、`node/sshRemoteAgentHostHelpers.ts`（CLI 下载默认端点改为 fork 自有 releases——deny-by-default 策略，见下）。
 - **上游内嵌默认值的空值守卫/移除**（5 个）：`platform/product/common/product.ts`（移除 `defaultChatAgent`）、`abstractExtensionManagementService.ts`、`extensionsWorkbenchService.ts`、`chatStatusEntry.ts`、`chatWidget.ts`（各 1 行空值守卫）——上游假设 `defaultChatAgent` 必存在，守卫只能写在判读处。
 - **入口/contribution 注册**（5 个）：`app.ts`、`agentHostStarter.config.contribution.ts`、`agentHost.contribution.ts`、`chat.shared.contribution.ts`、`chatStatusDashboard.ts`——注册点本体。
-- **测试文件**（24 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。
-- **构建/工具链/配置**（7 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）。
+- **测试文件**（24 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。D09 追加 4 个：`agentSdkDownloader.test.ts`（HIGH-1 运行时校验链）、`devContainerAgentHostService.test.ts`、`sshRemoteAgentHostHelpers.test.ts`、`sshRemoteAgentHostService.test.ts`（CLI 下载端点改为 fork 默认的跟随测试）。
+- **构建/工具链/配置**（D09 后 11 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免；D09 追加 vendored license 豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份），以及 **D09 新增**：`build/agent-sdk/{package.ts,produce.ts,upload.ts}`（SDK 打包/产出/上传管线的 fork 化：自托管端点、结果文件、完整性哈希——打包期行为逻辑，无覆盖层挂点）、`build/gulpfile.vscode.ts`（打包任务消费 mixin 的 `excludeCopilotFromPackaging`/`copilotPackagingBlocklist` 并盖章 `agentSdks`——gulp 任务本体只能改在定义处）。
+
+**D09 两个"可移出上游文件"项的处置（M8 结论）**：
+
+- `getCopilotFullExcludeFilter()` 的 blocklist 数据 **已移出**：D66 起该列表是 mixin 数据
+  （`product/product.json` 的 `copilotPackagingBlocklist`），`build/gulpfile.vscode.ts` 由数据构建
+  exclude glob，`build/lib/copilot.ts` 恢复为与上游 0 diff。门禁侧
+  （`scripts/check-no-copilot-artifacts.sh`）是 fork 自有覆盖层文件，保留其 prefix+allowlist 扫描
+  （D09 round-1 评审定的 fail-closed 形状），与 mixin 列表以 D10 section 5 为共同参照。
+- `sshRemoteAgentHostHelpers.ts` 的 CLI 下载默认端点 **保留在源码**：它是 deny-by-default
+  策略（fork 不得静默回落到 Microsoft update CDN），不是品牌数据。若改为 mixin/product.json
+  数据，则未打 mixin 的 dev/CI 冒烟路径会恢复上游默认（Microsoft CDN）——正是 D08 出口策略
+  要禁的方向。策略默认值留在代码里，与 `AGENT_HOST_CLI_DOWNLOAD_BASE` override 同级。
 
 注：fork 自有的 CI workflow（baseline/drift）、`scripts/*.sh`、`product/`、文档等均为
 **新增文件（覆盖层）**，即使后续被 fork 自己修改，相对上游仍是 A 类——上游没有同名
@@ -175,6 +187,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `.agents/skills/launch/scripts/launch.ps1` | M | +32/-10 | D06 | 源码改动 | 开发启动脚本须传入 mixin 的 dataFolderName/应用名；shell 脚本无覆盖层挂点 |
 | `.agents/skills/launch/scripts/launch.sh` | M | +27/-3 | D06 | 源码改动 | 同上（POSIX 版） |
 | `.github/workflows/codex-desktop-baseline.yml` | A | +231/-0 | D01,D06,D08,D11,D14 | 覆盖层 | **覆盖层**：fork 自有 CI（新增文件，不与上游 workflow 同名） |
+| `.github/workflows/codex-desktop-package.yml` | A | +140/-0 | D09 | 覆盖层 | **覆盖层**：D09 打包流水线 CI（macOS 打包 + 可选 SDK 发布；新增文件） |
 | `.github/workflows/codex-upstream-drift.yml` | A | +40/-0 | D14 | 覆盖层 | **覆盖层**：D14 漂移监控 workflow（新文件，不与上游同名） |
 | `.goal-state/STATE.md` | A | +33/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
 | `.goal-state/d03-spec.md` | A | +73/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
@@ -201,13 +214,23 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `UPSTREAM-SYNC.md` | A | +252/-0 | D14 | 覆盖层 | **覆盖层**：D14 本手册（新增文档） |
 | `UPSTREAM_COMMIT` | A | +1/-0 | D14 | 覆盖层 | **覆盖层**：D14 上游 pin（grok-code-product 格式，裸 SHA） |
 | `VERSION` | A | +1/-0 | D14 | 覆盖层 | **覆盖层**：D14 fork 发行版本 pin（grok-code-product 格式） |
-| `build/agent-sdk/README.md` | M | +31/-0 | D02 | 源码改动 | agent-sdk pin 机制文档（构建期，非运行时） |
-| `build/agent-sdk/common.ts` | M | +33/-2 | D02 | 源码改动 | D02 SDK 打包逻辑（CDN 端点等）；构建期工具链，无产品覆盖层机制可承载 |
+| `build/agent-sdk/README.md` | M | +31/-0 | D02,D09 | 源码改动 | agent-sdk pin 机制文档（构建期，非运行时）；D09 追加本地打包/自托管分发说明 |
+| `build/agent-sdk/common.ts` | M | +33/-2 | D02,D09 | 源码改动 | D02 SDK 打包逻辑（CDN 端点等）；D09 追加 AGENT_SDK_CDN_BASE/AGENT_SDK_URL_TEMPLATE override 与 sha256 结果字段（D66 起按 target 键控）；构建期工具链，无产品覆盖层机制可承载 |
+| `build/agent-sdk/licenses/codex/LICENSE` | A | +202/-0 | D09 | 覆盖层 | D09：vendored Apache-2.0 许可证文本（@openai/codex npm 包不带 LICENSE，打包时注入 tarball 以满足 Apache-2.0 section 4） |
+| `build/agent-sdk/licenses/codex/NOTICE` | A | +7/-0 | D09 | 覆盖层 | D09：同上，NOTICE 文本 |
+| `build/agent-sdk/package.ts` | M | ±8 (D09) | D09 | 源码改动 | SDK 暂存树构建/打包（构建期管线行为）；fork 的许可证注入与确定性打包要求只能改在本体 |
+| `build/agent-sdk/produce.ts` | M | ±97 (D09) | D09 | 源码改动 | 每平台 SDK 产出器：写 results.json、驱动上传（D66 起按 target 合并）；管线行为，无覆盖层挂点 |
+| `build/agent-sdk/test/resultsFile.test.ts` | A | +65/-0 | D09 | 覆盖层 | 测试（新增文件）：results.json 交接形状（D66 扩展为 sha256ByTarget 合并语义） |
+| `build/agent-sdk/test/sdkTargetMatrix.test.ts` | A | +62/-0 | D09 | 覆盖层 | 测试（新增文件）：(platform, arch, sdk) → sdkTarget 矩阵 |
+| `build/agent-sdk/test/uploadHttp.test.ts` | A | +249/-0 | D09 | 覆盖层 | 测试（新增文件）：HTTP 上传后端幂等性 |
+| `build/agent-sdk/test/verifyStagedTree.test.ts` | A | +134/-0 | D09 | 覆盖层 | 测试（新增文件）：暂存树校验 |
+| `build/agent-sdk/upload.ts` | M | ±151 (D09) | D09 | 源码改动 | SDK 上传（HEAD-then-decide 幂等、Azure/HTTP 双后端；D66 起 Azure SDK 延迟加载）；管线行为 |
+| `build/filters.ts` | M | +5/-0 | D09,D14 | 源码改动 | D09：hygiene copyright 豁免 `build/agent-sdk/licenses/**`（vendored 法律文本不能加注释头）；D14：豁免 UPSTREAM_COMMIT/VERSION；filters.ts 是上游既有的豁免注册表 |
+| `build/gulpfile.vscode.ts` | M | +25/-0 | D09 | 源码改动 | 桌面 packageTask：消费 mixin 的 `excludeCopilotFromPackaging`/`copilotPackagingBlocklist`（D66 起 blocklist 为 mixin 数据）并盖章 `product.agentSdks`；gulp 任务本体只能改在定义处 |
 | `build/agent-sdk/test/cdnEndpoint.test.ts` | A | +85/-0 | D02,D14 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
-| `build/filters.ts` | M | +5/-0 | D14 | 源码改动 | D14：hygiene copyright 豁免 UPSTREAM_COMMIT/VERSION（机器可读 pin 文件不能加注释头）；filters.ts 是上游既有的豁免注册表 |
 | `package.json` | M | +1/-0 | D14 | 源码改动 | D14：新增 1 行 `codex:check-protocol-sync` script alias；package.json 是冲突高发区，改动压到最小 |
 | `product/README.md` | A | +98/-0 | D06,D08 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
-| `product/branding-residue-whitelist.txt` | A | +16/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
+| `product/branding-residue-whitelist.txt` | A | +16/-0 | D06,D09 | 覆盖层 | **覆盖层**：D06 残留白名单；D09 追加打包产物条目（out/、node_modules/、内置扩展文档——首次打包实测） |
 | `product/branding/app/colincode_1024x1024.png` | A | bin | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/branding/app/colincode_128x128.png` | A | bin | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/branding/app/colincode_16x16.png` | A | bin | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
@@ -246,21 +269,26 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `product/branding/win32/inno-small-250.bmp` | A | bin | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/default-settings.json` | A | +4/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/extensions.json` | A | +5/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
-| `product/product.json` | A | +41/-0 | D06,D07,D08 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
+| `product/product.json` | A | +41/-0 | D06,D07,D08,D09 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff；D09 追加 `excludeCopilotFromPackaging` +（D66）`copilotPackagingBlocklist` 数据 |
 | `scripts/apply-mixin.sh` | A | +188/-0 | D06,D08,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
-| `scripts/audit-network-egress.sh` | A | +137/-0 | D08 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
+| `scripts/audit-network-egress.sh` | A | +137/-0 | D08,D09 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件）；D09 追加打包产物出口断言 |
+| `scripts/bundle-codex-sdk.sh` | A | +186/-0 | D09 | 覆盖层 | **覆盖层**：D09 SDK 打包编排（produce → 许可证注入 → 结果盖章；D66 起按 target 合并 + 过期 tarball 剪枝） |
 | `scripts/check-branding-identity.sh` | A | +86/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/check-branding-residue.sh` | A | +105/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
-| `scripts/check-no-copilot-artifacts.sh` | A | +52/-0 | D08,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
+| `scripts/check-no-copilot-artifacts.sh` | A | +52/-0 | D08,D09,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件）；D09 追加 prefix+allowlist fail-closed 形状，D66 追加 asar 内扫描 |
 | `scripts/check-product-json-pristine.sh` | A | +19/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/check-r12-guard.sh` | A | +123/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/generate-icons.sh` | A | +134/-0 | D06,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
+| `scripts/generate-sbom.sh` | A | +176/-0 | D09 | 覆盖层 | **覆盖层**：D09 SBOM 生成器（CycloneDX；AC13） |
 | `scripts/network-egress-allowlist.txt` | A | +62/-0 | D08 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/own-change-surface.sh` | A | +67/-0 | D14 | 覆盖层 | **覆盖层**：D14 改动面统计 + 0-patch 断言 |
+| `scripts/package.sh` | A | +200/-0 | D09 | 覆盖层 | **覆盖层**：D09 一键本地打包链（pristine gate → mixin → SDK bundle → gulp → beta gates → zip/manifest） |
+| `scripts/publish-sdk-release.sh` | A | +95/-0 | D09 | 覆盖层 | **覆盖层**：D09 SDK tarball 发布到本仓库 GitHub Releases（幂等、fail-loud；D66 起与 results.json 交叉校验 sha256） |
 | `scripts/scan-credential-residue.sh` | A | +62/-0 | D08 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/sync-upstream.sh` | A | +174/-0 | D14 | 覆盖层 | **覆盖层**：D14 fork-merge 同步编排（移植自 grok-code-product） |
 | `scripts/upstream-drift-report.sh` | A | +126/-0 | D14 | 覆盖层 | **覆盖层**：D14 漂移报告生成器 |
-| `src/vs/base/common/product.ts` | M | +14/-1 | D07,D08 | 源码改动 | 产品接口契约：`defaultWindow?` 字段 + `defaultChatAgent` 改可选；类型必须改在接口本体 |
+| `scripts/verify-beta-gates.sh` | A | +142/-0 | D09 | 覆盖层 | **覆盖层**：D09 预发布门禁链（8 门；D66 起 gate 2c 为 bundle 静态 import 探测、pass/fail） |
+| `src/vs/base/common/product.ts` | M | +14/-1 | D07,D08,D09 | 源码改动 | 产品接口契约：`defaultWindow?` 字段 + `defaultChatAgent` 改可选；D09 追加 `agentSdks` SDK 下载配置（D66 起含按 target 键控的 `sha256ByTarget`）与 `excludeCopilotFromPackaging` 运行时语义；类型必须改在接口本体 |
 | `src/vs/code/electron-main/app.ts` | M | +14/-0 | D07 | 源码改动 | 启动入口分支（bare launch → Agents 窗口）；进程入口无覆盖层挂点 |
 | `src/vs/code/node/agentsWindowStartup.ts` | A | +61/-0 | D07 | 覆盖层 | D07：新增模块（append-only），启动判定逻辑独立成文件以缩小 app.ts 改动面 |
 | `src/vs/code/test/node/agentsWindowStartup.test.ts` | A | +101/-0 | D07 | 覆盖层 | 上述模块的测试（新增） |
@@ -269,8 +297,11 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/common/agentHostStarter.config.contribution.ts` | M | +3/-2 | D04,D06 | 源码改动 | starter 配置贡献点默认值；contribution 注册本体 |
 | `src/vs/platform/agentHost/common/agentService.ts` | M | +48/-4 | D04,D05 | 源码改动 | D04/D05 provider 策略裁决逻辑；核心服务行为 |
 | `src/vs/platform/agentHost/common/meta/codexAccount.ts` | M | +14/-0 | D03 | 源码改动 | D03 OpenAI 原生登录的账号元数据类型；协议元数据本体 |
+| `src/vs/platform/agentHost/node/agentSdkDownloader.ts` | M | ±40 (D09) | D09 | 源码改动 | D09：SDK 下载器——urlTemplate 解析、缓存布局、（round-1）sha256 完整性校验（D66 起按 target 键控）；运行时行为，无扩展点 |
 | `src/vs/platform/agentHost/node/codex/codexAccountState.ts` | M | +4/-1 | D03 | 源码改动 | D03 登录状态机；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexAgent.ts` | M | +173/-16 | D03,D04,D05,D08,D13,D14 | 源码改动 | 最大源码改动（+173/-16）：D03 登录、D04 去 GitHub 耦合、D05 策略、D08 clientInfo 身份与遥测隔离、D13 负向路径；D14 追加 1 字符注释修复（§→section，hygiene）。会话宿主核心行为，无扩展点可覆盖 |
+| `src/vs/platform/agentHost/node/shared/copilotApiService.ts` | M | ±36 (D09) | D09 | 源码改动 | D09：`loadCopilotApi()` 延迟解析——@vscode/copilot-api 是 D10 section 5 硬阻断包，静态 value import 会让缺包构建启动即崩；延迟解析把失败收敛到被调用的 CAPI 路径（D66 起品牌化构建进一步隐藏入口） |
+| `src/vs/platform/agentHost/node/sshRemoteAgentHostHelpers.ts` | M | ±33 (D09) | D09 | 源码改动 | D09：`buildCLIDownloadUrl` 默认端点从 Microsoft update CDN 改为 fork 自有 releases（deny-by-default——见 §4 处置说明）；URL 构造必须改在定义处 |
 | `src/vs/platform/agentHost/test/common/agentService.test.ts` | M | +57/-0 | D07 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/common/codexAccount.test.ts` | M | +82/-0 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/common/openSessionLink.test.ts` | M | +15/-0 | D06 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
@@ -279,6 +310,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/test/node/agentHostOrchestrationGuards.test.ts` | A | +416/-0 | D12 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/agentHostPullRequestOperationHandler.test.ts` | M | +32/-5 | D04 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/agentService.test.ts` | M | +154/-0 | D13 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
+| `src/vs/platform/agentHost/test/node/agentSdkDownloader.test.ts` | M | ±86 (D09) | D09 | 源码改动(测试) | D09：HIGH-1 运行时 sha256 校验链测试（D66 追加 sha256ByTarget 按 target 查找/缺键 warn-and-proceed 用例） |
 | `src/vs/platform/agentHost/test/node/baselines/d12-i4-chat-entries-writers.json` | A | +11/-0 | D12 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/baselines/d12-i8-codex-host-state-imports.json` | A | +4/-0 | D12 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/codex/codexAccountState.test.ts` | M | +79/-2 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
@@ -295,6 +327,9 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/test/node/codex/codexSessionConfigKeys.test.ts` | M | +21/-1 | D05 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/codex/codexThreadCoordination.test.ts` | A | +212/-0 | D13 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/codex/codexTurnLifecycleInvariants.test.ts` | A | +597/-0 | D12 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
+| `src/vs/platform/agentHost/test/node/devContainerAgentHostService.test.ts` | M | ±4 (D09) | D09 | 源码改动(测试) | D09：CLI 下载默认端点改 fork releases 的跟随断言 |
+| `src/vs/platform/agentHost/test/node/sshRemoteAgentHostHelpers.test.ts` | M | ±54 (D09) | D09 | 源码改动(测试) | D09：CLI 下载 URL 形状/override/env 校验的跟随断言 |
+| `src/vs/platform/agentHost/test/node/sshRemoteAgentHostService.test.ts` | M | ±6 (D09) | D09 | 源码改动(测试) | D09：同上（service 层） |
 | `src/vs/platform/agentHost/test/node/e2e/captures/codex-a-client-tool-call-with-an-empty-result-body-is-backfilled-before-it-reaches-the-model.yaml` | A | +35/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/e2e/captures/codex-a-failing-mcp-server-surfaces-an-error-state-without-blocking-the-turn.yaml` | A | +12/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/e2e/captures/codex-an-ambient-codex-home-override-does-not-leak-into-the-agent-host-or-provider-processes.yaml` | A | +12/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
@@ -331,6 +366,12 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/workbench/services/agentHost/test/browser/codexAccountService.test.ts` | M | +131/-5 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 
 共 178 文件：覆盖层(新增) 122、源码改动 32、源码改动(测试) 24。
+
+行数列说明：`±N (D09)` 行是 D66 补录的 D09 存量条目（M8——D14 制表时这些文件已计入
+178/56 总数，但 §4.1 逐行清单漏了它们）；`±N` 是 D09 changeset 的总变动行数
+（additions+deletions，精确 +/- 拆分以 `git diff --numstat fb20064c0f4 HEAD -- <file>`
+实时输出为准）。`build/lib/copilot.ts` 曾是 D09 源码改动，D66 把其 blocklist 挪为 mixin
+数据后已恢复与上游 0 diff，故不再列入。
 
 ## 5. 漂移监控
 

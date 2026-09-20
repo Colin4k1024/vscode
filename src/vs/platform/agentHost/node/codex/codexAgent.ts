@@ -1523,8 +1523,11 @@ export class CodexAgent extends Disposable implements IAgent {
 		const copilotResource = this._gitHubEndpointService.getCopilotResource();
 		return [
 			{ ...copilotResource, required: false },
-			// D04: the repo resource unlocks GitHub workspace features only; it must
-			// not gate the window for users running purely on OpenAI credentials.
+			// D04: listed so the client-side auth coordinator (agentHostAuth.ts) can
+			// include it in silent token forwarding/revocation; the agent itself does
+			// not consume a repo token. `required: false` pins the semantic (the
+			// upstream factory already returns false) so a future upstream change
+			// cannot silently resurrect the signed-out window gate.
 			{ ...this._gitHubEndpointService.getRepoResource(), required: false },
 		];
 	}

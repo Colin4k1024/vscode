@@ -9,6 +9,9 @@ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/comm
 import { NativeParsedArgs } from '../../../platform/environment/common/argv.js';
 import { IProductService } from '../../../platform/product/common/productService.js';
 import product from '../../../platform/product/common/product.js';
+import { readFileSync } from 'fs';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import { shouldOpenAgentsWindowOnStartup } from '../../node/agentsWindowStartup.js';
 
 suite('shouldOpenAgentsWindowOnStartup', () => {
@@ -72,7 +75,15 @@ suite('product defaults (D07)', () => {
 	ensureNoDisposablesAreLeakedInTestSuite();
 
 	test('the Agents window is the product\'s default desktop form', () => {
-		assert.strictEqual(product.defaultWindow, 'agents');
+		// D06 mixin contract: the upstream product.json stays pristine, so the
+		// product default lives in the overlay and is asserted there. The
+		// predicate tests above pin the runtime behavior once the effective
+		// product.json carries the flag.
+		const overlayPath = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..', '..', 'product', 'product.json');
+		const overlay = JSON.parse(readFileSync(overlayPath, 'utf8')) as { defaultWindow?: string };
+		assert.strictEqual(overlay.defaultWindow, 'agents');
+		// Upstream stays pristine: the flag must NOT leak into the base product.json.
+		assert.strictEqual(product.defaultWindow, undefined);
 	});
 
 	test('sessionsWindowAllowedExtensions is an explicitly empty allow-list', () => {

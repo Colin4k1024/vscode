@@ -953,7 +953,7 @@ suite('CodexAgent model refresh', () => {
 			account: { status: 'signedOut', authType: undefined, email: undefined, planType: undefined, profileImage: undefined, requiresOpenaiAuth: true, rateLimit: undefined, authUrl: undefined, authUrlNonce: undefined, deviceVerificationUrl: undefined, deviceUserCode: undefined },
 			pendingSignIn: undefined,
 			connection: 'idle',
-			disposed: ['client', 'proxy', 'child'],
+			disposed: ['child', 'client', 'proxy'],
 		});
 		assert.ok(requests.includes('account/login/cancel'));
 	});

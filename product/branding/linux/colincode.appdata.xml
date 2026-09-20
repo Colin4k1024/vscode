@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop">
+	<id>@@NAME@@.desktop</id>
+	<metadata_license>@@LICENSE@@</metadata_license>
+	<project_license>@@LICENSE@@</project_license>
+	<name>@@NAME_LONG@@</name>
+	<url type="homepage">https://github.com/Colin4k1024/vscode</url>
+	<summary>Colin Code. Code editing with an AI agent host. Redefined.</summary>
+	<description>
+		<p>Colin Code is an AI-first code editor built on the Code - OSS open source project, with an integrated agent host for Codex sessions. See https://github.com/Colin4k1024/vscode for installation instructions and FAQ.</p>
+	</description>
+</component>

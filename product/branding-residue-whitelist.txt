@@ -1,0 +1,8 @@
+# Branding residue whitelist (scripts/check-branding-residue.sh).
+# One grep -E pattern per line; a hit line matching ANY pattern is exempt.
+# ONLY third-party license/copyright texts that legitimately reference the
+# upstream project may be listed here — never first-party UI copy.
+LICENSE\.txt
+ThirdPartyNotices
+license.*[Mm]icrosoft
+[Cc]opyright.*[Mm]icrosoft

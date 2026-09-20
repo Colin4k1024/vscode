@@ -98,6 +98,7 @@ import { ElectronURLListener } from '../../platform/url/electron-main/electronUr
 import { IWebviewManagerService } from '../../platform/webview/common/webviewManagerService.js';
 import { WebviewMainService } from '../../platform/webview/electron-main/webviewMainService.js';
 import { AgentsWindowOpenSource, isFolderToOpen, isWorkspaceToOpen, IWindowOpenable } from '../../platform/window/common/window.js';
+import { shouldOpenAgentsWindowOnStartup } from '../node/agentsWindowStartup.js';
 import { getAllWindowsExcludingOffscreen, IWindowsMainService, OpenContext } from '../../platform/windows/electron-main/windows.js';
 import { ICodeWindow } from '../../platform/window/electron-main/window.js';
 import { WindowsMainService } from '../../platform/windows/electron-main/windowsMainService.js';
@@ -1604,6 +1605,19 @@ export class CodeApplication extends Disposable {
 					initialStartup: true,
 					// remoteAuthority: will be determined based on macOpenFiles
 				});
+			}
+
+			// The Agents window is this product's default desktop form
+			// (agent-first): a bare launch with no explicit open intent starts
+			// there instead of restoring or empty-opening a regular workbench
+			// window. The regular workbench stays reachable through explicit
+			// open intents and in-product commands.
+			if (shouldOpenAgentsWindowOnStartup(this.productService, args, macOpenFiles)) {
+				return windowsMainService.openAgentsWindow({
+					context,
+					cli: args,
+					initialStartup: true
+				}, undefined, undefined, AgentsWindowOpenSource.StartupDefault);
 			}
 		}
 

@@ -259,7 +259,7 @@
       "d": "D09 审计",
       "state": "in_progress",
       "pr": 69,
-      "note": "pi 审查中"
+      "note": "round-5 4.2 → 修复完成（L8 真移+台账快照口径+污染清除+eslint+formatter）；round-6 复审中（HEAD 191e5bd1faf→最新 0b92…）"
     },
     "#67": {
       "d": "D15 补充",
@@ -360,6 +360,10 @@
     {
       "ts": "2026-09-21T02:10+08:00",
       "event": "D15 PR #67 已合并（pi 8.6 APPROVE，上游会话完成）; #66 D09 审计修复 PR #69 建（H1 per-target sha256ByTarget + M1-M8 + L1-L11），pi 审查中；Epic #1 仅剩发布门声明后收尾"
+    },
+    {
+      "ts": "2026-09-21T05:55+08:00",
+      "event": "PR #69 round-5 4.2 → 修复（L8 module state 真移、UPSTREAM-SYNC 快照口径、.mimosa 清除、合并冲突解决、eslint/formatter 修正）；build 测试 499/502（3 个失败均为 macOS realpath 既有 flake，与本 diff 无关）；round-6 复审中"
     }
   ],
   "review_state": {

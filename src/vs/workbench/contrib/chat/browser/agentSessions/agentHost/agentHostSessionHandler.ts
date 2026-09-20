@@ -3754,10 +3754,11 @@ export class AgentHostSessionHandler extends Disposable implements IChatSessionC
 			}
 			const turnError = getTurnError(lastTurn);
 			if (!opts.suppressErrorMarkdown && turnError) {
-				const forwarded = getChatErrorDetailsFromMeta(turnError, this._chatErrorContext());
-				const content = forwarded
-					? new MarkdownString(`\n\n${forwarded.message}`)
-					: new MarkdownString(`\n\nError: (${turnError.errorType}) ${turnError.message}`);
+				// Route through the shared error-details computation so
+				// CodexServerOverloaded keeps its own localized message instead
+				// of the forwarded Copilot-branded rate-limit copy.
+				const details = this._getTurnErrorDetails(lastTurn);
+				const content = new MarkdownString(`\n\n${details?.message ?? `Error: (${turnError.errorType}) ${turnError.message}`}`);
 				opts.sink([{ kind: 'markdownContent', content }]);
 			}
 			finish(lastTurn);

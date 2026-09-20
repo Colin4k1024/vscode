@@ -114,7 +114,38 @@ suite('WSL Remote Agent Host Helpers', () => {
 				telemetryLevel: TelemetryConfiguration.OFF,
 			});
 
-			assert.ok(script.endsWith(`exec ~/.vscode-server/code-${commit} --cli-data-dir ~/.vscode-server/cli --telemetry-level off agent host --port 0 --idle-timeout 300`));
+			assert.ok(script.endsWith(`exec "$cli" --cli-data-dir ~/.vscode-server/cli --telemetry-level off agent host --port 0 --idle-timeout 300`));
+		});
+
+		test('pinned install recovers from a failed download via a pre-existing CLI', () => {
+			const commit = 'a'.repeat(40);
+			const script = composeAgentHostBootstrapScript({
+				serverDataFolderName: '.vscode-server',
+				quality: 'stable',
+				commit,
+				os: 'linux',
+				arch: 'x64',
+			});
+
+			assert.ok(script.includes(`cli=~/.vscode-server/code-${commit}`), 'resolves the commit-keyed CLI into $cli');
+			assert.ok(script.includes('fallback=$('), 'runs the fallback finder when the download fails');
+			assert.ok(script.includes('cli="$fallback"'), 're-points $cli at the fallback');
+			assert.ok(script.includes('no fallback CLI exists on this machine'), 'fails loud when nothing usable exists');
+		});
+
+		test('loose install recovers from a failed download via a pre-existing CLI', () => {
+			const script = composeAgentHostBootstrapScript({
+				serverDataFolderName: '.vscode-server',
+				quality: 'stable',
+				commit: undefined,
+				os: 'linux',
+				arch: 'x64',
+			});
+
+			assert.ok(script.includes('cli=~/.vscode-server/code &&') || script.includes('cli=~/.vscode-server/code\n') || /cli=~\/\.vscode-server\/code\s/.test(script), 'resolves the loose CLI into $cli');
+			assert.ok(script.includes('fallback=$('), 'runs the fallback finder when the download fails');
+			assert.ok(script.includes('cli="$fallback"'), 're-points $cli at the fallback');
+			assert.ok(script.includes('no fallback CLI exists on this machine'), 'fails loud when nothing usable exists');
 		});
 
 		test('exports telemetry disablement for a custom command', () => {

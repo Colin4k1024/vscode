@@ -32,11 +32,18 @@ suite('CodexAccountState', () => {
 		);
 	});
 
-	test('does not classify API key or Bedrock credentials as human accounts', () => {
+	test('treats an API key as a completed OpenAI sign-in', () => {
 		assert.deepStrictEqual(
 			codexAccountStateFromResponse({ account: { type: 'apiKey' }, requiresOpenaiAuth: true }),
-			{ usageSource: 'openai', status: 'unavailable', authType: 'apiKey', requiresOpenaiAuth: true },
+			{ usageSource: 'openai', status: 'signedIn', authType: 'apiKey', requiresOpenaiAuth: true },
 		);
+		assert.deepStrictEqual(
+			codexAccountStateFromResponse({ account: { type: 'apiKey' }, requiresOpenaiAuth: false }),
+			{ usageSource: 'openai', status: 'signedIn', authType: 'apiKey', requiresOpenaiAuth: false },
+		);
+	});
+
+	test('does not classify Bedrock credentials as usable accounts', () => {
 		assert.deepStrictEqual(
 			codexAccountStateFromResponse({ account: { type: 'amazonBedrock', usesCodexManagedCredentials: true }, requiresOpenaiAuth: false }),
 			{ usageSource: 'openai', status: 'unavailable', authType: 'other', requiresOpenaiAuth: false },
@@ -97,6 +104,76 @@ suite('CodexAccountState', () => {
 			accountId: null,
 			rateLimitUpsell: null,
 		}), { usedPercent: 100, windowDurationMins: undefined, resetsAt: undefined });
+	});
+
+	test('rejects non-finite used percentages instead of zeroing them', () => {
+		for (const usedPercent of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+			assert.strictEqual(codexAccountRateLimitFromResponse({
+				rateLimits: {
+					limitId: null,
+					limitName: null,
+					primary: { usedPercent, windowDurationMins: 10080, resetsAt: 400 },
+					secondary: null,
+					credits: null,
+					individualLimit: null,
+					spendControlReached: null,
+					planType: null,
+					rateLimitReachedType: null,
+				},
+				rateLimitsByLimitId: null,
+				rateLimitResetCredits: null,
+				accountId: null,
+				rateLimitUpsell: null,
+			}), undefined);
+		}
+	});
+
+	test('prefers the explicit weekly window over shorter windows', () => {
+		assert.deepStrictEqual(codexAccountRateLimitFromResponse({
+			rateLimits: {
+				limitId: null,
+				limitName: null,
+				primary: { usedPercent: 90, windowDurationMins: 300, resetsAt: 100 },
+				secondary: { usedPercent: 12, windowDurationMins: 10080, resetsAt: 200 },
+				credits: null,
+				individualLimit: null,
+				spendControlReached: null,
+				planType: null,
+				rateLimitReachedType: null,
+			},
+			rateLimitsByLimitId: null,
+			rateLimitResetCredits: null,
+			accountId: null,
+			rateLimitUpsell: null,
+		}), {
+			usedPercent: 12,
+			windowDurationMins: 10080,
+			resetsAt: 200,
+		});
+	});
+
+	test('clamps an exhausted window to 100 percent', () => {
+		assert.deepStrictEqual(codexAccountRateLimitFromResponse({
+			rateLimits: {
+				limitId: null,
+				limitName: null,
+				primary: null,
+				secondary: { usedPercent: 100.4, windowDurationMins: 10080, resetsAt: 200 },
+				credits: null,
+				individualLimit: null,
+				spendControlReached: null,
+				planType: null,
+				rateLimitReachedType: null,
+			},
+			rateLimitsByLimitId: null,
+			rateLimitResetCredits: null,
+			accountId: null,
+			rateLimitUpsell: null,
+		}), {
+			usedPercent: 100,
+			windowDurationMins: 10080,
+			resetsAt: 200,
+		});
 	});
 
 	test('falls back when the Codex bucket has no windows', () => {

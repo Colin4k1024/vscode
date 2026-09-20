@@ -23,7 +23,10 @@ export function codexAccountStateFromResponse(response: GetAccountResponse): ICo
 		return { usageSource: 'openai', status: 'signedIn', authType: 'chatgpt', email: response.account.email ?? undefined, planType: response.account.planType, requiresOpenaiAuth: response.requiresOpenaiAuth };
 	}
 	if (response.account?.type === 'apiKey') {
-		return { usageSource: 'openai', status: 'unavailable', authType: 'apiKey', requiresOpenaiAuth: response.requiresOpenaiAuth };
+		// An API key is a complete OpenAI credential: the app-server can serve
+		// requests with it, so the authentication loop is closed. `authType`
+		// keeps the credential kind distinguishable from a ChatGPT subscription.
+		return { usageSource: 'openai', status: 'signedIn', authType: 'apiKey', requiresOpenaiAuth: response.requiresOpenaiAuth };
 	}
 	if (response.account) {
 		return { usageSource: 'openai', status: 'unavailable', authType: 'other', requiresOpenaiAuth: response.requiresOpenaiAuth };

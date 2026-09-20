@@ -558,6 +558,7 @@ suite('CodexAgent model refresh', () => {
 			disposed: ['client', 'proxy', 'child'],
 			account: {
 				status: 'signedIn',
+				authType: 'chatgpt',
 				email: 'person@example.com',
 				planType: 'plus',
 				profileImage,
@@ -565,6 +566,8 @@ suite('CodexAgent model refresh', () => {
 				rateLimit: { usedPercent: 1, windowDurationMins: 7 * 24 * 60, resetsAt: 123 },
 				authUrl: undefined,
 				authUrlNonce: undefined,
+				deviceVerificationUrl: undefined,
+				deviceUserCode: undefined,
 			},
 			connection: 'idle',
 		});
@@ -614,6 +617,7 @@ suite('CodexAgent model refresh', () => {
 			disposed: ['client', 'proxy', 'child'],
 			account: {
 				status: 'signedIn',
+				authType: 'chatgpt',
 				email: 'person@example.com',
 				planType: 'plus',
 				profileImage: undefined,
@@ -621,6 +625,8 @@ suite('CodexAgent model refresh', () => {
 				rateLimit: undefined,
 				authUrl: undefined,
 				authUrlNonce: undefined,
+				deviceVerificationUrl: undefined,
+				deviceUserCode: undefined,
 			},
 			connection: 'idle',
 		});
@@ -663,7 +669,7 @@ suite('CodexAgent model refresh', () => {
 			account: readCodexAccountInfo(ctx.stateManager.rootState),
 		}, {
 			connectionRequests: 0,
-			account: { status: 'unknown', email: undefined, planType: undefined, profileImage: undefined, requiresOpenaiAuth: undefined, rateLimit: undefined, authUrl: undefined, authUrlNonce: undefined },
+			account: { status: 'unknown', authType: undefined, email: undefined, planType: undefined, profileImage: undefined, requiresOpenaiAuth: undefined, rateLimit: undefined, authUrl: undefined, authUrlNonce: undefined, deviceVerificationUrl: undefined, deviceUserCode: undefined },
 		});
 	});
 
@@ -719,7 +725,7 @@ suite('CodexAgent model refresh', () => {
 		}, {
 			requests: ['account/read', 'account/login/start', 'account/read', 'account/rateLimits/read', 'getAuthStatus'],
 			disposed: ['client', 'proxy', 'child'],
-			account: { status: 'signedIn', email: 'person@example.com', planType: 'plus', profileImage: undefined, requiresOpenaiAuth: true, rateLimit: undefined, authUrl: undefined, authUrlNonce: undefined },
+			account: { status: 'signedIn', authType: 'chatgpt', email: 'person@example.com', planType: 'plus', profileImage: undefined, requiresOpenaiAuth: true, rateLimit: undefined, authUrl: undefined, authUrlNonce: undefined, deviceVerificationUrl: undefined, deviceUserCode: undefined },
 			connection: 'idle',
 		});
 	});
@@ -765,6 +771,7 @@ suite('CodexAgent model refresh', () => {
 			requests: ['account/read', 'account/login/start'],
 			account: {
 				status: 'signedIn',
+				authType: 'chatgpt',
 				email: 'person@example.com',
 				planType: 'plus',
 				profileImage: undefined,
@@ -772,8 +779,216 @@ suite('CodexAgent model refresh', () => {
 				rateLimit: undefined,
 				authUrl: undefined,
 				authUrlNonce: undefined,
+				deviceVerificationUrl: undefined,
+				deviceUserCode: undefined,
 			},
 		});
+	});
+
+	test('enumerates models for an API key account', async () => {
+		const ctx = createAgentContext(disposables, async () => [], { [AgentHostConfigKey.AllowSignedOutWhenUsable]: true });
+		const requests: string[] = [];
+		ctx.agent['_ensureConnection'] = async () => {
+			ctx.agent['_connection'] = createChatGPTConnection({ type: 'apiKey' }, requests) as never;
+			return ctx.agent['_connection'] as never;
+		};
+
+		ctx.agent['_activate']();
+		await ctx.agent.refreshModels();
+
+		assert.deepStrictEqual({
+			accountState: ctx.agent['_openAIAccountState'],
+			models: ctx.agent.models.get().map(model => ({ provider: model.provider, id: model.id, meta: model._meta })),
+		}, {
+			accountState: { usageSource: 'openai', status: 'signedIn', authType: 'apiKey', requiresOpenaiAuth: true },
+			models: [{
+				provider: 'codex',
+				id: toCodexModelSelectionId('openai', 'gpt-5.6-sol'),
+				meta: { modelGroupId: 'openai' },
+			}],
+		});
+	});
+
+	test('device-code sign-in publishes the verification URL and user code until login completes', async () => {
+		const ctx = createAgentContext(disposables, async () => []);
+		const loginStartParams: unknown[] = [];
+		const disposed: string[] = [];
+		let signedIn = false;
+		let loginCompleted: ((params: { loginId: string | null; success: boolean; error: string | null }) => void) | undefined;
+		const publishedPending = new DeferredPromise<void>();
+		ctx.agent['_startRawConnection'] = async () => ({
+			client: {
+				onExit: Event.None,
+				request: async (method: string, params?: unknown) => {
+					if (method === 'account/read') {
+						return { account: signedIn ? { type: 'chatgpt', email: 'person@example.com', planType: 'plus' } : null, requiresOpenaiAuth: true };
+					}
+					if (method === 'account/login/start') {
+						loginStartParams.push(params);
+						return { type: 'chatgptDeviceCode', loginId: 'device-login-1', verificationUrl: 'https://auth.openai.com/codex/device', userCode: 'ABCD-EFGH' };
+					}
+					if (method === 'account/rateLimits/read') {
+						return { rateLimits: { primary: null, secondary: null }, rateLimitsByLimitId: null, rateLimitResetCredits: null };
+					}
+					if (method === 'getAuthStatus') {
+						return { authMethod: 'chatgpt', authToken: null, requiresOpenaiAuth: true };
+					}
+					throw new Error(`Unexpected request: ${method}`);
+				},
+				onNotification: (_method: string, handler: typeof loginCompleted) => {
+					loginCompleted = handler;
+					return { dispose() { } };
+				},
+				dispose: () => { disposed.push('client'); },
+			},
+			proxyHandle: { dispose: () => { disposed.push('proxy'); } },
+			child: { kill: () => { disposed.push('child'); return true; } },
+		}) as never;
+		const publishSpy = ctx.agent['_publishAccountInfo'].bind(ctx.agent);
+		ctx.agent['_publishAccountInfo'] = (account: Parameters<typeof publishSpy>[0]) => {
+			publishSpy(account);
+			if (account.authUrlNonce === 'deviceCode:request-2') {
+				void publishedPending.complete();
+			}
+		};
+
+		const signIn = ctx.agent['_signInToChatGPT']('deviceCode:request-2');
+		await publishedPending.p;
+
+		assert.deepStrictEqual({
+			loginStartParams,
+			pending: readCodexAccountInfo(ctx.stateManager.rootState),
+		}, {
+			loginStartParams: [{ type: 'chatgptDeviceCode' }],
+			pending: {
+				status: 'signedOut',
+				authType: undefined,
+				email: undefined,
+				planType: undefined,
+				profileImage: undefined,
+				requiresOpenaiAuth: true,
+				rateLimit: undefined,
+				authUrl: undefined,
+				authUrlNonce: 'deviceCode:request-2',
+				deviceVerificationUrl: 'https://auth.openai.com/codex/device',
+				deviceUserCode: 'ABCD-EFGH',
+			},
+		});
+
+		signedIn = true;
+		loginCompleted?.({ loginId: 'device-login-1', success: true, error: null });
+		await signIn;
+
+		assert.deepStrictEqual({
+			account: readCodexAccountInfo(ctx.stateManager.rootState),
+			pendingSignIn: ctx.agent['_pendingChatGPTSignIn'],
+			connection: ctx.agent['_connection'].kind,
+		}, {
+			account: { status: 'signedIn', authType: 'chatgpt', email: 'person@example.com', planType: 'plus', profileImage: undefined, requiresOpenaiAuth: true, rateLimit: undefined, authUrl: undefined, authUrlNonce: undefined, deviceVerificationUrl: undefined, deviceUserCode: undefined },
+			pendingSignIn: undefined,
+			connection: 'idle',
+		});
+	});
+
+	test('cancelling an in-flight sign-in cancels the login and returns to signed-out', async () => {
+		const ctx = createAgentContext(disposables, async () => []);
+		const requests: string[] = [];
+		const cancelParams: unknown[] = [];
+		const disposed: string[] = [];
+		let loginCompleted: ((params: { loginId: string | null; success: boolean; error: string | null }) => void) | undefined;
+		const publishedPending = new DeferredPromise<void>();
+		ctx.agent['_startRawConnection'] = async () => ({
+			client: {
+				onExit: Event.None,
+				request: async (method: string, params?: unknown) => {
+					requests.push(method);
+					if (method === 'account/read') {
+						return { account: null, requiresOpenaiAuth: true };
+					}
+					if (method === 'account/login/start') {
+						return { type: 'chatgpt', loginId: 'login-cancel-1', authUrl: 'https://example.com/login' };
+					}
+					if (method === 'account/login/cancel') {
+						cancelParams.push(params);
+						return { status: 'canceled' };
+					}
+					throw new Error(`Unexpected request: ${method}`);
+				},
+				onNotification: (_method: string, handler: typeof loginCompleted) => {
+					loginCompleted = handler;
+					return { dispose() { } };
+				},
+				dispose: () => { disposed.push('client'); },
+			},
+			proxyHandle: { dispose: () => { disposed.push('proxy'); } },
+			child: { kill: () => { disposed.push('child'); return true; } },
+		}) as never;
+		const publishSpy = ctx.agent['_publishAccountInfo'].bind(ctx.agent);
+		ctx.agent['_publishAccountInfo'] = (account: Parameters<typeof publishSpy>[0]) => {
+			publishSpy(account);
+			if (account.authUrlNonce === 'request-3') {
+				void publishedPending.complete();
+			}
+		};
+
+		const signIn = ctx.agent['_signInToChatGPT']('request-3');
+		await publishedPending.p;
+		assert.strictEqual(readCodexAccountInfo(ctx.stateManager.rootState).authUrl, 'https://example.com/login');
+
+		// A cancel for another sign-in attempt must not touch this one.
+		await ctx.agent['_cancelChatGPTSignIn']('someone-elses-request');
+		assert.deepStrictEqual(cancelParams, []);
+
+		await ctx.agent['_cancelChatGPTSignIn']('request-3');
+		await signIn;
+
+		assert.deepStrictEqual({
+			cancelParams,
+			account: readCodexAccountInfo(ctx.stateManager.rootState),
+			pendingSignIn: ctx.agent['_pendingChatGPTSignIn'],
+			connection: ctx.agent['_connection'].kind,
+			disposed,
+		}, {
+			cancelParams: [{ loginId: 'login-cancel-1' }],
+			account: { status: 'signedOut', authType: undefined, email: undefined, planType: undefined, profileImage: undefined, requiresOpenaiAuth: true, rateLimit: undefined, authUrl: undefined, authUrlNonce: undefined, deviceVerificationUrl: undefined, deviceUserCode: undefined },
+			pendingSignIn: undefined,
+			connection: 'idle',
+			disposed: ['client', 'proxy', 'child'],
+		});
+		assert.ok(requests.includes('account/login/cancel'));
+	});
+
+	test('retains the last observed rate limit when a refresh fails', async () => {
+		const agent = createAgent(disposables, async () => []);
+		let fail = false;
+		const client = {
+			request: async (method: string) => {
+				assert.strictEqual(method, 'account/rateLimits/read');
+				if (fail) {
+					throw new Error('rate limits unavailable');
+				}
+				return {
+					rateLimits: { limitId: null, limitName: null, primary: null, secondary: { usedPercent: 20, windowDurationMins: 10080, resetsAt: 200 }, credits: null, individualLimit: null, spendControlReached: null, planType: null, rateLimitReachedType: null },
+					rateLimitsByLimitId: null,
+					rateLimitResetCredits: null,
+					accountId: null,
+					rateLimitUpsell: null,
+				};
+			},
+		} as never;
+		agent['_connection'] = {
+			kind: 'ready',
+			client,
+			proxyHandle: { dispose() { } },
+			child: { kill: () => true },
+		} as never;
+		agent['_openAIAccountState'] = { usageSource: 'openai', status: 'signedIn', authType: 'chatgpt', email: 'person@example.com', planType: 'plus', requiresOpenaiAuth: true };
+
+		await agent['_refreshAccountRateLimits'](client, 'person@example.com');
+		fail = true;
+		await agent['_refreshAccountRateLimits'](client, 'person@example.com');
+
+		assert.deepStrictEqual(agent['_openAIAccountRateLimit'], { usedPercent: 20, windowDurationMins: 10080, resetsAt: 200 });
 	});
 
 	test('shutdown cancels a one-off account connection that is still starting', async () => {

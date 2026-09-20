@@ -12,6 +12,7 @@ import {
 	buildAgentHostBaseCommand,
 	buildCLIDownloadUrl,
 	buildCleanupOldCLIsCommand,
+	buildFindFallbackCLICommand,
 	extractAgentHostWebSocketURL,
 	getRemoteCLIBin,
 	getRemoteCLIDataDir,
@@ -283,7 +284,14 @@ export function composeAgentHostBootstrapScript(args: IComposeAgentHostBootstrap
 	const cliBin = getRemoteCLIBin(args.serverDataFolderName, args.quality, args.commit);
 	const cliDataDir = getRemoteCLIDataDir(args.serverDataFolderName);
 	const url = buildCLIDownloadUrl(args.os, args.arch, args.quality, args.commit);
-	const agentHostCommand = buildAgentHostBaseCommand(cliBin, cliDataDir, telemetryLevel);
+	// The launch execs `$cli`: both install paths below can recover from a
+	// failed download by pointing it at a CLI the distro already has. This
+	// fork publishes no CLI artifact at the default endpoint yet (see
+	// buildCLIDownloadUrl), so the curl 404s until it does — without
+	// recovery the whole WSL bootstrap fails hard (the SSH/devcontainer
+	// installer recovers via findFallbackCli; this mirrors that).
+	const recover = buildCliFallbackRecovery(args.serverDataFolderName, args.quality);
+	const agentHostCommand = buildAgentHostBaseCommand('"$cli"', cliDataDir, telemetryLevel);
 	const launch = buildWslAgentHostLaunch(agentHostCommand);
 
 	if (args.commit) {
@@ -302,20 +310,45 @@ export function composeAgentHostBootstrapScript(args: IComposeAgentHostBootstrap
 		].join(' && ');
 		return [
 			`mkdir -p ${installRoot}`,
-			`if [ ! -x ${cliBin} ]; then ${installSteps}; fi`,
-			`touch -- ${cliBin} 2>/dev/null || true`,
+			`cli=${cliBin}`,
+			`if [ ! -x "$cli" ]; then ${installSteps} || { ${recover}; }; fi`,
+			`touch -- "$cli" 2>/dev/null || true`,
 			`(${cleanup}) >/dev/null 2>&1 || true`,
 			launch,
 		].join(' && ');
 	}
 
-	// Loose dev-build path. Matches SSH's _ensureCLIInstalledLoose: single
+	// Loose dev-build path. Matches SSH's ensureLooseCliInstalled: single
 	// non-pinned binary, no retention pruning, install on first miss.
 	const installLoose = `curl -fsSL ${shellEscape(url)} | tar xz -C ${installRoot} && chmod +x ${cliBin}`;
 	return [
 		`mkdir -p ${installRoot}`,
-		`if [ ! -x ${cliBin} ]; then ${installLoose}; fi`,
+		`cli=${cliBin}`,
+		`if [ ! -x "$cli" ]; then ${installLoose} || { ${recover}; }; fi`,
 		launch,
+	].join(' && ');
+}
+
+/**
+ * Shell snippet recovering from a failed CLI download: pick the newest
+ * usable CLI the machine already has (commit-keyed installs first, then the
+ * legacy `~/.vscode-cli-*` location — see {@link buildFindFallbackCLICommand}),
+ * re-point `cli` at it, or fail the bootstrap loud when nothing usable
+ * exists. Mirrors `findFallbackCli` in `remoteAgentHostCliInstaller.ts` for
+ * the one-shot WSL script, which has no control channel to branch on.
+ *
+ * `{ …; } | while …` groups the whole finder into the pipe — a bare
+ * `…; true | while` would pipe only the trailing `true`, leaving the loop
+ * dead and `$fallback` holding the raw multi-line output. Candidates arrive
+ * in `~/…` form and are expanded to `$HOME/…` before use: a quoted
+ * "$candidate" never tilde-expands, and the recovered `cli` is used by
+ * plain invocations (`touch`, spawn) that do not expand it either.
+ */
+function buildCliFallbackRecovery(serverDataFolderName: string, quality: string): string {
+	const findFallback = buildFindFallbackCLICommand(serverDataFolderName, quality);
+	return [
+		`fallback=$({ ${findFallback}; } | while IFS= read -r candidate; do candidate=\${candidate/#\\~/$HOME}; if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then printf '%s\\n' "$candidate"; break; fi; done)`,
+		`if [ -n "$fallback" ]; then cli="$fallback"; else echo "agent host CLI bootstrap failed: download failed and no fallback CLI exists on this machine" >&2; exit 1; fi`,
 	].join(' && ');
 }
 

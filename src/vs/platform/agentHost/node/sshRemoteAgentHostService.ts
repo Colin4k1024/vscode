@@ -2161,9 +2161,12 @@ export class SSHRemoteAgentHostMainService extends Disposable implements ISSHRem
 	 * `~/.vscode-cli{,-<quality>}/<archive>`), we fall back to the newest
 	 * one rather than refusing to connect.
 	 *
-	 * In dev/OSS builds with no commit, we keep a loose, non-pinned install
-	 * at `~/<serverDataFolderName>/<archive>`. Existing CLIs self-update
-	 * against the latest release before reuse.
+		 * In dev/OSS builds with no commit, we keep a loose, non-pinned install
+		 * at `~/<serverDataFolderName>/<archive>`. Existing CLIs self-update
+		 * against the latest release before reuse. When the download itself
+		 * fails (this fork publishes no CLI artifact at the default endpoint
+		 * yet), the loose path recovers exactly like the pinned one: reuse
+		 * the newest usable CLI already on the remote, or fail loud.
 	 *
 	 * Returns the resolved CLI binary path and its install outcome.
 	 */

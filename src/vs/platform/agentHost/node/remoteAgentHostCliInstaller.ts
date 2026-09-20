@@ -121,11 +121,27 @@ async function ensureLooseCliInstalled(
 
 	options.reportInstalling();
 	const url = buildCLIDownloadUrl(platform.os, platform.arch, options.quality);
-	await exec([
-		`mkdir -p ${installRoot}`,
-		`curl -fsSL ${shellEscape(url)} | tar xz -C ${installRoot}`,
-		`chmod +x ${cliBin}`,
-	].join(' && '));
+	try {
+		await exec([
+			`mkdir -p ${installRoot}`,
+			`curl -fsSL ${shellEscape(url)} | tar xz -C ${installRoot}`,
+			`chmod +x ${cliBin}`,
+		].join(' && '));
+	} catch (error) {
+		// Dev/OSS builds have no commit-pinned artifact, and this fork does not
+		// publish CLI tarballs at the default endpoint yet (see
+		// buildCLIDownloadUrl), so the download can fail (404). Mirror the
+		// pinned path: before failing loud, reuse a CLI the remote already has
+		// (a previous install, or one pre-seeded by a smoke-test fixture).
+		const message = error instanceof Error ? error.message : String(error);
+		options.logService.warn(`${logPrefix} Could not install dev-build remote CLI from ${url}: ${message}. Looking for a fallback CLI...`);
+		const fallback = await findFallbackCli(exec, options);
+		if (fallback) {
+			options.logService.warn(`${logPrefix} Using fallback CLI at ${fallback} (dev build, no published CLI artifact).`);
+			return { cliBin: fallback, installed: false };
+		}
+		throw error;
+	}
 	options.logService.info(`${logPrefix} Installed remote CLI at ${cliBin}`);
 	return { cliBin, installed: true };
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generate platform-specific ColinCode icons from the source SVG.
-# Ported from grok-code-product/scripts/generate-icons.sh (D17 §4: 直接复用),
+# Ported from grok-code-product/scripts/generate-icons.sh (D17 section 4: direct reuse),
 # with output renamed to the ColinCode brand and layout split into
 # product/branding/{darwin,win32,linux}/ per the D06 spec.
 #

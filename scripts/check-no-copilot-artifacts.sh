@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# D08 / Issue #10, 裁定 1 hook for D09 — Copilot artifact hard gate.
+# D08 / Issue #10, route decision 1 hook for D09 — Copilot artifact hard gate.
 #
-# D08 keeps extensions/copilot in the repo but disabled by default (裁定 (a)).
-# D10 §5 makes @vscode/copilot-api / @github/copilot a redistribution HARD
+# D08 keeps extensions/copilot in the repo but disabled by default (route decision (a)).
+# D10 section 5 makes @vscode/copilot-api / @github/copilot a redistribution HARD
 # BLOCKER: any externally distributed build must not contain them. D09's
 # verify-beta-gates must call this script against every packaged artifact
 # directory (the extracted app contents) before publishing.
@@ -30,7 +30,7 @@ for dir in "$@"; do
 		status=1
 	done < <(find "$dir" -type d \( -name 'copilot' -o -name 'copilot-chat' \) -path '*extensions*' 2>/dev/null || true)
 
-	# 2. Restricted SDK packages (D10 §5) must not appear in any node_modules.
+	# 2. Restricted SDK packages (D10 section 5) must not appear in any node_modules.
 	while IFS= read -r hit; do
 		echo "BLOCKED: restricted redistributable package present: $hit" >&2
 		status=1

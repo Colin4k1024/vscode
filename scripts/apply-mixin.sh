@@ -2,7 +2,7 @@
 # Apply the ColinCode product mixin to the in-tree VS Code fork.
 #
 # Ported from grok-code-product/scripts/apply-patches.sh (mixin half only;
-# D17 §4: 改造后复用). Differences from the source script:
+# D17 section 4: reuse with modifications). Differences from the source script:
 #   * no patch half (in-tree fork route, 0 patches)
 #   * product.json overlay is DEEP-MERGED onto the upstream product.json
 #     (upstream file stays 0-diff in git; the merged result is a working-tree

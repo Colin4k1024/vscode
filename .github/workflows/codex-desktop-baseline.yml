@@ -99,14 +99,42 @@ jobs:
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
         uses: ./.github/actions/save-node-modules
 
+      # D14 (Issue #16): fold the remaining always-green guards into the
+      # effective PR gate set. pr.yml runs these on Microsoft's self-hosted
+      # 1ES pool, which never schedules on this fork — baseline is the only
+      # PR gate that actually runs here (see UPSTREAM-SYNC.md section 6).
+      # eslint is deliberately NOT here yet: 43 pre-existing warnings on main
+      # (D07/D12/D13 test files) would make every PR red; tracked as a
+      # follow-up in UPSTREAM-SYNC.md section 6.
+      - name: Build script tests (versionSync, protocol-sync helpers)
+        run: npm run test-build-scripts
+
+      - name: Hygiene
+        run: npm run hygiene
+
+      - name: Stylelint
+        run: npm run stylelint
+
       - name: Transpile client and extensions
         run: npm run gulp transpile-client-esbuild transpile-extensions
 
       - name: Check clean git state
         run: bash .github/workflows/check-clean-git-state.sh
 
-      - name: Codex protocol sync
-        run: npm run codex:check-protocol
+      # D14 (Issue #16): --if-changed mode — PRs that touch neither
+      # protocol/generated/** nor build/codex/codex-version.txt skip the
+      # regeneration check (exit 0); PRs that touch them must pass it.
+      # The same gate runs in pr.yml ("Check Codex protocol client is in sync").
+      - name: Codex protocol sync (if changed)
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$BASE" ]; then
+            # workflow_dispatch: no diff base — run the full freshness check.
+            npm run codex:check-protocol-sync
+          else
+            git fetch --no-tags --depth=1 origin "$BASE" || true
+            npm run codex:check-protocol-sync -- --if-changed --base "$BASE"
+          fi
 
       - name: Agent Host unit tests
         timeout-minutes: 20

@@ -1,0 +1,40 @@
+name: Codex Desktop Upstream Drift
+
+# D14 (Issue #16): weekly upstream drift monitor. Measures how far
+# microsoft/vscode main has moved past the UPSTREAM_COMMIT pin, with per-area
+# diff stats for the fork's conflict hot zones (agentHost/node/codex,
+# sessions). The Markdown report is uploaded as a build artifact and is the
+# input for rebase prioritization (see UPSTREAM-SYNC.md §5). This workflow is
+# intentionally report-only: it never merges, rebases, or opens PRs (the
+# issue explicitly rules out an auto-rebase bot).
+on:
+  schedule:
+    # Mondays 02:00 UTC
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift-report:
+    name: Upstream diff statistics report
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Shallow is fine: the script fetches the UPSTREAM_COMMIT pin and the
+          # upstream window (blob:none, shallow-since pin date) on demand.
+          fetch-depth: 1
+
+      - name: Generate drift report
+        run: bash scripts/upstream-drift-report.sh --out upstream-drift-report.md
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: upstream-drift-report
+          path: upstream-drift-report.md
+          retention-days: 90

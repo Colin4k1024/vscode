@@ -290,7 +290,7 @@ export function composeAgentHostBootstrapScript(args: IComposeAgentHostBootstrap
 	// buildCLIDownloadUrl), so the curl 404s until it does — without
 	// recovery the whole WSL bootstrap fails hard (the SSH/devcontainer
 	// installer recovers via findFallbackCli; this mirrors that).
-	const recover = buildCliFallbackRecovery(args.serverDataFolderName, args.quality, url);
+	const recover = buildCliFallbackRecovery(args.serverDataFolderName, args.quality);
 	const agentHostCommand = buildAgentHostBaseCommand('"$cli"', cliDataDir, telemetryLevel);
 	const launch = buildWslAgentHostLaunch(agentHostCommand);
 
@@ -336,12 +336,19 @@ export function composeAgentHostBootstrapScript(args: IComposeAgentHostBootstrap
  * re-point `cli` at it, or fail the bootstrap loud when nothing usable
  * exists. Mirrors `findFallbackCli` in `remoteAgentHostCliInstaller.ts` for
  * the one-shot WSL script, which has no control channel to branch on.
+ *
+ * `{ …; } | while …` groups the whole finder into the pipe — a bare
+ * `…; true | while` would pipe only the trailing `true`, leaving the loop
+ * dead and `$fallback` holding the raw multi-line output. Candidates arrive
+ * in `~/…` form and are expanded to `$HOME/…` before use: a quoted
+ * "$candidate" never tilde-expands, and the recovered `cli` is used by
+ * plain invocations (`touch`, spawn) that do not expand it either.
  */
-function buildCliFallbackRecovery(serverDataFolderName: string, quality: string, url: string): string {
+function buildCliFallbackRecovery(serverDataFolderName: string, quality: string): string {
 	const findFallback = buildFindFallbackCLICommand(serverDataFolderName, quality);
 	return [
-		`fallback=$(${findFallback} | while IFS= read -r candidate; do if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then printf '%s\\n' "$candidate"; break; fi; done)`,
-		`if [ -n "$fallback" ]; then cli="$fallback"; else echo "agent host CLI bootstrap failed: download from ${url} failed and no fallback CLI exists on this machine" >&2; exit 1; fi`,
+		`fallback=$({ ${findFallback}; } | while IFS= read -r candidate; do candidate=\${candidate/#\\~/$HOME}; if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then printf '%s\\n' "$candidate"; break; fi; done)`,
+		`if [ -n "$fallback" ]; then cli="$fallback"; else echo "agent host CLI bootstrap failed: download failed and no fallback CLI exists on this machine" >&2; exit 1; fi`,
 	].join(' && ');
 }
 

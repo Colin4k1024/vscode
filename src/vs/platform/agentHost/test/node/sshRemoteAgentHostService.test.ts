@@ -1371,6 +1371,8 @@ suite('SSHRemoteAgentHostMainService - connect flow', () => {
 			`should have run fallback finder; saw: ${JSON.stringify(execCalls)}`);
 		assert.ok(execCalls.some(c => c.includes(`${fallbackBin} --version`)),
 			`should --version-validate the fallback; saw: ${JSON.stringify(execCalls)}`);
+		assert.ok(execCalls.some(c => c.startsWith(`${fallbackBin} --cli-data-dir`)),
+			`subsequent agent-host commands should run against the fallback CLI; saw: ${JSON.stringify(execCalls)}`);
 	});
 
 	test('propagates the install error when the dev-build download fails and no fallback exists', async () => {
@@ -1382,7 +1384,10 @@ suite('SSHRemoteAgentHostMainService - connect flow', () => {
 			{ stdout: '', code: 0 },               // fallback finder returns nothing
 		];
 
-		await assert.rejects(service.connect(makeConfig({ sshConfigHost: 'myhost' })));
+		// The matcher pins the rejection to the install error itself — without
+		// it the test would also pass if the error were swallowed and a later
+		// step (e.g. endpoint discovery) rejected for an unrelated reason.
+		await assert.rejects(service.connect(makeConfig({ sshConfigHost: 'myhost' })), /SSH command failed \(exit 7\)/);
 	});
 
 	test('warns and reuses the installed CLI when refresh fails', async () => {

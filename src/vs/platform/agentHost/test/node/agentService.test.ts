@@ -1616,6 +1616,47 @@ suite('AgentService (node dispatcher)', () => {
 			});
 		}
 
+		for (const initiallyEnabled of [true, false]) {
+			test(`the session catalog gate frozen at first read ignores a runtime flip to ${!initiallyEnabled} (D13 C3.12)`, async () => {
+				class MetadataCountingAgent extends MockAgent {
+					metadataCalls = 0;
+					override async getChatMetadata(chat: URI, context: URI | IAgentChatContext): Promise<IAgentChatMetadata | undefined> {
+						this.metadataCalls++;
+						return super.getChatMetadata(chat, context);
+					}
+				}
+				const svc = disposables.add(createTestAgentService(
+					new NullLogService(), fileService, createSessionDataService(new TestSessionDatabase()), { _serviceBrand: undefined } as IProductService, createNoopGitService(),
+					undefined, undefined, undefined, undefined, undefined, [], undefined, undefined, new TestAgentHostOrchestratorDatabase(),
+				));
+				getConfigurationService(svc).updateRootConfig({ [AgentHostSessionCatalogEnabledConfigKey]: initiallyEnabled });
+				const agent = disposables.add(new MetadataCountingAgent('copilot'));
+				registerTestAgentProvider(svc, agent);
+				await svc.createSession({ provider: 'copilot' });
+				await svc.listSessions(); // freezes the gate
+				svc.markStartupComplete();
+				await svc.whenDeferredWorkSettled();
+				await svc.whenCatalogReconciliationIdle();
+
+				// Flip the rollback lever mid-run: the store backing must not change.
+				getConfigurationService(svc).updateRootConfig({ [AgentHostSessionCatalogEnabledConfigKey]: !initiallyEnabled });
+				agent.metadataCalls = 0;
+				(svc as unknown as { _invalidateSessionList(): void })._invalidateSessionList();
+				const listed = await svc.listSessions();
+
+				assert.deepStrictEqual({
+					listedCount: listed.length,
+					askedProviderForMetadata: agent.metadataCalls > 0,
+				}, {
+					listedCount: 1,
+					// The flip requires a restart: the frozen gate keeps serving
+					// from the catalog when it started enabled, and from the
+					// provider when it started disabled.
+					askedProviderForMetadata: !initiallyEnabled,
+				});
+			});
+		}
+
 		test('activity changes and clearing do not open session databases', async () => {
 			const baseSessionDataService = createSessionDataService(new TestSessionDatabase());
 			let databaseOpens = 0;

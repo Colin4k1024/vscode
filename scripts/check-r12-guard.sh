@@ -8,8 +8,9 @@
 # Checks (all hard-fail):
 #   1. effective product.json (working tree — run after apply-mixin, or on the
 #      pristine tree where the overlay is merged in memory) has quality != "stable"
-#   2. the schema default of each setting in source is either literally `true`
-#      or `product.quality !== 'stable'` (true under any non-stable quality)
+#   2. the schema default of each setting in source is literally `true`
+#      (D06 round-1: `product.quality !== 'stable'` derivations are rejected —
+#      the branded product must not inherit upstream's stable-channel off-switch)
 #   3. product/default-settings.json declares both settings true
 set -euo pipefail
 
@@ -38,7 +39,7 @@ if (effective.quality === 'stable') {
 console.log(`    [1/3] effective product quality: ${effective.quality ?? '(unset)'} — not stable, OK`);
 NODE_EOF
 
-# 2. schema defaults must be `true` or `product.quality !== 'stable'`
+# 2. schema defaults must be the literal `true`
 node - "$REPO_ROOT" <<'NODE_EOF'
 const fs = require('fs');
 const path = require('path');
@@ -98,11 +99,9 @@ for (const { id, file } of settings) {
 	}
 	const expr = m[1].trim();
 	if (expr === 'true') {
-		console.log(`    [2/3] '${id}' default = true (explicit), OK`);
-	} else if (expr === "product.quality !== 'stable'") {
-		console.log(`    [2/3] '${id}' default = product.quality !== 'stable' (true — quality is not stable), OK`);
+		console.log(`    [2/3] '${id}' default = true (literal), OK`);
 	} else {
-		console.error(`ERROR: R12: '${id}' schema default is not guaranteed true: default: ${expr}`);
+		console.error(`ERROR: R12: '${id}' schema default must be the literal \`true\`, found: default: ${expr}`);
 		process.exit(1);
 	}
 }

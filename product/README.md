@@ -12,20 +12,30 @@
 ```text
 product/
 ├── product.json          # 覆盖层：仅品牌身份字段；未列字段继承上游
-├── default-settings.json # R12 声明层（见下）
+├── default-settings.json # R12 声明记录（declarative record，非运行时机制，见下）
 ├── extensions.json       # 内置扩展清单（预留给 D09 打包管线；当前全空 = 继承上游）
 ├── branding-residue-whitelist.txt  # AC8 扫描白名单（仅第三方许可文本）
 ├── README.md
 └── branding/
-    ├── icon.svg                 # 占位 logo（自绘几何图形，非上游资产）
-    ├── darwin/colincode.icns    # → resources/darwin/code.icns
-    ├── win32/colincode.ico      # → resources/win32/code.ico
-    │       colincode_70x70.png  # → resources/win32/code_70x70.png
-    │       colincode_150x150.png# → resources/win32/code_150x150.png
-    ├── linux/colincode.png      # → resources/linux/code.png
-    │       colincode.appdata.xml# → resources/linux/code.appdata.xml
-    └── app/colincode_*.png      # 通用 PNG 尺寸集，供打包消费者使用（DMG/web/D09）；
-                               # resources/app/ 是构建期生成目录，mixin 不向仓库工作树写入
+    ├── icon.svg                      # 占位 logo（自绘几何图形，非上游资产）
+    ├── inno-big.svg                  # Inno 安装向导横幅（高条形）
+    ├── darwin/colincode.icns         # → resources/darwin/code.icns
+    │       fileicon.svg              # 文件类型文档图标模板（文档 + 品牌 mark）
+    │       colincode-file.icns       # → resources/darwin/*.icns（28 个文件类型槽位，
+    │                                 #   code.icns 除外；round-1 M1，消除文档图标内的上游 logo）
+    ├── win32/colincode.ico           # → resources/win32/code.ico
+    │       colincode_70x70.png       # → resources/win32/code_70x70.png（真实 70×70）
+    │       colincode_150x150.png     # → resources/win32/code_150x150.png（真实 150×150）
+    │       VisualElementsManifest.xml# → resources/win32/VisualElementsManifest.xml
+    │                                 #   （ShortDisplayName=ColinCode，round-1 M1）
+    │       inno-{big,small}-*.bmp    # → resources/win32/（14 个向导位图，逐 DPI 档渲染）
+    ├── server/code-192.png           # → resources/server/code-192.png
+    │       code-512.png              # → resources/server/code-512.png
+    │       favicon.ico               # → resources/server/favicon.ico
+    ├── linux/colincode.png           # → resources/linux/code.png
+    │       colincode.appdata.xml     # → resources/linux/code.appdata.xml
+    └── app/colincode_*.png           # 通用 PNG 尺寸集，供打包消费者使用（DMG/web/D09）；
+                                    # resources/app/ 是构建期生成目录，mixin 不向仓库工作树写入
 ```
 
 与 `grok-code-product/product/` 的对齐（AC10）：顶层四件套
@@ -51,12 +61,28 @@ git checkout -- product.json resources/
 
 ## R12（最重要的一条守卫）
 
-mixin **不设置** `quality: 'stable'`（否则 `chat.agentHost.codexAgent.enabled` 与
-`chat.editor.codex.preferAgentHost` 的 schema 默认 `product.quality !== 'stable'`
-会把 Codex 默认关掉）。`default-settings.json` 显式声明两者为 `true`；
-`scripts/check-r12-guard.sh` 静态断言：有效 quality ≠ stable、两处 schema
-默认保证为 true、声明层不漂移。VS Code 无 product 级 default-settings 机制，
-运行时生效靠的是 schema 默认值本身（在非 stable quality 下为 true）。
+mixin **不设置** `quality: 'stable'`，且两处 schema 默认已改为**字面量 `true`**
+（`agentHostStarter.config.contribution.ts` 的 `chat.agentHost.codexAgent.enabled`、
+`chat.shared.contribution.ts` 的 `chat.editor.codex.preferAgentHost`）——不再从
+`product.quality` 推导，品牌产品无条件默认启用 Codex agent host。
+`scripts/check-r12-guard.sh` 静态断言：有效 quality ≠ stable、两处 schema 默认
+为字面量 `true`（拒绝任何表达式推导）、声明记录不漂移。
+
+`default-settings.json` 是 **R12 声明记录（declarative record）**，不是运行时机制：
+VS Code 不存在 product 级 default-settings 加载链路，该文件不会被任何运行时读取。
+它的唯一作用是与源码 schema 默认值交叉校验（guard 脚本在两者漂移时硬失败）。
+运行时生效完全依赖上述两处源码默认值本身。
+
+## 渠道声明与已知残留（D06 round-1）
+
+- **appx / Microsoft Store 渠道禁用**：本分支不打 Store 包，
+  `resources/win32/appx/AppxManifest.xml` 中的 Microsoft Publisher 身份残留
+  因此不进入任何分发产物，不需要品牌化（若未来启用 Store 渠道，需先重开此项）。
+- **win32 文件类型图标（`resources/win32/*.ico`，28 个文件关联图标）**：
+  仍含上游 logo，属已知残留。生成成本评估结论：win32 文件关联图标需要
+  逐类型差异化（Finder/资源管理器不叠加扩展名标签），占位模板替换会降低
+  可用性，故本轮不动；跟踪：最终定名换真实 logo 时随 generate-icons.sh
+  统一重出（darwin 侧 28 个 .icns 已在 round-1 用文档模板 + 品牌 mark 替换）。
 
 ## dataFolderName 变更的用户可见影响（PR 描述必须复述）
 

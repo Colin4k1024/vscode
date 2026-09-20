@@ -23,7 +23,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PRODUCT_DIR="$REPO_ROOT/product"
 OVERLAY="$PRODUCT_DIR/product.json"
 TARGET="$REPO_ROOT/product.json"
-MODE="${1:-apply}"
+if [ $# -gt 1 ]; then
+	echo "ERROR: too many arguments (usage: $0 [--check])" >&2
+	exit 2
+fi
+case "${1:-apply}" in
+	apply) MODE="apply" ;;
+	--check) MODE="--check" ;;
+	*) echo "ERROR: unknown argument: ${1:-} (usage: $0 [--check])" >&2; exit 2 ;;
+esac
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -140,6 +148,27 @@ copy_asset "$PRODUCT_DIR/branding/win32/colincode_70x70.png"    "$REPO_ROOT/reso
 copy_asset "$PRODUCT_DIR/branding/win32/colincode_150x150.png"  "$REPO_ROOT/resources/win32/code_150x150.png"
 copy_asset "$PRODUCT_DIR/branding/linux/colincode.png"          "$REPO_ROOT/resources/linux/code.png"
 copy_asset "$PRODUCT_DIR/branding/linux/colincode.appdata.xml"  "$REPO_ROOT/resources/linux/code.appdata.xml"
+
+# D06 round-1 (M1): the remaining upstream-brand slots in packaged builds.
+# win32 Start-menu tile manifest (ShortDisplayName etc.)
+copy_asset "$PRODUCT_DIR/branding/win32/VisualElementsManifest.xml" "$REPO_ROOT/resources/win32/VisualElementsManifest.xml"
+# win32 Inno Setup wizard images at every DPI scale
+for scale in 100 125 150 175 200 225 250; do
+	copy_asset "$PRODUCT_DIR/branding/win32/inno-big-$scale.bmp"   "$REPO_ROOT/resources/win32/inno-big-$scale.bmp"
+	copy_asset "$PRODUCT_DIR/branding/win32/inno-small-$scale.bmp" "$REPO_ROOT/resources/win32/inno-small-$scale.bmp"
+done
+# server / web client icons
+copy_asset "$PRODUCT_DIR/branding/server/code-192.png" "$REPO_ROOT/resources/server/code-192.png"
+copy_asset "$PRODUCT_DIR/branding/server/code-512.png" "$REPO_ROOT/resources/server/code-512.png"
+copy_asset "$PRODUCT_DIR/branding/server/favicon.ico"  "$REPO_ROOT/resources/server/favicon.ico"
+# darwin file-type document icons (27 upstream icns embed the VS Code logo);
+# one branded document icns covers every file-type slot. code.icns is handled
+# above and stays the app icon.
+for dst in "$REPO_ROOT/resources/darwin/"*.icns; do
+	name="$(basename "$dst")"
+	[ "$name" = "code.icns" ] && continue
+	copy_asset "$PRODUCT_DIR/branding/darwin/colincode-file.icns" "$dst"
+done
 # branding/app/ holds the generic PNG size set for packaging consumers
 # (DMG, web, D09 pipeline). resources/app/ is a build-created directory and is
 # deliberately NOT populated in the repo working tree.

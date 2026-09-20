@@ -293,7 +293,8 @@ configurationRegistry.registerConfiguration({
 		[AgentHostCodexAgentEnabledSettingId]: {
 			type: 'boolean',
 			description: nls.localize('chat.agentHost.codexAgent.enabled', "When enabled, the agent host registers the Codex provider (subject to the Codex SDK being reachable). Enabling takes effect without restarting the agent host."),
-			default: product.quality !== 'stable',
+			// R12 (Issue #8): must be a literal `true` — the branded product enables the Codex agent host unconditionally (no product.quality derivation).
+			default: true,
 			tags: ['experimental'],
 			// Allow the default to be overridden by an experiment. Uses `startup`
 			// to match the sibling agent-host provider settings.

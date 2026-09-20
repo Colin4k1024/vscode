@@ -156,7 +156,7 @@ import { reportCodexProviderSwitch } from './codexProviderSwitchTelemetry.js';
 import { formatGuardianDenialNotification, formatGuardianReviewStatusNotification, summarizeGuardianReviewAction, toGuardianAssessmentEventJson } from './codexGuardianReview.js';
 import { CODEX_COMPACT_SLASH_COMMAND } from '../codexCompactCommand.js';
 
-// D10 §3 / D08: identify as the ColinCode agent host, not Microsoft's
+// D10 section 3 / D08: identify as the ColinCode agent host, not Microsoft's
 // `vscode_agent_host` — reusing Microsoft's registered client name would
 // misattribute our traffic to the official VS Code client in OpenAI's
 // compliance logs.

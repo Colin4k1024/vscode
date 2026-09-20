@@ -200,6 +200,11 @@ export const copyrightFilter = Object.freeze<string[]>([
 	'!**/*.wasm',
 	'!**/*.tiff',
 	'!**/*.provisionprofile',
+	// D14: machine-readable pin files (single bare value per line, consumed by
+	// scripts/sync-upstream.sh and scripts/upstream-drift-report.sh) — a comment
+	// header would corrupt parsing.
+	'!UPSTREAM_COMMIT',
+	'!VERSION',
 	'!build/**/*.init',
 	'!build/darwin/patch-dmg.py',
 	'!build/linux/libcxx-fetcher.*',

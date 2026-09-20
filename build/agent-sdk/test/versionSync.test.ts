@@ -41,7 +41,7 @@ suite('agent SDK version pins stay in lockstep', () => {
 	test('build pin, runtime pin, and lockfile all match for every SDK', () => {
 		const rootDevDeps = getRootDevDependencies();
 
-		const actual: Record<string, { name: string; buildPin: string; runtimePin: string | undefined; lockPin: string | undefined }> = {};
+		const actual: Record<string, { name: string; buildPin: string; runtimePin: string | undefined; lockPin: string | undefined; protocolPin?: string }> = {};
 		const expected: typeof actual = {};
 
 		for (const sdk of getSdks()) {
@@ -52,6 +52,15 @@ suite('agent SDK version pins stay in lockstep', () => {
 				runtimePin: rootDevDeps[name],
 				lockPin: getLockedVersion(sdk, name),
 			};
+			// D14 review: the fourth pin — the protocol source version file — must
+			// stay in the same lockstep, unconditionally (the protocol-sync CI
+			// check is --if-changed gated, so it cannot be the only guard).
+			// Protocol version files live at build/<sdk>/<sdk>-version.txt for SDKs
+			// that vendor a generated protocol (currently only codex).
+			const protocolVersionFile = path.join(getAgentDir(sdk), '..', '..', '..', sdk, `${sdk}-version.txt`);
+			if (fs.existsSync(protocolVersionFile)) {
+				actual[sdk].protocolPin = fs.readFileSync(protocolVersionFile, 'utf8').trim();
+			}
 			// The build pin (agents/<sdk>/package.json) is the source of truth;
 			// the runtime pin (root devDependencies) and lockfile MUST match it.
 			expected[sdk] = {
@@ -60,6 +69,9 @@ suite('agent SDK version pins stay in lockstep', () => {
 				runtimePin: version,
 				lockPin: version,
 			};
+			if (actual[sdk].protocolPin !== undefined) {
+				expected[sdk].protocolPin = version;
+			}
 		}
 
 		assert.deepStrictEqual(

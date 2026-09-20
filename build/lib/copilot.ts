@@ -202,6 +202,27 @@ export function getCopilotExcludeFilter(platform: string, arch: string): string[
 }
 
 /**
+ * D09 (#11): exclude the D10 §5 redistribution-blocked Copilot packages from
+ * the packaged product — `@github/copilot` (unmodified-redistribution-only
+ * license), `@vscode/copilot-api` (GitHub npm Module Terms: Code-OSS
+ * dev-only, no redistribution), and `@github/blackbird-external-ingest-utils`
+ * (same closure). Used by packageTask when the product mixin sets
+ * `excludeCopilotFromPackaging`.
+ *
+ * `@github/copilot-sdk*` is deliberately NOT excluded: it is MIT-licensed
+ * and load-bearing — agentHostMain imports it statically, so removing it
+ * crashes the agent host at startup (verified empirically, D09).
+ */
+export function getCopilotFullExcludeFilter(): string[] {
+	return [
+		'**',
+		'!**/node_modules/@github/copilot/**',
+		'!**/node_modules/@github/blackbird-external-ingest-utils/**',
+		'!**/node_modules/@vscode/copilot-api/**',
+	];
+}
+
+/**
  * Returns the SDK-owned runtime files that must survive app/remote packaging
  * for the target platform.
  *

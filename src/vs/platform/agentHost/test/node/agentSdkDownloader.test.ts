@@ -25,6 +25,7 @@ import { RequestService } from '../../../request/node/requestService.js';
 import { AgentSdkDownloader, resolveSdkTarget, type IAgentSdkPackage, type IAgentSdkDownloadProgress } from '../../node/agentSdkDownloader.js';
 import { AgentHostStorageService, type IAgentHostStorageService } from '../../node/agentHostStorageService.js';
 import { ClaudeSdkPackage } from '../../node/claude/claudeAgentSdkService.js';
+import { CodexSdkPackage } from '../../node/codex/codexAgent.js';
 import { AgentHostClaudeSdkRootEnvVar } from '../../common/agentService.js';
 import type { INativeEnvironmentService } from '../../../environment/common/environment.js';
 import type { IProductService } from '../../../product/common/productService.js';
@@ -183,6 +184,32 @@ suite('resolveSdkTarget', () => {
 		assert.strictEqual(resolveSdkTarget(fakePkg(true), { platform: 'linux', arch: 'armhf', libc: 'glibc' }), undefined);
 		assert.strictEqual(resolveSdkTarget(fakePkg(true), { platform: 'freebsd' as NodeJS.Platform, arch: 'x64', libc: undefined }), undefined);
 		assert.strictEqual(resolveSdkTarget(fakePkg(false), { platform: 'darwin', arch: 'ia32', libc: undefined }), undefined);
+	});
+
+	test('AC5: real CodexSdkPackage — exhaustive {platform} × {arch} matrix', () => {
+		// The package the branded product actually ships must resolve every
+		// supported host and must NEVER emit a -musl suffix (its Linux binary
+		// is statically musl-linked; there is exactly one linux-<arch> SKU).
+		for (const arch of ['x64', 'arm64']) {
+			assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'darwin', arch, libc: undefined }), `darwin-${arch}`);
+			assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'win32', arch, libc: undefined }), `win32-${arch}`);
+			assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'linux', arch, libc: 'glibc' }), `linux-${arch}`);
+			assert.strictEqual(
+				resolveSdkTarget(CodexSdkPackage, { platform: 'linux', arch, libc: 'musl' }),
+				`linux-${arch}`,
+				`codex linux-${arch} on musl must stay on the single linux-* SKU`,
+			);
+		}
+		// armhf / web: no SDK → undefined → provider does not register.
+		assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'linux', arch: 'armhf', libc: 'glibc' }), undefined);
+		assert.strictEqual(resolveSdkTarget(CodexSdkPackage, { platform: 'web' as NodeJS.Platform, arch: 'x64', libc: undefined }), undefined);
+	});
+
+	test('AC5: real ClaudeSdkPackage — musl gets the -musl suffix', () => {
+		for (const arch of ['x64', 'arm64']) {
+			assert.strictEqual(resolveSdkTarget(ClaudeSdkPackage, { platform: 'linux', arch, libc: 'musl' }), `linux-${arch}-musl`);
+			assert.strictEqual(resolveSdkTarget(ClaudeSdkPackage, { platform: 'linux', arch, libc: 'glibc' }), `linux-${arch}`);
+		}
 	});
 });
 

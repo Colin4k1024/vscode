@@ -26,7 +26,7 @@ import { createAsar } from './lib/asar.ts';
 import minimist from 'minimist';
 import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask, compileCopilotExtensionBuildTask } from './gulpfile.extensions.ts';
 import { checkApiProposalNamesTask, copyCodiconsTask } from './lib/compilation.ts';
-import { ensureCopilotPlatformPackage, getCopilotExcludeFilter, getCopilotRuntimePrebuildFiles, getCopilotRuntimeVersion, getCopilotTgrepExcludeFilter, getMxcExcludeFilter, getRipgrepExcludeFilter, prepareBuiltInCopilotRipgrepShim } from './lib/copilot.ts';
+import { ensureCopilotPlatformPackage, getCopilotExcludeFilter, getCopilotFullExcludeFilter, getCopilotRuntimePrebuildFiles, getCopilotRuntimeVersion, getCopilotTgrepExcludeFilter, getMxcExcludeFilter, getRipgrepExcludeFilter, prepareBuiltInCopilotRipgrepShim } from './lib/copilot.ts';
 import { ensureOSProxyResolverPlatformPackage, getOSProxyResolverExcludeFilter, getOSProxyResolverPlatformFiles } from './lib/osProxyResolver.ts';
 import { readAgentSdkResults } from './agent-sdk/common.ts';
 import { readDictationRuntimeResults } from './dictation-runtime/common.ts';
@@ -44,6 +44,13 @@ const commit = getVersion(root);
 const packageLock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8')) as {
 	readonly packages?: Readonly<Record<string, { readonly version?: string }>>;
 };
+// D09 (#11): the ColinCode mixin sets `excludeCopilotFromPackaging` — the
+// D10 §5 redistribution-blocked packages (@vscode/copilot-api,
+// @github/copilot, blackbird utils) and the built-in copilot extension must
+// not ship. The MIT-licensed @github/copilot-sdk* packages DO ship: the
+// agent host imports them statically. Upstream (no flag) behavior unchanged.
+const copilotExcludedFromPackaging = (product as { readonly excludeCopilotFromPackaging?: boolean }).excludeCopilotFromPackaging === true;
+
 const copilotRuntimeVersion = getCopilotRuntimeVersion(path.join(root, 'node_modules'));
 if (packageJson.copilotRuntimeVersion !== copilotRuntimeVersion) {
 	throw new Error(`package.json declares Copilot runtime ${packageJson.copilotRuntimeVersion}, but @github/copilot-sdk bundles ${copilotRuntimeVersion}.`);
@@ -165,7 +172,12 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			return !set.has(platform);
 		}).map(ext => `!.build/extensions/${ext.name}/**`);
 
-		const extensions = gulp.src(['.build/extensions/**', ...platformSpecificBuiltInExtensionsExclusions], { base: '.build', dot: true });
+		const extensions = gulp.src([
+			'.build/extensions/**',
+			...platformSpecificBuiltInExtensionsExclusions,
+			// D09: the compiled in-tree copilot extension must not ship (D10 §5).
+			...(copilotExcludedFromPackaging ? ['!.build/extensions/copilot/**'] : []),
+		], { base: '.build', dot: true });
 
 		const sourceFilterPattern = stripSourceMapsInPackagingTasks
 			? ['**', '!**/*.{js,css}.map']
@@ -254,7 +266,11 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 		ensureOSProxyResolverPlatformPackage(platform, arch);
 		const osProxyResolverPlatformPackage = gulp.src(getOSProxyResolverPlatformFiles(platform, arch), { base: '.', dot: true, allowEmpty: true });
 		const deps = es.merge(cleanedDeps, copilotRuntimePrebuilds, osProxyResolverPlatformPackage)
-			.pipe(filter(getCopilotExcludeFilter(platform, arch)))
+			// Upstream excludes the non-target copilot-sdk platform packages;
+			// the mixin additionally excludes the D10 §5 block-listed packages.
+			.pipe(filter(copilotExcludedFromPackaging
+				? [...getCopilotExcludeFilter(platform, arch), ...getCopilotFullExcludeFilter().slice(1)]
+				: getCopilotExcludeFilter(platform, arch)))
 			.pipe(filter(getCopilotTgrepExcludeFilter(platform, arch)))
 			.pipe(filter(getRipgrepExcludeFilter(platform, arch)))
 			.pipe(filter(getMxcExcludeFilter(arch)))
@@ -542,6 +558,9 @@ function prepareCopilotRipgrepShimTask(platform: string, arch: string, destinati
 	const outputDir = path.join(path.dirname(root), destinationFolderName);
 
 	return async () => {
+		if (copilotExcludedFromPackaging) {
+			return; // D09: no copilot extension was packaged — no shim to prepare.
+		}
 		// On Windows with win32VersionedUpdate, app resources live under a
 		// commit-hash prefix: {output}/{commitHash}/resources/app/
 		const versionedResourcesFolder = util.getVersionedResourcesFolder(platform, commit!);

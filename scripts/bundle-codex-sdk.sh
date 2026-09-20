@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+# Bundle the Codex agent SDK tarball(s) for one platform target and write the
+# results JSON that the gulp packageTask stamps into product.agentSdks.
+#
+# Ported from grok-code-product scripts/bundle-agent.sh (D17 §4 — 改造后复用).
+# Differences from the source script:
+#   * the SDK source is the pinned npm dependency in
+#     build/agent-sdk/agents/<sdk>/ (lockfile-deterministic), not a checked-out
+#     agent repo — the heavy lifting lives in build/agent-sdk/produce.ts;
+#   * the distribution endpoint defaults to THIS REPO's GitHub Releases
+#     (D09 裁定 1), not an object-storage CDN;
+#   * LICENSE/NOTICE obligations (Apache-2.0, D17 §4 item 4 / D10 §2) are
+#     fulfilled by injecting the vendored build/agent-sdk/licenses/codex/
+#     files into the tarball (the @openai/codex npm packages do not ship
+#     their license), then re-packing with the same node-tar portable
+#     settings package.ts uses.
+#
+# Usage:
+#   bash scripts/bundle-codex-sdk.sh [--target=<sdkTarget>] [--sdk=<sdk>]
+#
+#   --target   darwin-arm64 | darwin-x64 | linux-x64 | linux-arm64 | win32-x64 | win32-arm64
+#              (default: derived from the host platform/arch)
+#   --sdk      SDK id under build/agent-sdk/agents/ (default: codex)
+#
+# Env knobs (all optional):
+#   AGENT_SDK_URL_TEMPLATE  Full download-URL template. Default:
+#     https://github.com/Colin4k1024/vscode/releases/download/agent-sdk-{sdk}-{sdkVersion}/{sdk}-{sdkVersion}-{sdkTarget}.tgz
+#     Override to move distribution to another self-hosted endpoint
+#     (object storage, own domain) — the only change a migration needs.
+#   AGENT_SDK_RESULTS_FILE  Where the results JSON lands
+#     (default: .build/agent-sdk/results.json). package.sh exports the same
+#     path when invoking gulp so packageTask stamps product.agentSdks.
+#
+# Outputs:
+#   .build/agent-sdk/tarballs/<sdk>-<version>-<target>.tgz
+#   .build/agent-sdk/results.json    { "<sdk>": { version, urlTemplate } }
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+SDK="codex"
+TARGET=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--target=*) TARGET="${1#*=}"; shift ;;
+		--sdk=*) SDK="${1#*=}"; shift ;;
+		-h|--help) sed -n '2,34p' "${BASH_SOURCE[0]}"; exit 0 ;;
+		*) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
+	esac
+done
+
+fail() { echo "ERROR: $*" >&2; exit 1; }
+command -v node >/dev/null 2>&1 || fail "node not found on PATH (use node@24: export PATH=/opt/homebrew/opt/node@24/bin:\$PATH)"
+NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+[ "$NODE_MAJOR" -ge 22 ] || fail "node >= 22 required (type-stripping for build/agent-sdk/*.ts), got $(node --version)"
+
+# Default target from the host.
+if [ -z "$TARGET" ]; then
+	case "$(uname -s)-$(uname -m)" in
+		Darwin-arm64) TARGET="darwin-arm64" ;;
+		Darwin-x86_64) TARGET="darwin-x64" ;;
+		Linux-x86_64) TARGET="linux-x64" ;;
+		Linux-aarch64) TARGET="linux-arm64" ;;
+		*) fail "cannot derive sdkTarget from host $(uname -s)-$(uname -m); pass --target=" ;;
+	esac
+fi
+
+# sdkTarget → (vscode-platform, arch) for produce.ts.
+case "$TARGET" in
+	darwin-arm64) VSCODE_PLATFORM="darwin"; ARCH="arm64" ;;
+	darwin-x64) VSCODE_PLATFORM="darwin"; ARCH="x64" ;;
+	linux-x64) VSCODE_PLATFORM="linux"; ARCH="x64" ;;
+	linux-arm64) VSCODE_PLATFORM="linux"; ARCH="arm64" ;;
+	win32-x64) VSCODE_PLATFORM="win32"; ARCH="x64" ;;
+	win32-arm64) VSCODE_PLATFORM="win32"; ARCH="arm64" ;;
+	*) fail "unknown sdkTarget: $TARGET" ;;
+esac
+
+RESULTS_FILE="${AGENT_SDK_RESULTS_FILE:-$REPO_ROOT/.build/agent-sdk/results.json}"
+TARBALLS_DIR="$REPO_ROOT/.build/agent-sdk/tarballs"
+
+# D09 裁定 1: default distribution endpoint = this repo's GitHub Releases.
+# Assets are flat file names under the tag `agent-sdk-<sdk>-<version>`, so a
+# full URL template (not a CDN base) is required — buildCdnUrlTemplate honors
+# AGENT_SDK_URL_TEMPLATE and keeps {sdkTarget} intact for the runtime.
+# NOTE: assigned via an intermediate variable — an inline ${VAR:-...{sdk}...}
+# default would let bash's brace parsing mangle the template.
+DEFAULT_URL_TEMPLATE='https://github.com/Colin4k1024/vscode/releases/download/agent-sdk-{sdk}-{sdkVersion}/{sdk}-{sdkVersion}-{sdkTarget}.tgz'
+export AGENT_SDK_URL_TEMPLATE="${AGENT_SDK_URL_TEMPLATE:-$DEFAULT_URL_TEMPLATE}"
+export AGENT_SDK_RESULTS_FILE="$RESULTS_FILE"
+# Build + write results, but do NOT upload here: publishing is a separate,
+# explicit step (scripts/publish-sdk-release.sh) so a local packaging run
+# never mutates the public distribution endpoint.
+export AGENT_SDK_UPLOAD=false
+export AGENT_SDK_WRITE_RESULTS=true
+
+echo "==> Bundling agent SDK '$SDK' for $TARGET"
+echo "    url template: $AGENT_SDK_URL_TEMPLATE"
+echo "    results file: $RESULTS_FILE"
+
+node build/agent-sdk/produce.ts --vscode-platform="$VSCODE_PLATFORM" --arch="$ARCH" --sdks="$SDK"
+
+SDK_VERSION="$(node -p "const d=JSON.parse(require('fs').readFileSync('build/agent-sdk/agents/$SDK/package.json','utf8')).dependencies; d[Object.keys(d)[0]]")"
+TGZ="$TARBALLS_DIR/$SDK-$SDK_VERSION-$TARGET.tgz"
+[ -f "$TGZ" ] || fail "expected tarball missing: $TGZ"
+
+# --- Apache-2.0 redistribution obligations (D17 §4 item 4, D10 §2) ----------
+# The @openai/codex npm packages do NOT ship a LICENSE file (verified
+# 2026-09-20 against 0.153.0). Apache-2.0 §4 requires the license text (and
+# NOTICE, if any) to accompany redistribution, so we inject the vendored
+# copies and re-pack with the same node-tar portable settings package.ts
+# uses. If a future SDK version starts shipping its own license, that also
+# satisfies the obligation — skip the injection then.
+if tar -tzf "$TGZ" | grep -qiE 'license|notice'; then
+	echo "    tarball already carries LICENSE/NOTICE — injection not needed"
+else
+	LICENSE_DIR="$REPO_ROOT/build/agent-sdk/licenses/$SDK"
+	[ -f "$LICENSE_DIR/LICENSE" ] || fail "$SDK tarball ships no license and no vendored copy exists at $LICENSE_DIR — Apache-2.0 obligations unmet"
+	echo "    injecting LICENSE + NOTICE into $(basename "$TGZ") (Apache-2.0 §4)"
+	node --input-type=module - "$TGZ" "$LICENSE_DIR" "$REPO_ROOT" <<'NODE_EOF'
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as tar from 'tar';
+import { buildTarball } from './build/agent-sdk/package.ts';
+
+const [tgz, licenseDir, repoRoot] = process.argv.slice(2);
+const pkgName = JSON.parse(fs.readFileSync(path.join(repoRoot, 'build/agent-sdk/agents', 'codex', 'package.json'), 'utf8'));
+const depName = Object.keys(pkgName.dependencies)[0]; // e.g. @openai/codex
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sdk-license-inject-'));
+try {
+	await tar.x({ file: tgz, cwd: tmp });
+	const destDir = path.join(tmp, 'node_modules', ...depName.split('/'));
+	if (!fs.existsSync(destDir)) {
+		throw new Error(`expected package dir missing in tarball: ${destDir}`);
+	}
+	for (const f of ['LICENSE', 'NOTICE']) {
+		const src = path.join(licenseDir, f);
+		if (fs.existsSync(src)) {
+			fs.copyFileSync(src, path.join(destDir, f));
+		}
+	}
+	await buildTarball(tmp, tgz);
+	console.log(`    repacked ${tgz}`);
+} finally {
+	fs.rmSync(tmp, { recursive: true, force: true });
+}
+NODE_EOF
+	# Re-check: the repacked tarball MUST carry the license now.
+	tar -tzf "$TGZ" | grep -qiE 'license' || fail "license injection did not take effect in $TGZ"
+fi
+
+echo
+echo "==> SDK bundle ready:"
+echo "    tarball: $TGZ"
+echo "    results: $RESULTS_FILE"
+cat "$RESULTS_FILE"
+echo
+echo "NOTE: the results JSON points at $AGENT_SDK_URL_TEMPLATE"
+echo "      Publish the tarball there (bash scripts/publish-sdk-release.sh) before"
+echo "      or after packaging — the packaged product.json records the URL either way."

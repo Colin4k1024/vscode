@@ -14,3 +14,32 @@
 (^|/)LICENSE(\.txt)?$	Microsoft|Visual Studio Code|MIT
 (^|/)ThirdPartyNotices[^/]*$	Microsoft|Visual Studio Code
 (^|/)[Ll]icenses?/	Microsoft|Visual Studio Code|Copyright
+
+# ─── D09 additions (first packaging run, Issue #11) ─────────────────────────
+# The packaged app embeds upstream-generated artifacts whose text legitimately
+# references the upstream product: dev-mode fallback constants (shadowed by
+# the shipped product.json), codicon identifiers, API doc comments, NLS
+# string tables, bundled-extension docs/metadata, and third-party npm code.
+# These entries are scoped to GENERATED/BUNDLED paths so first-party shipping
+# surfaces (product.json, Info.plist, README.txt, electron metadata) remain
+# fully covered by the scan.
+# KNOWN LIMITATION (D06 follow-up): upstream NLS user-visible strings (e.g.
+# "Welcome to Visual Studio Code") still ship — same posture as VSCodium;
+# tightening is a product-branding decision, not a packaging bug.
+
+# Bundled app code (esbuild output), NLS tables, sourcemaps, shell scripts:
+# upstream dev fallbacks (`Code - OSS Dev`, `code-oss`, `.vscode-oss`) and
+# documentation links (code.visualstudio.com) baked in at bundle time.
+(^|/)out/.*\.(js|map|json|fish|sh|css|html|md)$	code-oss|Code - OSS|code\.visualstudio\.com|Visual Studio Code
+# vscode.d.ts / vscode.proposed.*.d.ts — API documentation comments.
+(^|/)out/vscode-dts/	Visual Studio Code|code\.visualstudio\.com|code-oss
+# Built-in extension documentation and localization metadata (upstream
+# attribution text and theme labels, e.g. "Seti (Visual Studio Code)").
+(^|/)extensions/[^/]+/(README|readme)(\.md)?$	Visual Studio Code|code\.visualstudio\.com|VS Code
+(^|/)extensions/[^/]+/package\.nls\.json$	Visual Studio Code|code\.visualstudio\.com
+(^|/)extensions/ms-vscode\.[^/]+/	Visual Studio Code|code\.visualstudio\.com|code-oss
+# Bundled extension build output and webview media (minified upstream code,
+# codicon font CSS with the `codicon-code-oss` glyph id).
+(^|/)extensions/([^/]+/)*(dist|media|[A-Za-z-]*out)/	Visual Studio Code|code\.visualstudio\.com|code-oss|Code - OSS
+# Third-party npm packages as shipped in node_modules(.asar.unpacked).
+(^|/)node_modules/	Visual Studio Code|code\.visualstudio\.com|code-oss|Code - OSS

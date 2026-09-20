@@ -201,12 +201,53 @@ export function cdnBase(): string {
 }
 
 /**
+ * Full URL-template override for self-hosted distribution endpoints whose
+ * URL shape is NOT `<base>/agent-sdk/<sdk>/<version>/<target>.tgz` — most
+ * notably GitHub Releases, where assets are flat file names under a tag
+ * (no directory segments):
+ *
+ *   AGENT_SDK_URL_TEMPLATE=https://github.com/<owner>/<repo>/releases/download/agent-sdk-{sdk}-{sdkVersion}/{sdk}-{sdkVersion}-{sdkTarget}.tgz
+ *
+ * `{sdk}` and `{sdkVersion}` are substituted here (build time);
+ * `{sdkTarget}` is left intact for the runtime downloader to substitute per
+ * launch. The override MUST contain a literal `{sdkTarget}` — without it
+ * every platform would download the same file, which is exactly the macOS
+ * Universal hazard the template mechanism exists to prevent.
+ *
+ * Set-but-unusable values throw (same fail-loud rule as the
+ * `AGENT_SDK_CDN_BASE` validation in `cdnBase()`): a typo must not quietly
+ * stamp a broken template into product.json.
+ *
+ * Returns undefined when the override is unset/empty.
+ */
+function urlTemplateOverride(): string | undefined {
+	const raw = process.env.AGENT_SDK_URL_TEMPLATE?.trim();
+	if (raw === undefined || raw === '') {
+		return undefined;
+	}
+	if (!/^https?:\/\//i.test(raw)) {
+		throw new Error(
+			`AGENT_SDK_URL_TEMPLATE must be an http(s) URL (got: ${JSON.stringify(raw)}). ` +
+			`Unset it to use the default <base>/agent-sdk/<sdk>/<version>/<target>.tgz shape.`,
+		);
+	}
+	if (!raw.includes('{sdkTarget}')) {
+		throw new Error(
+			`AGENT_SDK_URL_TEMPLATE must contain a literal {sdkTarget} placeholder (got: ${JSON.stringify(raw)}). ` +
+			`Without it every platform would resolve to the same download.`,
+		);
+	}
+	return raw;
+}
+
+/**
  * Builds the CDN URL the per-platform `product.agentSdks.<sdk>.url` points at.
- * Content-addressed under `agent-sdk/<sdk>/<version>/<target>.tgz`. Matches
- * the upload path written by `upload.ts`.
+ * Content-addressed under `agent-sdk/<sdk>/<version>/<target>.tgz` by default
+ * (matching the upload path written by `upload.ts`); honors the
+ * `AGENT_SDK_URL_TEMPLATE` override when set.
  */
 export function buildCdnUrl(sdk: Sdk, sdkVersion: string, sdkTarget: string): string {
-	return `${cdnBase()}/agent-sdk/${sdk}/${sdkVersion}/${sdkTarget}.tgz`;
+	return buildCdnUrlTemplate(sdk, sdkVersion).replaceAll('{sdkTarget}', sdkTarget);
 }
 
 /**
@@ -215,9 +256,16 @@ export function buildCdnUrl(sdk: Sdk, sdkVersion: string, sdkTarget: string): st
  * `{sdkTarget}` per launch via `resolveSdkTarget` in
  * `src/vs/platform/agentHost/node/agentSdkDownloader.ts`. Matches the
  * upload path written by `upload.ts` with `{sdkTarget}` in place of the
- * concrete target suffix.
+ * concrete target suffix. `AGENT_SDK_URL_TEMPLATE` overrides the whole
+ * shape (see `urlTemplateOverride`).
  */
 export function buildCdnUrlTemplate(sdk: Sdk, sdkVersion: string): string {
+	const override = urlTemplateOverride();
+	if (override !== undefined) {
+		return override
+			.replaceAll('{sdk}', sdk)
+			.replaceAll('{sdkVersion}', sdkVersion);
+	}
 	return `${cdnBase()}/agent-sdk/${sdk}/${sdkVersion}/{sdkTarget}.tgz`;
 }
 

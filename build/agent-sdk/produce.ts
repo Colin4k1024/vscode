@@ -25,6 +25,20 @@
  *     without `agentSdks` and the runtime stays on the dev-override path,
  *     same as a local `npm run gulp` invocation.
  *
+ * Fork/self-hosted overrides (unset = upstream behavior, unchanged):
+ *
+ *   - AGENT_SDK_UPLOAD=true|false: override the VSCODE_PUBLISH-derived
+ *     upload decision. A set-but-unparsable value fails loud.
+ *   - AGENT_SDK_WRITE_RESULTS=true: write the results JSON even when not
+ *     uploading. This is the local/GitHub-Actions equivalent of the Azure
+ *     `##vso[task.setvariable variable=AGENT_SDK_RESULTS_FILE]` handoff: the
+ *     file lands at AGENT_SDK_RESULTS_FILE (or the .build default) and the
+ *     gulp packaging step is invoked with that env var set, so
+ *     `readAgentSdkResults()` stamps `product.agentSdks` into product.json.
+ *     Use this when tarballs are published by a separate step (e.g.
+ *     `scripts/publish-sdk-release.sh` for GitHub Releases) or are already
+ *     published from a previous run.
+ *
  * Each (sdk, sdkTarget) pair has exactly one producer per pipeline run —
  * `darwin-arm64` is only built by the macOS arm64 job, `linux-x64-musl`
  * only by the Alpine x64 job, etc. So there's no cross-host race over
@@ -59,6 +73,27 @@ interface ICliArgs {
 	readonly resultsFile: string;
 	readonly tarballsDir: string;
 	readonly upload: boolean;
+	readonly writeResults: boolean;
+	readonly sdks: readonly Sdk[];
+}
+
+function parseBooleanEnv(name: string): boolean | undefined {
+	const raw = process.env[name]?.trim().toLowerCase();
+	if (raw === undefined || raw === '') {
+		return undefined;
+	}
+	if (raw === 'true' || raw === '1') {
+		return true;
+	}
+	if (raw === 'false' || raw === '0') {
+		return false;
+	}
+	throw new Error(`${name} must be true/1 or false/0 (got: ${JSON.stringify(process.env[name])})`);
+}
+
+function resolveUpload(): boolean {
+	return parseBooleanEnv('AGENT_SDK_UPLOAD')
+		?? (process.env.VSCODE_PUBLISH ?? '').toLowerCase() === 'true';
 }
 
 function parseCliArgs(): ICliArgs {
@@ -72,16 +107,34 @@ function parseCliArgs(): ICliArgs {
 	if (!arch) {
 		throw new Error('--arch=<x64|arm64|armhf|...> is required');
 	}
+	// Optional subset: --sdks=codex builds only that SDK (a fork shipping only
+	// one agent does not want the other SDK's entries stamped into its
+	// product.json). Unknown names fail loud against the agents/ listing.
+	let sdks: readonly Sdk[] | undefined;
+	const sdksFlag = flags.get('sdks');
+	if (sdksFlag !== undefined) {
+		const known = new Set(getSdks());
+		sdks = sdksFlag.split(',').map(s => s.trim()).filter(s => s.length > 0);
+		if (sdks.length === 0) {
+			throw new Error('--sdks= was given but named no SDK');
+		}
+		for (const sdk of sdks) {
+			if (!known.has(sdk)) {
+				throw new Error(`--sdks: unknown SDK '${sdk}' (known: ${[...known].join(', ')})`);
+			}
+		}
+	}
 	// Upload only on real publish builds. VSCODE_PUBLISH is a pipeline
 	// variable set to 'True' on publish runs and 'False' otherwise; Azure
 	// Pipelines auto-injects it into every script step's env.
-	const upload = (process.env.VSCODE_PUBLISH ?? '').toLowerCase() === 'true';
+	// AGENT_SDK_UPLOAD (true/false) overrides this for self-hosted flows.
+	const upload = resolveUpload();
 	// Stable, well-known paths so the pipeline can pick the tarballs up as
 	// an artifact and the gulp step can find the results JSON via env.
 	const tarballsDir = path.resolve(process.cwd(), '.build/agent-sdk/tarballs');
 	const resultsFile = process.env.AGENT_SDK_RESULTS_FILE
 		?? path.resolve(process.cwd(), `.build/agent-sdk/${vscodePlatform}-${arch}.json`);
-	return { vscodePlatform: vscodePlatform as VscodeBuildPlatform, arch, resultsFile, tarballsDir, upload };
+	return { vscodePlatform: vscodePlatform as VscodeBuildPlatform, arch, resultsFile, tarballsDir, upload, writeResults: parseBooleanEnv('AGENT_SDK_WRITE_RESULTS') ?? false, sdks: sdks ?? getSdks() };
 }
 
 async function main(): Promise<void> {
@@ -91,9 +144,9 @@ async function main(): Promise<void> {
 	fs.mkdirSync(args.tarballsDir, { recursive: true });
 
 	const results: IAgentSdkResults = {};
-	const sdks = getSdks();
+	const sdks = args.sdks;
 	const produced = await Promise.all(
-		sdks.map(sdk => produceOne(sdk, args.vscodePlatform, args.arch, args.tarballsDir, args.upload)),
+		sdks.map(sdk => produceOne(sdk, args.vscodePlatform, args.arch, args.tarballsDir, args.upload, args.writeResults)),
 	);
 	for (let i = 0; i < sdks.length; i++) {
 		const entry = produced[i];
@@ -110,9 +163,12 @@ async function main(): Promise<void> {
 		console.log(`##vso[task.setvariable variable=AGENT_SDK_TARBALLS_PRODUCED]true`);
 	}
 
-	if (!args.upload) {
-		console.log(`[${SCRIPT}] upload=false — ${tarballCount} tarball(s) left in ${args.tarballsDir}; skipping results file and AGENT_SDK_RESULTS_FILE setvariable.`);
+	if (!args.upload && !args.writeResults) {
+		console.log(`[${SCRIPT}] upload=false, AGENT_SDK_WRITE_RESULTS unset — ${tarballCount} tarball(s) left in ${args.tarballsDir}; skipping results file and AGENT_SDK_RESULTS_FILE setvariable.`);
 		return;
+	}
+	if (!args.upload) {
+		console.log(`[${SCRIPT}] upload=false but AGENT_SDK_WRITE_RESULTS=true — writing the results file without uploading. The urlTemplate entries point at the configured endpoint; make sure the tarballs there are (or will be) published, e.g. via scripts/publish-sdk-release.sh.`);
 	}
 
 	fs.mkdirSync(path.dirname(args.resultsFile), { recursive: true });
@@ -131,6 +187,7 @@ async function produceOne(
 	arch: string,
 	tarballsDir: string,
 	upload: boolean,
+	writeResults: boolean,
 ): Promise<IAgentSdkResults[string] | undefined> {
 	const sdkTarget = getSdkTargetForBuild(vscodePlatform, arch, sdk);
 	if (!sdkTarget) {
@@ -139,20 +196,22 @@ async function produceOne(
 	}
 	console.log(`[${SCRIPT}] ${sdk}: producing for ${vscodePlatform}/${arch} → ${sdkTarget}`);
 	const built: IBuildResult = await buildOne({ sdk, sdkTarget, outDir: tarballsDir });
-	if (!upload) {
+	if (!upload && !writeResults) {
 		return undefined;
 	}
-	// Upload returns the per-target URL; we discard it and emit the
-	// `{sdkTarget}` template instead. Every platform job ends up with
-	// the same `urlTemplate` per SDK — only the version differs across
-	// SDK bumps. The runtime substitutes `{sdkTarget}` per launch.
-	await uploadOne({
-		sdk,
-		sdkVersion: built.sdkVersion,
-		sdkTarget,
-		tgzPath: built.tgzPath,
-		sha256: built.sha256,
-	});
+	if (upload) {
+		// Upload returns the per-target URL; we discard it and emit the
+		// `{sdkTarget}` template instead. Every platform job ends up with
+		// the same `urlTemplate` per SDK — only the version differs across
+		// SDK bumps. The runtime substitutes `{sdkTarget}` per launch.
+		await uploadOne({
+			sdk,
+			sdkVersion: built.sdkVersion,
+			sdkTarget,
+			tgzPath: built.tgzPath,
+			sha256: built.sha256,
+		});
+	}
 	return { version: built.sdkVersion, urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion) };
 }
 

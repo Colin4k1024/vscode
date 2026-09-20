@@ -186,7 +186,18 @@ export function resolveRemotePlatform(unameS: string, unameM: string, libc = '')
  * When `commit` is undefined (dev/OSS builds), falls back to `latest`.
  */
 export function buildCLIDownloadUrl(os: string, arch: string, quality: string, commit?: string): string {
-	const base = 'https://update.code.visualstudio.com';
+	// D09: the upstream default `https://update.code.visualstudio.com` serves
+	// Microsoft-branded CLI bits — the fork must not fetch them (branding
+	// residue gate + D08 egress policy). Default to this repo's own release
+	// endpoint instead; override with AGENT_HOST_CLI_DOWNLOAD_BASE for a
+	// self-hosted mirror. Known limitation (recorded in scripts/package.sh):
+	// the fork does not publish CLI artifacts yet, so remote agent-host
+	// bootstrap 404s (fail loud) instead of silently using Microsoft's CDN.
+	const override = process.env.AGENT_HOST_CLI_DOWNLOAD_BASE?.trim();
+	const base = override || 'https://github.com/Colin4k1024/vscode/releases/download/cli';
+	if (override && !/^https?:\/\//i.test(override)) {
+		throw new Error(`AGENT_HOST_CLI_DOWNLOAD_BASE must be an http(s) URL (got: ${JSON.stringify(override)})`);
+	}
 	const artifact = `cli-${os}-${arch}`;
 	if (commit) {
 		// Defense-in-depth: same validation as getRemoteCLIBin so the URL

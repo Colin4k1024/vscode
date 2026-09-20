@@ -30,11 +30,17 @@ for dir in "$@"; do
 		status=1
 	done < <(find "$dir" -type d \( -name 'copilot' -o -name 'copilot-chat' \) -path '*extensions*' 2>/dev/null || true)
 
-	# 2. Restricted SDK packages (D10 section 5) must not appear in any node_modules.
+	# 2. Restricted packages (D10 §5 block list) must not appear in any
+	#    node_modules: @vscode/copilot-api (GitHub npm Module Terms: Code-OSS
+	#    dev-only, no redistribution), @github/copilot (unmodified-only),
+	#    @github/blackbird-external-ingest-utils (same closure).
+	#    @github/copilot-sdk* is deliberately NOT blocked: MIT-licensed and
+	#    load-bearing — agentHostMain imports it statically (D09 verified
+	#    empirically: removing it crashes the agent host at startup).
 	while IFS= read -r hit; do
 		echo "BLOCKED: restricted redistributable package present: $hit" >&2
 		status=1
-	done < <(find "$dir" -type d \( -path '*node_modules/@vscode/copilot-api' -o -path '*node_modules/@github/copilot' -o -path '*node_modules/@github/copilot-*' \) 2>/dev/null | head -50 || true)
+	done < <(find "$dir" -type d \( -path '*node_modules/@vscode/copilot-api' -o -path '*node_modules/@vscode/copilot-api/*' -o -path '*node_modules/@github/copilot' -o -path '*node_modules/@github/copilot/*' -o -path '*node_modules/@github/blackbird-external-ingest-utils' \) 2>/dev/null | grep -v 'copilot-sdk' | head -50 || true)
 
 	# 3. The shipped product configuration must not reference the Copilot
 	#    default chat agent or vscode-cdn.net.

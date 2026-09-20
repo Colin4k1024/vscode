@@ -7,15 +7,33 @@
  * Uploads one agent-SDK tarball to the `main.vscode-cdn.net` storage account.
  * Callable as both a library function (`uploadOne(...)`) and a thin CLI.
  *
- * Auth: reads `AZURE_STORAGE_ACCOUNT`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`,
- * `AZURE_ID_TOKEN` from env — same shape as `build/azure-pipelines/upload-cdn.ts`.
+ * Two upload backends, selected by `AGENT_SDK_UPLOAD_BACKEND`:
+ *
+ *   - `azure` (default when the env var is unset): Azure Blob Storage behind
+ *     the Microsoft CDN. Auth reads `AZURE_STORAGE_ACCOUNT`,
+ *     `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_ID_TOKEN` from env — same
+ *     shape as `build/azure-pipelines/upload-cdn.ts`.
+ *
+ *   - `http`: a generic self-hosted endpoint (object storage with plain
+ *     HEAD/PUT, an artifact repository, …). The upload URL IS the download
+ *     URL produced by `buildCdnUrl` (from `AGENT_SDK_CDN_BASE` /
+ *     `AGENT_SDK_URL_TEMPLATE`), so what `uploadOne` reports is what the
+ *     downloader will fetch. Auth is an optional static bearer token in
+ *     `AGENT_SDK_UPLOAD_TOKEN`. The sha256 travels in the
+ *     `x-content-sha256` header on PUT and is read back from the same
+ *     header on HEAD.
+ *
+ *   (GitHub Releases does not speak plain HEAD/PUT per asset — use
+ *   `scripts/publish-sdk-release.sh` for that endpoint, which applies the
+ *   same HEAD-then-decide semantics via the release asset digest.)
  *
  * Idempotency: HEAD-first on the `.tgz` blob.
  *   - Absent → upload.
- *   - Present with matching sha256 (in `metadata.sha256`) → skip.
+ *   - Present with matching sha256 (in `metadata.sha256` / the
+ *     `x-content-sha256` header) → skip.
  *   - Present with different / no sha256 metadata → fail loud, refusing to
- *     overwrite content-addressed history. Recovery: delete the blob in the
- *     Azure Portal and re-run.
+ *     overwrite content-addressed history. Recovery: delete the remote
+ *     object and re-run.
  */
 
 import * as fs from 'fs';
@@ -46,6 +64,31 @@ export async function uploadOne(args: IUploadArgs): Promise<IUploadResult> {
 	}
 	const sha256 = args.sha256 ?? await sha256OfFile(args.tgzPath);
 
+	switch (selectBackend()) {
+		case 'azure':
+			return uploadOneAzure(args, sha256);
+		case 'http':
+			return uploadOneHttp(args, sha256);
+	}
+}
+
+/**
+ * Which upload backend `uploadOne` drives. Unset/empty means `azure`
+ * (upstream behavior); anything that is neither `azure` nor `http` fails
+ * loud — a typo must not silently pick a backend.
+ */
+export function selectBackend(): 'azure' | 'http' {
+	const raw = process.env.AGENT_SDK_UPLOAD_BACKEND?.trim().toLowerCase();
+	if (raw === undefined || raw === '' || raw === 'azure') {
+		return 'azure';
+	}
+	if (raw === 'http') {
+		return 'http';
+	}
+	throw new Error(`[${SCRIPT}] AGENT_SDK_UPLOAD_BACKEND must be 'azure' or 'http' (got: ${JSON.stringify(raw)})`);
+}
+
+async function uploadOneAzure(args: IUploadArgs, sha256: string): Promise<IUploadResult> {
 	const account = requireEnv('AZURE_STORAGE_ACCOUNT');
 	const tenantId = requireEnv('AZURE_TENANT_ID');
 	const clientId = requireEnv('AZURE_CLIENT_ID');
@@ -96,6 +139,64 @@ export async function uploadOne(args: IUploadArgs): Promise<IUploadResult> {
 	});
 	console.log(`[${SCRIPT}] ✓ uploaded.`);
 	return { url: buildCdnUrl(args.sdk, args.sdkVersion, args.sdkTarget), sha256 };
+}
+
+/**
+ * Generic HTTP backend: PUT the tarball to its own download URL, with the
+ * sha256 in `x-content-sha256`. HEAD first for the idempotency decision.
+ *
+ * Kept dependency-free (global `fetch`) so it runs anywhere produce.ts runs
+ * and so the idempotency semantics are testable against a loopback server
+ * (`build/agent-sdk/test/uploadHttp.test.ts`).
+ */
+async function uploadOneHttp(args: IUploadArgs, sha256: string): Promise<IUploadResult> {
+	const url = buildCdnUrl(args.sdk, args.sdkVersion, args.sdkTarget);
+	const headers: Record<string, string> = {};
+	const token = process.env.AGENT_SDK_UPLOAD_TOKEN?.trim();
+	if (token) {
+		headers['authorization'] = `Bearer ${token}`;
+	}
+
+	console.log(`[${SCRIPT}] target: ${url}`);
+	console.log(`[${SCRIPT}] local sha256: ${sha256}`);
+
+	const head = await fetch(url, { method: 'HEAD', headers, redirect: 'follow' });
+	if (head.status === 200) {
+		const remoteSha = head.headers.get('x-content-sha256') ?? undefined;
+		if (remoteSha === sha256) {
+			console.log(`[${SCRIPT}] object already present with matching sha256 — skipping upload (idempotent).`);
+			return { url, sha256 };
+		}
+		throw new Error(
+			`[${SCRIPT}] Object already present at ${url} with ${remoteSha ? 'DIFFERENT' : 'NO'} x-content-sha256 header — refusing to overwrite content-addressed history.\n` +
+			`  remote: ${remoteSha ?? '<no x-content-sha256 header — was this object uploaded out-of-band?>'}\n` +
+			`  local:  ${sha256}\n` +
+			`If the local build is what should ship, delete the remote object and re-run. ` +
+			`Otherwise: investigate why the same ${getAgentMeta(args.sdk).name}@${args.sdkVersion} produced different bytes.`,
+		);
+	}
+	if (head.status !== 404) {
+		throw new Error(`[${SCRIPT}] HEAD ${url} returned ${head.status} — cannot make the upload decision safely, refusing to continue.`);
+	}
+
+	console.log(`[${SCRIPT}] uploading ${fs.statSync(args.tgzPath).size} bytes…`);
+	const put = await fetch(url, {
+		method: 'PUT',
+		headers: {
+			...headers,
+			'content-type': 'application/gzip',
+			'cache-control': 'max-age=31536000, immutable',
+			'x-content-sha256': sha256,
+		},
+		// Node's fetch requires `duplex: 'half'` for stream bodies.
+		body: fs.createReadStream(args.tgzPath) as unknown as BodyInit,
+		duplex: 'half',
+	} as RequestInit);
+	if (!put.ok) {
+		throw new Error(`[${SCRIPT}] PUT ${url} failed with ${put.status}: ${(await put.text()).slice(0, 500)}`);
+	}
+	console.log(`[${SCRIPT}] ✓ uploaded.`);
+	return { url, sha256 };
 }
 
 function requireEnv(name: string): string {

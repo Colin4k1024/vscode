@@ -28,17 +28,18 @@ D09 packaging pipeline (the `apply-mixin` port of grok-code-product's
 
 ## Regenerating
 
-D17 §4 ruled `grok-code-product/scripts/generate-icons.sh` is reused as-is
-(rsvg-convert + iconutil + ImageMagick); its port lands in D09. The committed
-rasters here were generated from `icon.svg` with PIL + `iconutil`:
+D17 §4 ruled `grok-code-product/scripts/generate-icons.sh` is reused, not
+rewritten. It is ported (issue #8 acceptance 10) as
+`scripts/generate-icons.sh`: rsvg-convert rasterizes the SVG, `iconutil`
+builds the `.icns` (macOS), and the `.ico` step uses ImageMagick when
+installed and falls back to `python3` + Pillow otherwise (both hard-fail per
+the D17 mixin ruling - the original script's silent `|| echo WARNING` skip is
+deliberately removed). All committed rasters in this directory were generated
+by running it:
 
 ```bash
-cd product/branding
-python3 - <<'EOF'
-# renders icon.svg's geometry (rounded square + ring) at all sizes with PIL
-EOF
-mkdir icon.iconset && cp icon_{16,32,64,128,256,512,1024}x*.png icon.iconset/
-iconutil -c icns icon.iconset -o OpenAgents.icns
+brew install librsvg   # once; iconutil ships with macOS
+bash scripts/generate-icons.sh
 ```
 
 ## Dev-mode limitation (D06 acceptance 7)

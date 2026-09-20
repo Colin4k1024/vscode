@@ -163,16 +163,30 @@ export const AgentHostCodexMultiRootEnabledSettingId = 'chat.agentHost.codexAgen
  * When `true`, the agent window opens for a signed-out user instead of forcing
  * GitHub sign-in; each session type then gates on its own GitHub requirement, so
  * a type usable without GitHub (e.g. Claude in native mode with an existing local
- * setup) works signed out while types that need GitHub prompt for it on demand.
+ * setup, or Codex on OpenAI-native credentials) works signed out while types
+ * that need GitHub prompt for it on demand.
  *
  * This is the **workbench** VS Code setting id. The workbench registers the
  * configuration schema and forwards the value into the agent-host root config
  * under the short key `AgentHostConfigKey.AllowSignedOutWhenUsable`, which the
- * Claude provider reads node-side via `getRootValue`. Until it is wired and
- * enabled the root key is absent, so it reads `false` and behavior is identical
- * to today.
+ * providers read node-side via `getRootValue`.
  */
 export const AgentHostAllowSignedOutWhenUsableSettingId = 'chat.agentHost.allowSignedOutWhenUsable';
+
+/**
+ * Fork product default for {@link AgentHostAllowSignedOutWhenUsableSettingId}
+ * (D04/#6): signed-out use is this product's default — its primary surface is
+ * the Agents window running Codex on OpenAI-native credentials, and the
+ * per-type gate already answers for each agent individually. Upstream keeps
+ * the opt-in off by default.
+ *
+ * Single point of truth for both registrations (the workbench configuration
+ * schema and the agent-host root-config schema) so the two defaults cannot
+ * drift; tests import this constant instead of pulling in the registration
+ * modules, whose side effects (command registrations) break the full unit
+ * suite when loaded alongside their own tests.
+ */
+export const AgentHostAllowSignedOutWhenUsableProductDefault = true;
 
 // The Copilot-CLI-specific setting IDs (`customTerminalTool`, `opus48Prompt`,
 // `modelCapabilityOverrides`) live with their root-config keys in

@@ -2673,6 +2673,9 @@ export class CodexAgent extends Disposable implements IAgent {
 		} catch (err) {
 			// Kill the child before releasing the proxy handle (see
 			// _disposeConnectionResources for the ownership invariant).
+			// This init-failure path mirrors _disposeConnectionResources and is
+			// covered by code symmetry only — no test stubs deep enough to reach
+			// it; keep the two cleanup sequences in lockstep when editing.
 			try { child?.kill('SIGKILL'); } catch { /* already dead */ }
 			client?.dispose();
 			proxyHandle.dispose();

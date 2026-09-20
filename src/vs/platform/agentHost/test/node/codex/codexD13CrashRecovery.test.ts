@@ -116,7 +116,6 @@ class WirePeer {
 			exitCode: null,
 			signalCode: null,
 		};
-		this._disposables.add(this.client);
 	}
 
 	private _pendingIn = '';

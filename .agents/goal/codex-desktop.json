@@ -309,6 +309,10 @@
     {
       "ts": "2026-09-20T07:05+08:00",
       "event": "USER DIRECTIVE: commit+push all local code. Executed: D04 r1 fixes (97e0040f31c, 物化回退+注释路线+注册默认断言测试, 6492 全绿) + goal-state snapshot (ca8a5d31d45) pushed; D11 WIP branch pushed (captures/harness/matrix partial); D06 WIP branch pushed (product/ mixin+clientInfo+placeholder OpenAgents partial). Both subagents died on 5h usage limit at 22:32; limit reset, D11 continuation agent relaunched on codex-desktop/d11-replay-matrix-cont; D06 continuation queued. D04 pi r2 review launched."
+    },
+    {
+      "ts": "2026-09-20T23:50+08:00",
+      "event": "#56/#54 round-2 4.0 → 修复(unicode/版权头/onboarding 真正实现/描述对齐)推送 adbfbd98420; PR #61 round-1 5.4 → 文档事实修正四件套推送 b89b1b338e6; 两者 r3/r2 复审中。D15 PR #67 已由另一会话提交, CI 失败全部基线既有(额度+chat-policy+浏览器 BAD 模块与 D15 改动无关)"
     }
   ],
   "review_state": {

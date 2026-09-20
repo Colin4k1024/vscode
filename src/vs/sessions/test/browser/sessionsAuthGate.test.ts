@@ -50,6 +50,59 @@ suite('Sessions - Auth Gate', () => {
 		});
 	});
 
+	test('resolveSignedOutWindowGate exhaustively covers the D04 acceptance matrix', () => {
+		// D04 AC2: `allowSignedOutWhenUsable=false` always forces GitHub sign-in;
+		// `=true` with no advertised requirements stays unresolved; `=true` with at
+		// least one non-GitHub requirement proceeds; `=true` with only GitHub
+		// requirements still forces sign-in.
+		assert.deepStrictEqual({
+			disabledEmpty: resolveSignedOutWindowGate(false, []),
+			disabledNone: resolveSignedOutWindowGate(false, [SessionTypeAuthRequirement.None]),
+			disabledGitHub: resolveSignedOutWindowGate(false, [SessionTypeAuthRequirement.GitHub]),
+			disabledUnusable: resolveSignedOutWindowGate(false, [SessionTypeAuthRequirement.Unusable]),
+			enabledEmpty: resolveSignedOutWindowGate(true, []),
+			enabledSingleGitHub: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.GitHub]),
+			enabledAllGitHub: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.GitHub, SessionTypeAuthRequirement.GitHub]),
+			enabledSingleNone: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.None]),
+			enabledSingleUnusable: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.Unusable]),
+			enabledGitHubThenNone: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.GitHub, SessionTypeAuthRequirement.None]),
+			enabledGitHubThenUnusable: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.GitHub, SessionTypeAuthRequirement.Unusable]),
+			enabledNoneThenGitHub: resolveSignedOutWindowGate(true, [SessionTypeAuthRequirement.None, SessionTypeAuthRequirement.GitHub]),
+		}, {
+			disabledEmpty: SignedOutWindowGate.ForceGitHubSignIn,
+			disabledNone: SignedOutWindowGate.ForceGitHubSignIn,
+			disabledGitHub: SignedOutWindowGate.ForceGitHubSignIn,
+			disabledUnusable: SignedOutWindowGate.ForceGitHubSignIn,
+			enabledEmpty: SignedOutWindowGate.Unresolved,
+			enabledSingleGitHub: SignedOutWindowGate.ForceGitHubSignIn,
+			enabledAllGitHub: SignedOutWindowGate.ForceGitHubSignIn,
+			enabledSingleNone: SignedOutWindowGate.Proceed,
+			enabledSingleUnusable: SignedOutWindowGate.Proceed,
+			enabledGitHubThenNone: SignedOutWindowGate.Proceed,
+			enabledGitHubThenUnusable: SignedOutWindowGate.Proceed,
+			enabledNoneThenGitHub: SignedOutWindowGate.Proceed,
+		});
+	});
+
+	test('isAllowSignedOutWhenUsableEnabled is always false on web and follows the setting on desktop', () => {
+		// D04 AC3: the `!isWeb` guard means web never permits signed-out use, no
+		// matter what the setting says. On desktop the setting decides. This suite
+		// runs in a browser test host, where `isWeb` is true, so the guard branch
+		// is the one exercised; the desktop branch is asserted structurally.
+		const enabled = new TestConfigurationService({ [AgentHostAllowSignedOutWhenUsableSettingId]: true });
+		const disabled = new TestConfigurationService({ [AgentHostAllowSignedOutWhenUsableSettingId]: false });
+		const unset = new TestConfigurationService();
+		assert.deepStrictEqual({
+			enabled: isAllowSignedOutWhenUsableEnabled(enabled),
+			disabled: isAllowSignedOutWhenUsableEnabled(disabled),
+			unset: isAllowSignedOutWhenUsableEnabled(unset),
+		}, {
+			enabled: !isWeb,
+			disabled: false,
+			unset: false,
+		});
+	});
+
 	test('GitHub workspace group offers sign-in only for signed-out opted-in users', () => {
 		assert.deepStrictEqual([
 			shouldShowGitHubWorkspaceGroupSignIn(false, false),

@@ -68,6 +68,36 @@ suite('Codex Agent Host preference', () => {
 			codexAgentDisabled: true,
 		});
 	});
+
+	test('leaves non-Codex contributions untouched and preserves an existing when clause (D04 AC9)', () => {
+		const copilotCli = { type: SessionType.CopilotCLI, name: 'copilotcli', displayName: 'Copilot CLI', description: '' };
+		assert.strictEqual(applyCodexAgentHostPreference(copilotCli), copilotCli, 'non-Codex contributions pass through by identity');
+
+		// An extension-contributed `when` must survive (ANDed with the agent-host
+		// suppression clause), so other gating an extension relies on is not
+		// silently dropped.
+		const configurationService = new TestConfigurationService({
+			[AgentHostCodexAgentEnabledSettingId]: true,
+			[CodexPreferAgentHostEditorSettingId]: false,
+		});
+		const contextKeyService = store.add(new ContextKeyService(configurationService));
+		AGENT_HOST_ENABLED_CONTEXT_KEY.bindTo(contextKeyService).set(true);
+		IsSessionsWindowContext.bindTo(contextKeyService).set(false);
+		const markerKey = new RawContextKey<boolean>('d04TestMarker', false).bindTo(contextKeyService);
+
+		const contribution = applyCodexAgentHostPreference({
+			type: SessionType.Codex,
+			name: 'codex',
+			displayName: 'Codex',
+			description: '',
+			when: 'd04TestMarker',
+		});
+		const when = ContextKeyExpr.deserialize(contribution.when);
+		assert.ok(when);
+		assert.strictEqual(contextKeyService.contextMatchesRules(when), false, 'marker off: the contributed clause still gates the type');
+		markerKey.set(true);
+		assert.strictEqual(contextKeyService.contextMatchesRules(when), true, 'marker on, agent host not preferred: extension-host Codex is available');
+	});
 });
 
 suite.skip('ChatSessionsService', () => {

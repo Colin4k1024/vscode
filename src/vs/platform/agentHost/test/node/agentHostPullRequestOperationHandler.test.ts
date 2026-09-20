@@ -28,7 +28,7 @@ import { mock } from '../../../../base/test/common/mock.js';
 import { AgentMergeConfigKey, readAgentMergeSessionState, type AgentMergeConfiguration, type AgentMergeControllerState, type AgentMergeSessionOverrides } from '../../common/agentMerge.js';
 import type { IAgentConfigurationService } from '../../node/agentConfigurationService.js';
 import { createPullRequestOperationMeta, createPullRequestValidationMeta, PREPARE_PULL_REQUEST_OPERATION_ID, readPullRequestDetailsResult, type IPullRequestCreateOptions } from '../../common/meta/agentPullRequestOperationMeta.js';
-import { JsonRpcErrorCodes, ProtocolError } from '../../common/state/sessionProtocol.js';
+import { AHP_AUTH_REQUIRED, JsonRpcErrorCodes, ProtocolError } from '../../common/state/sessionProtocol.js';
 
 class TestCopilotApiService implements ICopilotApiService {
 	declare readonly _serviceBrand: undefined;
@@ -215,12 +215,12 @@ class TestOctoKitService implements IAgentHostOctoKitService {
 	}
 }
 
-function createAuthenticationService(withCopilotToken = false): IAgentHostAuthenticationService {
+function createAuthenticationService(withCopilotToken = false, withRepoToken = true): IAgentHostAuthenticationService {
 	return {
 		_serviceBrand: undefined,
 		onDidChangeAuthToken: Event.None,
 		getAuthToken: resource => {
-			if (resource.resource === GITHUB_REPO_PROTECTED_RESOURCE.resource) {
+			if (withRepoToken && resource.resource === GITHUB_REPO_PROTECTED_RESOURCE.resource) {
 				return 'gh-token';
 			}
 			if (withCopilotToken && resource.resource === GITHUB_COPILOT_PROTECTED_RESOURCE.resource) {
@@ -231,7 +231,7 @@ function createAuthenticationService(withCopilotToken = false): IAgentHostAuthen
 	};
 }
 
-function setup(disposables: Pick<DisposableStore, 'add'>, gitService: TestGitService, octoKitService: IAgentHostOctoKitService, options?: { copilotApiService?: TestCopilotApiService; withCopilotToken?: boolean; turns?: Turn[]; draft?: boolean; autoMergeMethod?: AutoMergeMethod; enableAgentMerge?: boolean; agentMergeAvailable?: boolean; sessionAgentMergeEnabled?: boolean; agentMergeDefaults?: Partial<AgentMergeConfiguration>; agentMergeOverrides?: AgentMergeSessionOverrides; agentMergeControllerState?: AgentMergeControllerState; baseBranch?: string; branchPrefix?: string; workingDirectory?: string; logService?: ILogService }): { handler: AgentHostPullRequestOperationHandler; session: URI; createdEvents: string[]; createdBranches: string[]; sessionConfigUpdates: Record<string, unknown>[]; sessionConfigValues: Record<string, unknown>; copilotApiService: TestCopilotApiService; branchNameGenerator: TestBranchNameGenerator } {
+function setup(disposables: Pick<DisposableStore, 'add'>, gitService: TestGitService, octoKitService: IAgentHostOctoKitService, options?: { copilotApiService?: TestCopilotApiService; withCopilotToken?: boolean; withRepoToken?: boolean; turns?: Turn[]; draft?: boolean; autoMergeMethod?: AutoMergeMethod; enableAgentMerge?: boolean; agentMergeAvailable?: boolean; sessionAgentMergeEnabled?: boolean; agentMergeDefaults?: Partial<AgentMergeConfiguration>; agentMergeOverrides?: AgentMergeSessionOverrides; agentMergeControllerState?: AgentMergeControllerState; baseBranch?: string; branchPrefix?: string; workingDirectory?: string; logService?: ILogService }): { handler: AgentHostPullRequestOperationHandler; session: URI; createdEvents: string[]; createdBranches: string[]; sessionConfigUpdates: Record<string, unknown>[]; sessionConfigValues: Record<string, unknown>; copilotApiService: TestCopilotApiService; branchNameGenerator: TestBranchNameGenerator } {
 	const stateManager = disposables.add(new AgentHostStateManager(new NullLogService()));
 	const session = URI.parse('agent:/session');
 	const createdEvents: string[] = [];
@@ -317,7 +317,7 @@ function setup(disposables: Pick<DisposableStore, 'add'>, gitService: TestGitSer
 				createdEvents.push(`${event.sessionKey}:${event.pullRequestUrl}`);
 				createdBranches.push(event.branchName);
 			},
-			createAuthenticationService(options?.withCopilotToken), gitService, octoKitService, createTestGitHubEndpointService(), copilotApiService, branchNameGenerator, configurationService, options?.logService ?? new NullLogService()),
+			createAuthenticationService(options?.withCopilotToken, options?.withRepoToken), gitService, octoKitService, createTestGitHubEndpointService(), copilotApiService, branchNameGenerator, configurationService, options?.logService ?? new NullLogService()),
 		session,
 		createdEvents,
 		createdBranches,
@@ -388,6 +388,33 @@ suite('AgentHostPullRequestOperationHandler', () => {
 		const result = await handler.prepare({ channel, operationId: PREPARE_PULL_REQUEST_OPERATION_ID, _meta: createPullRequestValidationMeta(prepared.context) }, CancellationToken.None);
 		assert.deepStrictEqual({ result, git: gitService.calls, github: octoKitService.calls, sessionConfigUpdates, generations: copilotApiService.calls.length },
 			{ result: {}, git: [], github: [], sessionConfigUpdates: [], generations: 1 });
+	});
+
+	test('prepare and create reject without a GitHub token with a structured auth-required error and no side effects (D04 AC6)', async () => {
+		const gitService = new TestGitService();
+		gitService.gitState = { branchName: 'feature/test', githubOwner: 'microsoft', githubRepo: 'vscode' };
+		gitService.uncommitted = true;
+		const octoKitService = new TestOctoKitService();
+		// No repo token (and no Copilot token): the session cannot reach GitHub.
+		const { handler, session, createdEvents } = setup(disposables, gitService, octoKitService, { withCopilotToken: false, withRepoToken: false });
+		const channel = buildSessionChangesetUri(session.toString());
+
+		const assertAuthRequired = async (promise: Promise<unknown>) => {
+			await assert.rejects(promise, (error: unknown) => {
+				assert.ok(error instanceof ProtocolError);
+				assert.strictEqual(error.code, AHP_AUTH_REQUIRED);
+				assert.match(error.message, /Sign in to GitHub/);
+				assert.deepStrictEqual(
+					(error.data as readonly { resource?: string }[]).map(resource => resource.resource),
+					[GITHUB_REPO_PROTECTED_RESOURCE.resource],
+				);
+				return true;
+			});
+		};
+
+		await assertAuthRequired(handler.prepare({ channel, operationId: PREPARE_PULL_REQUEST_OPERATION_ID }, CancellationToken.None));
+		await assertAuthRequired(handler.invoke({ channel, operationId: 'create-pr', _meta: createPullRequestOperationMeta(submittedOptions) }, CancellationToken.None));
+		assert.deepStrictEqual({ git: gitService.calls, github: octoKitService.calls, createdEvents }, { git: [], github: [], createdEvents: [] });
 	});
 
 	test('creates a new branch from the prepared base branch after validating its identity', async () => {

@@ -5,7 +5,7 @@
 
 import assert from 'assert';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../../base/test/common/utils.js';
-import { GITHUB_COPILOT_PROTECTED_RESOURCE } from '../../../../../../platform/agentHost/common/agentService.js';
+import { GITHUB_COPILOT_PROTECTED_RESOURCE, GITHUB_REPO_PROTECTED_RESOURCE } from '../../../../../../platform/agentHost/common/agentService.js';
 import type { AgentInfo } from '../../../../../../platform/agentHost/common/state/sessionState.js';
 import type { ProtectedResourceMetadata } from '../../../../../../platform/agentHost/common/state/protocol/state.js';
 import { resolveAgentAuthRequirement } from '../../browser/baseAgentHostSessionsProvider.js';
@@ -54,6 +54,23 @@ suite('Agent Host - session type auth requirement', () => {
 				'native WITHOUT credentials: unusable',
 			],
 		);
+	});
+
+	test('a Codex agent on OpenAI credentials (all resources optional) is usable without GitHub (D04 AC9)', () => {
+		// Codex post-D04 advertises both the Copilot and the repo resource with
+		// `required: false`: once D03 counts an OpenAI apiKey as signed-in and the
+		// catalog carries OpenAI models, the requirement resolves to `none`, which
+		// is what lets the window gate proceed and the picker offer Codex. An
+		// empty catalog (no credentials at all) resolves to `unusable`, never to
+		// `github` — the agent must not reimpose a GitHub wall on its own.
+		const codexOnOpenAI: ProtectedResourceMetadata[] = [copilotOptional, { ...GITHUB_REPO_PROTECTED_RESOURCE, required: false }];
+		assert.deepStrictEqual({
+			withModels: resolveAgentAuthRequirement(agent(codexOnOpenAI, 4)),
+			withoutModels: resolveAgentAuthRequirement(agent(codexOnOpenAI, 0)),
+		}, {
+			withModels: SessionTypeAuthRequirement.None,
+			withoutModels: SessionTypeAuthRequirement.Unusable,
+		});
 	});
 
 	test('only `none` counts as usable without GitHub', () => {

@@ -1628,7 +1628,12 @@ export class CodexAgent extends Disposable implements IAgent {
 		const copilotResource = this._gitHubEndpointService.getCopilotResource();
 		return [
 			{ ...copilotResource, required: false },
-			this._gitHubEndpointService.getRepoResource(),
+			// D04: listed so the client-side auth coordinator (agentHostAuth.ts) can
+			// include it in silent token forwarding/revocation; the agent itself does
+			// not consume a repo token. `required: false` pins the semantic (the
+			// upstream factory already returns false) so a future upstream change
+			// cannot silently resurrect the signed-out window gate.
+			{ ...this._gitHubEndpointService.getRepoResource(), required: false },
 		];
 	}
 

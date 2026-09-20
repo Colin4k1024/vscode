@@ -230,7 +230,7 @@ configurationRegistry.registerConfiguration({
 		},
 		[AgentHostGitHubMcpServerEnabledSettingId]: {
 			type: 'boolean',
-			description: nls.localize('chat.agentHost.githubMcpServer.enabled', "When enabled, agent-host sessions include the GitHub MCP server."),
+			description: nls.localize('chat.agentHost.githubMcpServer.enabled', "When enabled, agent-host sessions include the GitHub MCP server. The server is only injected while a GitHub account is signed in; without a GitHub token sessions run without it regardless of this setting."),
 			default: true,
 			tags: ['experimental', 'advanced'],
 			experiment: { mode: 'startup' },

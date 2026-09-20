@@ -221,6 +221,44 @@ suite('AgentFeedbackServerTools', () => {
 		assert.throws(() => applyFeedbackTool(stateWith(), sessionResource, 'nope', {}), /Unknown feedback server tool/);
 	});
 
+	test('feedback tools return structured results without any GitHub connection (D04 AC6)', () => {
+		// Audit conclusion: these tools are pure functions over the session's
+		// annotations channel. PR review comments reach that channel only when a
+		// GitHub fetch populated it, so "no GitHub token" manifests as an empty /
+		// user-only annotation state — never as a credential lookup that could
+		// throw. This test pins that contract: no GitHub state, no uncaught
+		// error, and a structured result the agent can reason about.
+		const empty = stateWith();
+
+		// addComment keeps working: feedback is local to the session.
+		const added = applyFeedbackTool(empty, sessionResource, addCommentToolName, {
+			resourceUri: fileUri,
+			range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 5 },
+			text: 'note',
+		});
+		assert.strictEqual(added.result, 'Comment added.');
+		assert.strictEqual(added.actions.length, 1);
+
+		// viewUnreviewedComments with nothing fetched from GitHub reports an
+		// empty structured list instead of failing.
+		const unreviewed = applyFeedbackTool(empty, sessionResource, viewUnreviewedCommentsToolName, {});
+		assert.deepStrictEqual(unreviewed.actions, []);
+		assert.deepStrictEqual(JSON.parse(unreviewed.result), { comments: [] });
+
+		// resolveComments against unknown ids reports them in the result rather
+		// than throwing.
+		const resolved = applyFeedbackTool(empty, sessionResource, resolveCommentsToolName, { commentIds: ['missing'] });
+		assert.deepStrictEqual(resolved.actions, []);
+		const resolvedPayload = JSON.parse(resolved.result);
+		assert.deepStrictEqual(resolvedPayload.updatedCommentIds, []);
+		assert.deepStrictEqual(resolvedPayload.notFoundCommentIds, ['missing']);
+
+		// listComments on an empty, GitHub-less session carries no dangling
+		// pointer at review tooling.
+		const listed = applyFeedbackTool(empty, sessionResource, listCommentsToolName, {});
+		assert.deepStrictEqual(JSON.parse(listed.result), { comments: [] });
+	});
+
 	test('listComments adds no note when there are no unreviewed reviewable comments', () => {
 		const state = stateWith(annotation('a', 'accepted', false, 'visible'));
 		const outcome = applyFeedbackTool(state, sessionResource, listCommentsToolName, {});

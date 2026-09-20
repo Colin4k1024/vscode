@@ -60,24 +60,34 @@ if (overlay.excludeCopilotFromPackaging !== true) {
 }
 console.log('    mixin sets excludeCopilotFromPackaging: true — OK');
 NODE_EOF
-# 2b. With --app, scan the actual packaged artifact.
+# 2b. With --app, scan the actual packaged artifact (node_modules dirs AND
+#     the node_modules.asar — see check-no-copilot-artifacts.sh).
 if [ -n "$APP_DIR" ]; then
 	bash scripts/check-no-copilot-artifacts.sh "$APP_DIR"
 
-	# 2c. D10 section 5 conflict surfacing (NOT a pass/fail gate — flagged for the
-	# D10 owner): @vscode/copilot-api's code is INLINED into the bundled
-	# agent host (the codex/claude providers use CAPIClient for model
-	# listing), so its Module-Terms reach the artifact even though the
-	# package directory does not. Removing it is an agentHost refactor owned
-	# by D05/D10, not by packaging. External distribution requires that
-	# adjudication first.
-	if ls "$APP_DIR/Contents/Resources/app/out/vs/platform/agentHost/node/agentHostMain.js" >/dev/null 2>&1; then
-		if grep -q "copilot_internal/v2/token" "$APP_DIR/Contents/Resources/app/out/vs/platform/agentHost/node/agentHostMain.js" 2>/dev/null; then
-			echo "    ⚠️  COMPLIANCE WARNING: bundled agentHostMain.js contains inlined @vscode/copilot-api code (CAPIClient markers found)."
-			echo "        D10 section 5 blocks @vscode/copilot-api redistribution; the package dir is absent but its code is inlined."
-			echo "        ESCALATE to the D10 owner / tech-lead before any external distribution. (D09 packaging cannot resolve this.)"
-		fi
+	# 2c. The agent host bundle must not reach @vscode/copilot-api through a
+	#     STATIC import (M2). The package is `external` in the esbuild bundle
+	#     (build/next/bundle.ts), so a static value import would be emitted
+	#     verbatim into agentHostMain.js — and with the package stripped from
+	#     the packaged app (D10 section 5) it would crash the agent host at
+	#     startup AND re-establish the redistribution path the D10 block
+	#     exists to sever. The sanctioned dynamic import() (loadCopilotApi in
+	#     copilotApiService.ts) fails per-call with a clear D10 error and is
+	#     NOT flagged here. Pass/fail gate; platform-neutral path resolution
+	#     (darwin: Contents/Resources/app/..., linux/win: resources/app/...).
+	#
+	#     Replaces the D09 probe for `copilot_internal/v2/token`, which occurs
+	#     nowhere in the agent-host graph (nothing is inlined under
+	#     packages:'external') and could never fire — false assurance.
+	AGENT_HOST_MAIN="$(find "$APP_DIR" -type f -name 'agentHostMain.js' -path '*vs/platform/agentHost/node*' 2>/dev/null | head -1 || true)"
+	if [ -z "$AGENT_HOST_MAIN" ]; then
+		fail "gate 2c: agentHostMain.js not found under $APP_DIR — cannot verify the bundle has no static @vscode/copilot-api import"
 	fi
+	if grep -Eq "(from|import|export)[[:space:]]*[\"']@vscode/copilot-api[\"']|require\([[:space:]]*[\"']@vscode/copilot-api[\"']" "$AGENT_HOST_MAIN"; then
+		echo "GATE FAILED: $AGENT_HOST_MAIN statically imports @vscode/copilot-api (D10 section 5: the package is not redistributable; a static import also crashes the agent host at startup in the branded build). Use the lazy loadCopilotApi() path instead." >&2
+		exit 1
+	fi
+	echo "    agentHostMain.js: no static @vscode/copilot-api import — OK"
 else
 	echo "    packaged-artifact scan skipped (no --app; run against the packaged product before publishing)"
 fi

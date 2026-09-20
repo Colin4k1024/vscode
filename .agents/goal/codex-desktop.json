@@ -158,7 +158,7 @@
         "D17"
       ],
       "gated_by": "D10",
-      "state": "open",
+      "state": "in_progress",
       "note": "D17 已裁定：0-patch 目标确认",
       "deps_ok": true
     },
@@ -214,14 +214,8 @@
     },
     "#17": {
       "d": "D15",
-      "pri": "P2",
-      "wave": 6,
-      "deps": [
-        "D09",
-        "D10"
-      ],
-      "state": "open",
-      "note": "D10 输入：只能 Open VSX 或私有 registry"
+      "state": "in_progress",
+      "note": "子代理实施中（d15x worktree）"
     },
     "#18": {
       "d": "D16",
@@ -314,6 +308,10 @@
     {
       "ts": "2026-09-20T08:05+08:00",
       "event": "D04 审查循环: r2 4.8(注册测试恒败) → 修复(副作用import) → r3 4.2(import 致全量套件崩溃+lint违规, pi 实测抓出) → 常量方案重写(ProductDefault 单一事实点) → 全量套件 38966/13既有=基线 + eslint 0 + 单文件6/6 + node 6492 → r4 终审中 (HEAD 1b4e9353567)。教训: goal state 曾随分支重写短暂丢失, 已从 goal-state-backup 恢复; 之后 goal state 只放备份分支或独立跟踪, 不再寄生 feature 分支"
+    },
+    {
+      "ts": "2026-09-20T10:00+08:00",
+      "event": "收窄后的推进计划: #56/#54 由主 agent 直接修; #11 派子代理(d09x worktree)修 CI 失败+pi 审查+合并; #17 派子代理(d15x worktree)实施 Open VSX+白名单+实测; PR #61 pi 审查待发; Epic #1 收尾待定。两子代理已在配额重置后重启"
     }
   ],
   "review_state": {

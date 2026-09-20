@@ -88,12 +88,22 @@ if [ -n "$APP_DIR" ]; then
 	#     Replaces the D09 probe for `copilot_internal/v2/token`, which occurs
 	#     nowhere in the agent-host graph (nothing is inlined under
 	#     packages:'external') and could never fire — false assurance.
+	#
+	#     Also strip the injected product configuration's
+	#     "copilotPackagingBlocklist" array: the bundler
+	#     (build/next/index.ts fileContentMapperPlugin) inlines the applied
+	#     product.json — blocklist included — into every bundle that imports
+	#     vs/base/common/product. That is packaging-time DATA, not a link;
+	#     the actual exclusion is what gate 2b and this gate's dir/asar scan
+	#     enforce. Evidence: CI run 35538797645 flagged
+	#     out/vs/workbench/contrib/debug/node/telemetryApp.js purely on that
+	#     injected array.
 	OUT_ROOT="$(find "$APP_DIR" -type d \( -path '*/Resources/app/out' -o -path '*/resources/app/out' \) 2>/dev/null | head -1 || true)"
 	if [ -z "$OUT_ROOT" ]; then
 		fail "gate 2c: no app out/ directory found under $APP_DIR — cannot verify the bundles have no static @vscode/copilot-api import"
 	fi
 	while IFS= read -r bundle; do
-		if perl -pe 's/\bimport\(\s*["'"'"']\@vscode\/copilot-api["'"'"']\s*\)//g' "$bundle" | grep -Eq "[\"']@vscode/copilot-api[\"']"; then
+		if perl -pe 's/\bimport\(\s*["'"'"']\@vscode\/copilot-api["'"'"']\s*\)//g; s/"?copilotPackagingBlocklist"?\s*:\s*\[[^\]]*\]//g' "$bundle" | grep -Eq "[\"']@vscode/copilot-api[\"']"; then
 			echo "GATE FAILED: $bundle statically links @vscode/copilot-api (D10 section 5: the package is not redistributable; a static import also crashes the agent host at startup in the branded build). Use the lazy loadCopilotApi() path instead." >&2
 			exit 1
 		fi

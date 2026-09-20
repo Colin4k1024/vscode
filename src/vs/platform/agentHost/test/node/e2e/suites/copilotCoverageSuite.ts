@@ -183,7 +183,10 @@ export function defineCopilotCoverageTests(context: IAgentHostE2ETestContext): v
 
 		await context.client.call('disposeSession', { channel: sessionUri }, 30_000);
 		createdSessions.splice(createdSessions.indexOf(sessionUri), 1);
-		await retry(async () => assert.strictEqual(existsSync(scratchDirectory), false), 50, 20);
+		// Scratch-directory cleanup is async on the provider side; the ~1s budget
+		// (50ms x 20) proved flaky on busier CI runners. 100ms x 100 matches the
+		// budget the other suites use for eventually-consistent filesystem state.
+		await retry(async () => assert.strictEqual(existsSync(scratchDirectory), false), 100, 100);
 	});
 
 	test('root auto-reply completes provider input without a client response', async function () {

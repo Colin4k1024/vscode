@@ -93,8 +93,32 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 		const product = JSON.parse(file.contents!.toString('utf8'));
 
 		if (product.extensionsGallery) {
-			console.error(`product.json: Contains 'extensionsGallery'`);
-			errorCount++;
+			// ColinCode mixin exemption (D15): the upstream product.json must not
+			// carry a gallery, but with the mixin applied the working-tree
+			// product.json legitimately carries the overlay's Open VSX config.
+			// The exemption applies ONLY while the change is fully uncommitted
+			// AND unstaged: the working tree must differ from HEAD (mixin
+			// applied) and the index must match HEAD (nothing staged). Any other
+			// git state — committed gallery, staged gallery, or an errored git
+			// probe — fails here, because check-product-json-pristine.sh
+			// compares against HEAD and cannot catch those. Anything but the
+			// exact overlay value (e.g. an MS Marketplace URL) also fails.
+			let overlayGallery: unknown;
+			try {
+				// file.path is the root product.json being scanned; the mixin
+				// overlay lives at product/product.json next to it.
+				overlayGallery = JSON.parse(fs.readFileSync(path.join(path.dirname(file.path), 'product', 'product.json'), 'utf8')).extensionsGallery;
+			} catch {
+				overlayGallery = undefined;
+			}
+			const gitCwd = path.dirname(file.path);
+			const workingTreeDiffersFromHead = cp.spawnSync('git', ['diff', '--quiet', 'HEAD', '--', file.relative], { cwd: gitCwd }).status === 1;
+			const indexMatchesHead = cp.spawnSync('git', ['diff', '--cached', '--quiet', 'HEAD', '--', file.relative], { cwd: gitCwd }).status === 0;
+			const mixinAppliedUncommitted = workingTreeDiffersFromHead && indexMatchesHead;
+			if (!mixinAppliedUncommitted || !overlayGallery || JSON.stringify(product.extensionsGallery) !== JSON.stringify(overlayGallery)) {
+				console.error(`product.json: Contains 'extensionsGallery'`);
+				errorCount++;
+			}
 		}
 
 		this.emit('data', file);

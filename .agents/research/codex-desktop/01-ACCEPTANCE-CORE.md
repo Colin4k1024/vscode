@@ -173,7 +173,7 @@ server→client 请求共 7 类：`item/commandExecution/requestApproval`、`ite
 
 | # | 副作用面 | 检查 | 期望 |
 |---|---|---|---|
-| D1 | **网络出口白名单** | 在隔离网络（或 mitmproxy）下跑完整 e2e + 一次真实 turn，抓取所有出站连接 | 只允许：OpenAI（`chatgpt.com` / `api.openai.com` / `auth.openai.com`）、用户自配的 MCP server、（可选）自建 SDK CDN。**禁止**：`main.vscode-cdn.net`（除非 D09 改成自托管）、`*.vscode-cdn.net` webview 模板、MS/GitHub 遥测端点（若 D08 关闭） |
+| D1 | **网络出口白名单** | 在隔离网络（或 mitmproxy）下跑完整 e2e + 一次真实 turn，抓取所有出站连接 | 只允许：OpenAI（`chatgpt.com` / `api.openai.com` / `auth.openai.com`）、用户自配的 MCP server、（可选）自建 SDK CDN、Open VSX 扩展注册表（`open-vsx.org` 与其文件 CDN `openvsx.eclipsecontent.org`，D15/#17 裁定，见 D15-GALLERY.md）。扩展 readme/图标等内容渲染引入的第三方主机（如 `img.shields.io`、`raw.githubusercontent.com`）属用户触发浏览的内容驱动出口，不在本白名单约束内（D15-GALLERY.md 附录 B.8 有实测聚合）。**禁止**：`main.vscode-cdn.net`（除非 D09 改成自托管）、`*.vscode-cdn.net` webview 模板、MS/GitHub 遥测端点（若 D08 关闭） |
 | D2 | **Codex 自带分析** | 断言 spawn args 含 `analytics.enabled=false`、`feedback.enabled=false` | 恒为 false，即使用户开启 Agent Host OTel（`codexTelemetryOverrides` 注释明确：产品分析必须被压制） |
 | D3 | **OTel 默认关闭** | 断言未配置时 `otel.trace_exporter="none"`、`otel.exporter="none"`、`otel.metrics_exporter="none"` | 无静默上报 |
 | D4 | **`otel.log_user_prompt`** | 断言其值 == `config?.captureContent ?? false` | 用户提示内容默认**不**外发 |

@@ -112,17 +112,19 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 
 | 区域 | 自有改动 | 备注 |
 |---|---|---|
-| `src/vs/platform/agentHost/`（common/node/test） | 15 M + 大量 A | 最高重叠区；`codexAgent.ts` +173/-16 是最大单文件改动 |
-| `src/vs/sessions/` | 4 M + 2 A | 账号菜单、键位 |
-| `src/vs/workbench/contrib/chat/` | 6 M + 2 A | `chat.shared.contribution.ts` 已被 `sync-upstream.sh --dry-run` 实测预报冲突（2026-09-20 vs upstream/main） |
+| `src/vs/platform/agentHost/`（common/node/test） | 27 M + 13 A（按 §4.1 实测重算） | 最高重叠区；`codexAgent.ts` 为最大单文件改动（行数见 §4.1） |
+| `src/vs/sessions/` | 5 M + 2 A（按 §4.1 实测重算） | 账号菜单、键位 |
+| `src/vs/workbench/contrib/chat/` | 6 M + 3 A（按 §4.1 实测重算） | `chat.shared.contribution.ts` 已被 `sync-upstream.sh --dry-run` 实测预报冲突（2026-09-20 vs upstream/main） |
 | `product.json`（根） | 0 M | D06 mixin 保护：根 product.json 保持 0 diff（`check-product-json-pristine.sh` 把关） |
 | `package.json`（根） | 1 M（D14 的 1 行 script alias）+ devDependencies pin | Codex 升级必碰；上游也频繁动 devDependencies |
 
 ## 4. 薄覆盖层清单（对齐 R2 / D09 AC12）
 
 口径：`git diff fb20064c0f4..HEAD`（fork 相对上游基线的全部自有改动）。
-当前总计（含 D14 自身）：**178 文件，+15580/-984**；其中新增（覆盖层）122、修改
-（源码改动）56（含 24 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
+当前总计：**192 文件**（静态快照：§4.1 为手工维护清单，数字为表实测值；行数差口径 +15580/-984 为 D14 合入时点快照。
+全量实时口径跑 `scripts/own-change-surface.sh`；该脚本口径更宽——除本清单声明排除项（`protocol/generated/`、`build/codex/`）外还含
+§4.1 尚未补录的条目，两者不可直接对账，补录为既有债留作后续跟进）；
+其中新增（覆盖层）134、修改（源码改动）58（含 25 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
 `scripts/own-change-surface.sh` 断言）。上游协议生成目录
 （`protocol/generated/` 828 文件）与 `build/codex/` 在基线中已存在（上游 in-tree），
 不计入自有改动面。
@@ -133,15 +135,14 @@ bash scripts/sync-upstream.sh [--ref <ref>]
   文档、新增测试/模块）。新增文件在 merge 时天然不与上游冲突。
 - **源码改动**：修改上游既有文件（M）。每项必须回答"为什么不能走覆盖层"。
 
-56 个源码改动文件的理由汇总（逐文件全表见 §4.1，由
-`git diff --name-status fb20064c0f4 HEAD` 实时生成）：
+58 个源码改动文件的理由汇总（逐文件全表见 §4.1；清单为手工维护的快照，非实时生成——生成时点见本节顶部口径行）：
 
 - **类型/枚举/接口契约本体**（4 个）：`base/common/product.ts`、`platform/window/common/window.ts`、`agentHostSchema.ts`、`meta/codexAccount.ts`——类型成员必须改在定义处，无覆盖层概念。D09 给 `base/common/product.ts` 追加 `IAgentSdkProductConfig`（agent SDK 下载配置；D66 改为按 target 键控 sha256）与 `excludeCopilotFromPackaging` 运行时语义。
 - **行为逻辑/策略裁决**（D09 后 14 个）：`agentService.ts`、`codexAgent.ts`、`codexAccountState.ts`、`agentHostCustomizationConfig.ts`、`codexAccountService.ts`、`defaultAccount.ts`、`telemetryService.ts`、`extensionGalleryService.ts`、`agentSessionsWelcome.ts`、`sessionsActions.ts`、`account.contribution.ts`——fork 改变的是运行时行为，不是数据；上游无对应扩展点。D09 追加 3 个：`node/agentSdkDownloader.ts`（按 urlTemplate 下载并校验 SDK——完整性校验是运行时行为）、`node/shared/copilotApiService.ts`（`loadCopilotApi()` 延迟解析——D10 section 5 要求缺包时 agent host 仍可启动，D66 起品牌化构建隐藏 Copilot 登录入口并短路 CAPI 路径）、`node/sshRemoteAgentHostHelpers.ts`（CLI 下载默认端点改为 fork 自有 releases——deny-by-default 策略，见下）。
 - **上游内嵌默认值的空值守卫/移除**（5 个）：`platform/product/common/product.ts`（移除 `defaultChatAgent`）、`abstractExtensionManagementService.ts`、`extensionsWorkbenchService.ts`、`chatStatusEntry.ts`、`chatWidget.ts`（各 1 行空值守卫）——上游假设 `defaultChatAgent` 必存在，守卫只能写在判读处。
 - **入口/contribution 注册**（5 个）：`app.ts`、`agentHostStarter.config.contribution.ts`、`agentHost.contribution.ts`、`chat.shared.contribution.ts`、`chatStatusDashboard.ts`——注册点本体。
-- **测试文件**（24 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。D09 追加 4 个：`agentSdkDownloader.test.ts`（HIGH-1 运行时校验链）、`devContainerAgentHostService.test.ts`、`sshRemoteAgentHostHelpers.test.ts`、`sshRemoteAgentHostService.test.ts`（CLI 下载端点改为 fork 默认的跟随测试）。
-- **构建/工具链/配置**（D09 后 11 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免；D09 追加 vendored license 豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份），以及 **D09 新增**：`build/agent-sdk/{package.ts,produce.ts,upload.ts}`（SDK 打包/产出/上传管线的 fork 化：自托管端点、结果文件、完整性哈希——打包期行为逻辑，无覆盖层挂点）、`build/gulpfile.vscode.ts`（打包任务消费 mixin 的 `excludeCopilotFromPackaging`/`copilotPackagingBlocklist` 并盖章 `agentSdks`——gulp 任务本体只能改在定义处）。
+- **测试文件**（25 个，含 D09 的 4 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。D09 的 4 个：`agentSdkDownloader.test.ts`（HIGH-1 运行时校验链；D66 追加 sha256ByTarget 用例）、`devContainerAgentHostService.test.ts`、`sshRemoteAgentHostHelpers.test.ts`、`sshRemoteAgentHostService.test.ts`（CLI 下载端点改为 fork 默认的跟随测试）。
+- **构建/工具链/配置**（8 个，含 D09 的 4 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制；D09 追加自托管端点/结果字段）、`build/filters.ts`（D14 pin 文件 hygiene 豁免；D09 追加 vendored license 豁免）、`build/hygiene.ts`（D15 extensionsGallery 检查 mixin 感知豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）、`build/gulpfile.vscode.ts`（D09：packageTask 消费 mixin 的 `excludeCopilotFromPackaging`/`copilotPackagingBlocklist` 并盖章 `agentSdks`——gulp 任务本体只能改在定义处）。D09 的 `build/agent-sdk/{package.ts,produce.ts,upload.ts}` 属管线行为逻辑（见 §4.1 逐行）。
 
 **D09 两个"可移出上游文件"项的处置（M8 结论）**：
 
@@ -173,20 +174,30 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `.agents/research/codex-desktop/CODEX-SDK-SUPPLY.md` | A | +86/-0 | D02 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/D07-FORM-DECISION.md` | A | +167/-0 | D07 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/D08-DECISIONS.md` | A | +130/-0 | D08 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
-| `.agents/research/codex-desktop/LICENSE-CLEARANCE.md` | A | +350/-0 | D10 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
+| `.agents/research/codex-desktop/D15-GALLERY.md` | A | +220/-0 | D15 | 覆盖层 | **覆盖层**：D15 裁定与两轮实测证据文档 |
+| `.agents/research/codex-desktop/LICENSE-CLEARANCE.md` | A | +352/-0 | D10 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/LIVE-ONLY.md` | A | +54/-0 | D11 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
-| `.agents/research/codex-desktop/PRE-RELEASE-CHECKLIST.md` | A | +58/-0 | D10 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
+| `.agents/research/codex-desktop/PRE-RELEASE-CHECKLIST.md` | A | +59/-0 | D10 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/README.md` | A | +78/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/ROUTE-DECISION.md` | A | +307/-0 | D17 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/bootstrap.sh` | A | +100/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/evidence/D01-agents-window.png` | A | bin | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/evidence/d07-first-launch-agents-default.png` | A | bin | D07 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/evidence/d07-first-launch-continue-without-signin.png` | A | bin | D07 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
+| `.agents/research/codex-desktop/evidence/d15-agents-window-yaml-not-activated.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：Agents 窗口不激活未列入扩展（截图） |
+| `.agents/research/codex-desktop/evidence/d15-extensions-installed-after-restart.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：重启后 @installed 仍在列（截图） |
+| `.agents/research/codex-desktop/evidence/d15-extensions-search-yaml.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：Extensions 视图搜索 yaml（截图） |
+| `.agents/research/codex-desktop/evidence/d15-gui-extensions-view.txt` | A | txt | D15 | 覆盖层 | **覆盖层**：首轮：Extensions 视图 GUI 记录 |
+| `.agents/research/codex-desktop/evidence/d15-installed-extensions.json` | A | txt | D15 | 覆盖层 | **覆盖层**：首轮：安装后扩展清单 |
+| `.agents/research/codex-desktop/evidence/d15-netlog-hosts.txt` | A | txt | D15 | 覆盖层 | **覆盖层**：第二轮：四轮 netlog 按主机聚合 |
+| `.agents/research/codex-desktop/evidence/d15-openvsx-gallery-trace-cli.log` | A | txt | D15 | 覆盖层 | **覆盖层**：首轮：Open VSX 请求 trace |
+| `.agents/research/codex-desktop/evidence/d15-second-round-logs.txt` | A | txt | D15 | 覆盖层 | **覆盖层**：第二轮：安装/激活/重启/Agents 对照日志摘录 |
+| `.agents/research/codex-desktop/evidence/d15-workspace-trust-restricted-mode.png` | A | bin | D15 | 覆盖层 | **覆盖层**：第二轮：Restricted Mode 默认出现（截图） |
 | `.agents/research/codex-desktop/submit.sh` | A | +263/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/skills/launch/SKILL.md` | M | +4/-4 | D06 | 源码改动 | Dev-tool 文档，引用产品名/数据目录；随 D06 品牌更新（非发布运行时） |
 | `.agents/skills/launch/scripts/launch.ps1` | M | +32/-10 | D06 | 源码改动 | 开发启动脚本须传入 mixin 的 dataFolderName/应用名；shell 脚本无覆盖层挂点 |
 | `.agents/skills/launch/scripts/launch.sh` | M | +27/-3 | D06 | 源码改动 | 同上（POSIX 版） |
-| `.github/workflows/codex-desktop-baseline.yml` | A | +231/-0 | D01,D06,D08,D11,D14 | 覆盖层 | **覆盖层**：fork 自有 CI（新增文件，不与上游 workflow 同名） |
+| `.github/workflows/codex-desktop-baseline.yml` | A | +253/-0 | D01,D06,D08,D11,D14 | 覆盖层 | **覆盖层**：fork 自有 CI（新增文件，不与上游 workflow 同名） |
 | `.github/workflows/codex-desktop-package.yml` | A | +140/-0 | D09 | 覆盖层 | **覆盖层**：D09 打包流水线 CI（macOS 打包 + 可选 SDK 发布；新增文件） |
 | `.github/workflows/codex-upstream-drift.yml` | A | +40/-0 | D14 | 覆盖层 | **覆盖层**：D14 漂移监控 workflow（新文件，不与上游同名） |
 | `.goal-state/STATE.md` | A | +33/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
@@ -211,7 +222,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `.goal-state/issues/7.md` | A | +51/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
 | `.goal-state/issues/8.md` | A | +64/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
 | `.goal-state/issues/9.md` | A | +73/-0 | D03,D13 | 覆盖层 | **覆盖层**：issue 与 D-spec 编排状态 |
-| `UPSTREAM-SYNC.md` | A | +252/-0 | D14 | 覆盖层 | **覆盖层**：D14 本手册（新增文档） |
+| `UPSTREAM-SYNC.md` | A | +450/-0（自引用行，随本文件编辑固有漂移） | D14,D15 | 覆盖层 | **覆盖层**：D14 本手册（新增文档） |
 | `UPSTREAM_COMMIT` | A | +1/-0 | D14 | 覆盖层 | **覆盖层**：D14 上游 pin（grok-code-product 格式，裸 SHA） |
 | `VERSION` | A | +1/-0 | D14 | 覆盖层 | **覆盖层**：D14 fork 发行版本 pin（grok-code-product 格式） |
 | `build/agent-sdk/README.md` | M | +31/-0 | D02,D09 | 源码改动 | agent-sdk pin 机制文档（构建期，非运行时）；D09 追加本地打包/自托管分发说明 |
@@ -228,6 +239,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `build/filters.ts` | M | +5/-0 | D09,D14 | 源码改动 | D09：hygiene copyright 豁免 `build/agent-sdk/licenses/**`（vendored 法律文本不能加注释头）；D14：豁免 UPSTREAM_COMMIT/VERSION；filters.ts 是上游既有的豁免注册表 |
 | `build/gulpfile.vscode.ts` | M | +25/-0 | D09 | 源码改动 | 桌面 packageTask：消费 mixin 的 `excludeCopilotFromPackaging`/`copilotPackagingBlocklist`（D66 起 blocklist 为 mixin 数据）并盖章 `product.agentSdks`；gulp 任务本体只能改在定义处 |
 | `build/agent-sdk/test/cdnEndpoint.test.ts` | A | +85/-0 | D02,D14 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
+| `build/hygiene.ts` | M | +26/-2 | D15 | 源码改动 | D15：hygiene 的 extensionsGallery 检查改为 mixin 感知（工作树应用态放行、提交/暂存态仍红）；该检查是上游对产品 gallery 的硬约束，只能改在检查本体；覆盖层机制无法拦截构建脚本 |
 | `package.json` | M | +1/-0 | D14 | 源码改动 | D14：新增 1 行 `codex:check-protocol-sync` script alias；package.json 是冲突高发区，改动压到最小 |
 | `product/README.md` | A | +98/-0 | D06,D08 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/branding-residue-whitelist.txt` | A | +16/-0 | D06,D09 | 覆盖层 | **覆盖层**：D06 残留白名单；D09 追加打包产物条目（out/、node_modules/、内置扩展文档——首次打包实测） |
@@ -269,9 +281,9 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `product/branding/win32/inno-small-250.bmp` | A | bin | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/default-settings.json` | A | +4/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/extensions.json` | A | +5/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
-| `product/product.json` | A | +41/-0 | D06,D07,D08,D09 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff；D09 追加 `excludeCopilotFromPackaging` +（D66）`copilotPackagingBlocklist` 数据 |
+| `product/product.json` | A | +48/-0 | D06,D07,D08,D09,D15 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff；D09 追加 `excludeCopilotFromPackaging`（D66 起另有 `copilotPackagingBlocklist` 数据）；D15 追加 gallery `publisherUrl` |
 | `scripts/apply-mixin.sh` | A | +188/-0 | D06,D08,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
-| `scripts/audit-network-egress.sh` | A | +137/-0 | D08,D09 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件）；D09 追加打包产物出口断言 |
+| `scripts/audit-network-egress.sh` | A | +173/-0 | D08,D09,D15 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件）；D09 追加打包产物出口断言；D15 追加合并配置 gallery 断言（Open VSX 前缀 + MS Marketplace 禁令 + G9 存在性门） |
 | `scripts/bundle-codex-sdk.sh` | A | +186/-0 | D09 | 覆盖层 | **覆盖层**：D09 SDK 打包编排（produce → 许可证注入 → 结果盖章；D66 起按 target 合并 + 过期 tarball 剪枝） |
 | `scripts/check-branding-identity.sh` | A | +86/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/check-branding-residue.sh` | A | +105/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
@@ -287,11 +299,12 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `scripts/scan-credential-residue.sh` | A | +62/-0 | D08 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/sync-upstream.sh` | A | +174/-0 | D14 | 覆盖层 | **覆盖层**：D14 fork-merge 同步编排（移植自 grok-code-product） |
 | `scripts/upstream-drift-report.sh` | A | +126/-0 | D14 | 覆盖层 | **覆盖层**：D14 漂移报告生成器 |
-| `scripts/verify-beta-gates.sh` | A | +142/-0 | D09 | 覆盖层 | **覆盖层**：D09 预发布门禁链（8 门；D66 起 gate 2c 为 bundle 静态 import 探测、pass/fail） |
+| `scripts/verify-beta-gates.sh` | A | +153/-0 | D09,D15 | 覆盖层 | **覆盖层**：D09 发布门禁链；D15 起 gate 4 增加 gallery 存在性硬门（与 audit-network-egress.sh 对齐）；D66 起 gate 2c 为 bundle 静态 import 探测、pass/fail |
 | `src/vs/base/common/product.ts` | M | +14/-1 | D07,D08,D09 | 源码改动 | 产品接口契约：`defaultWindow?` 字段 + `defaultChatAgent` 改可选；D09 追加 `agentSdks` SDK 下载配置（D66 起含按 target 键控的 `sha256ByTarget`）与 `excludeCopilotFromPackaging` 运行时语义；类型必须改在接口本体 |
 | `src/vs/code/electron-main/app.ts` | M | +14/-0 | D07 | 源码改动 | 启动入口分支（bare launch → Agents 窗口）；进程入口无覆盖层挂点 |
 | `src/vs/code/node/agentsWindowStartup.ts` | A | +61/-0 | D07 | 覆盖层 | D07：新增模块（append-only），启动判定逻辑独立成文件以缩小 app.ts 改动面 |
 | `src/vs/code/test/node/agentsWindowStartup.test.ts` | A | +101/-0 | D07 | 覆盖层 | 上述模块的测试（新增） |
+| `src/vs/code/test/node/extensionGallery.test.ts` | A | +105/-0 | D15 | 覆盖层 | **覆盖层**：D15 gallery 裁定 pin 测试（新增文件） |
 | `src/vs/platform/agentHost/common/agentHostCustomizationConfig.ts` | M | +29/-2 | D04,D05 | 源码改动 | D04/D05 默认 provider/权限策略的配置解析；策略是行为逻辑不是数据 |
 | `src/vs/platform/agentHost/common/agentHostSchema.ts` | M | +1/-1 | D04 | 源码改动 | 配置 schema 默认值；schema 定义本体 |
 | `src/vs/platform/agentHost/common/agentHostStarter.config.contribution.ts` | M | +3/-2 | D04,D06 | 源码改动 | starter 配置贡献点默认值；contribution 注册本体 |
@@ -337,6 +350,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/test/node/e2e/harness/agentHostE2ETestHarness.ts` | M | +20/-0 | D11 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/e2e/providers/codexAgentHostE2E.integrationTest.ts` | M | +312/-4 | D11 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/e2e/suites/agentHostE2ESuites.ts` | M | +4/-0 | D11 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
+| `src/vs/platform/agentHost/test/node/e2e/suites/copilotCoverageSuite.ts` | M | +4/-1 | D15 | 源码改动(测试) | D15 评审发现：scratch 目录清理断言的 retry 预算过紧（CI flake）；e2e 时序断言只能改在测试本体 |
 | `src/vs/platform/agentHost/test/node/e2e/suites/replayStrictnessSuite.ts` | A | +105/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/extensionManagement/common/abstractExtensionManagementService.ts` | M | +1/-1 | D08 | 源码改动 | D08：`defaultChatAgent` 缺失时的空值守卫（1 行）；上游逻辑假设其必存在 |
 | `src/vs/platform/extensionManagement/common/extensionGalleryService.ts` | M | +14/-10 | D08 | 源码改动 | D08：画廊/遥测出口隔离（+14/-10）；网络出口是行为逻辑 |
@@ -365,7 +379,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/workbench/services/agentHost/browser/codexAccountService.ts` | M | +70/-3 | D03 | 源码改动 | D03：OpenAI 原生账号服务（+70/-3）；服务行为 |
 | `src/vs/workbench/services/agentHost/test/browser/codexAccountService.test.ts` | M | +131/-5 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 
-共 178 文件：覆盖层(新增) 122、源码改动 32、源码改动(测试) 24。
+共 192 文件：覆盖层(新增) 134、源码改动 33、源码改动(测试) 25。
 
 行数列说明：`±N (D09)` 行是 D66 补录的 D09 存量条目（M8——D14 制表时这些文件已计入
 178/56 总数，但 §4.1 逐行清单漏了它们）；`±N` 是 D09 changeset 的总变动行数

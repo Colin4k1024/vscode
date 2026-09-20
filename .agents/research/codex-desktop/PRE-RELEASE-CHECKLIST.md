@@ -41,9 +41,9 @@
 
 ## E. 市场与扩展（D15 #17）
 
-- [ ] E1【发布门】`product.json.extensionsGallery` 不指向 MS Marketplace（保持空或 Open VSX/私有 registry）
-- [ ] E2 接入 Open VSX 前：已读其 Terms/Publisher Agreement；自有扩展发布含 OSI 许可
-- [ ] E3 `sessionsWindowAllowedExtensions` 与所选 gallery 一致，不引用 MS 专有扩展
+- [x] E1【发布门】`product.json.extensionsGallery` 不指向 MS Marketplace（保持空或 Open VSX/私有 registry——注：D15 起"保持空"不再是可发布态，缺失 = G9 回归硬失败，见 LICENSE-CLEARANCE §10）— **2026-09-20 落地（D15 #17）**：mixin `product/product.json` 指向 Open VSX（`open-vsx.org`）；`scripts/audit-network-egress.sh` layer-1 断言（MS Marketplace 主机禁令 + gallery 字段 open-vsx.org 前缀 + gallery 必须存在）已挂 baseline CI。实测见 `D15-GALLERY.md`。
+- [x] E2 接入 Open VSX 前：已读其 Terms/Publisher Agreement；自有扩展发布含 OSI 许可 — **2026-09-20（D15 #17）**：消费侧无统一条款（逐扩展许可自负）；发布侧义务（Publisher Agreement + OSI 许可）裁定于 `LICENSE-CLEARANCE.md` §10。当前**无自有扩展发布计划**，该义务在发布首个自有扩展时才触发。
+- [x] E3 `sessionsWindowAllowedExtensions` 与所选 gallery 一致，不引用 MS 专有扩展 — **2026-09-20 裁定（D15 #17）**：白名单**显式为空**（`[]`），不引用任何扩展（MS 专有或其他），与 Open VSX 选择一致；单测断言防扩大（`agentsWindowStartup.test.ts` "sessionsWindowAllowedExtensions is an explicitly empty allow-list"）；Agents 窗口实测代码承载扩展不激活（`D15-GALLERY.md` 补充实测 §B.3）。未来若要放行代码承载扩展，须先改该单测并重新过审。
 
 ## F. SBOM 与审计（D19 / D09 验收 13 联动）
 
@@ -56,3 +56,4 @@
 | 日期 | 状态 | 说明 |
 |---|---|---|
 | 2026-09-19 | **未通过** | 初始裁定：G13 未解（A1-A3、B1-B4、E1 均未落地）；在此之前 D09 产物标记"仅内部使用" |
+| 2026-09-20 | **未通过** | D15 #17 落地 E1/E2/E3（Open VSX 接入 + 空白名单裁定 + CI 守卫）；A1-A3、B1-B4 仍未全绿，发布门维持未通过 |

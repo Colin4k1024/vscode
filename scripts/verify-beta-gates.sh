@@ -10,9 +10,12 @@
 #      product.json must not reference defaultChatAgent / vscode-cdn.net.
 #   3. clientInfo.name != vscode_agent_host (D10 section 3): we must not
 #      misattribute traffic to Microsoft's registered OpenAI client name.
-#   4. Gallery must not point at the MS Marketplace (D10): the merged
+#   4. Gallery must be Open VSX and present (D10 + D15): the merged
 #      product.json must not reference marketplace.visualstudio.com /
-#      *.vsassets.io / vscode-cdn.net.
+#      *.vsassets.io / vscode-cdn.net, and must define extensionsGallery
+#      (D15 made the gallery a shipped feature; a beta without it regresses
+#      G9. Deliberate rollback removes this assertion together with the one
+#      in scripts/audit-network-egress.sh).
 #   5. SBOM generator runs (AC13).
 #   6. R12 guard: Codex agent host defaults stay on.
 #   7. Network egress audit (D08).
@@ -108,7 +111,7 @@ if (m[1] === 'vscode_agent_host') {
 console.log(`    clientInfo.name = '${m[1]}' — OK`);
 NODE_EOF
 
-echo "==> [4/8] extension gallery is not the MS Marketplace (D10)"
+echo "==> [4/8] extension gallery is Open VSX and present (D10 + D15)"
 node - <<'NODE_EOF'
 const fs = require('fs');
 const base = JSON.parse(fs.readFileSync('product.json', 'utf8'));
@@ -120,11 +123,19 @@ for (const [k, v] of Object.entries(overlay)) { if (v === null) { delete merged[
 const text = JSON.stringify(merged);
 const msGallery = /marketplace\.visualstudio\.com|gallery(?:cdn)?\.vsassets\.io|gallerycdn\.vscassets\.io/;
 if (msGallery.test(text)) {
-	console.error('GATE FAILED: effective product.json points at the Microsoft Marketplace — the fork must not redistribute against it (D10). Set extensionsGallery to Open VSX or remove it.');
+	console.error('GATE FAILED: effective product.json points at the Microsoft Marketplace — the fork must not redistribute against it (D10). Point extensionsGallery at Open VSX.');
 	process.exit(1);
 }
 const gallery = merged.extensionsGallery;
-console.log(`    extensionsGallery: ${gallery ? JSON.stringify(gallery.serviceUrl ?? gallery) : '(absent — extension gallery disabled)'}`);
+if (!gallery?.serviceUrl) {
+	// Aligned with scripts/audit-network-egress.sh (G9 regression gate, D15):
+	// the shipped product ships the Open VSX gallery; a beta built without it
+	// is a regression, not a supported configuration. A deliberate rollback
+	// removes this assertion together with the one in audit-network-egress.sh.
+	console.error('GATE FAILED: effective product.json has no extensionsGallery — D15 configured Open VSX; a beta without the marketplace regresses G9.');
+	process.exit(1);
+}
+console.log(`    extensionsGallery: ${JSON.stringify(gallery.serviceUrl)}`);
 NODE_EOF
 
 echo "==> [5/8] SBOM generator runs (AC13)"

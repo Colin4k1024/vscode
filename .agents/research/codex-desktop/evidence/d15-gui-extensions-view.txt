@@ -1,0 +1,63 @@
+D15 GUI verification (dev run: ./scripts/code.sh, Electron 43.6.0, branded "Colin Code Dev")
+===========================================================================================
+Method: launched the dev product with an isolated profile
+  --user-data-dir /tmp/d15-ud --extensions-dir /tmp/d15-ext
+and drove the workbench over the Chrome DevTools Protocol
+(--remote-debugging-port=9223). The machine's display was locked during the
+run, so bitmap screenshots were impossible (window server produced blank
+frames); DOM snapshots were captured instead.
+
+1) Extensions view search (AC1)
+   - Opened the Extensions view (Cmd+Shift+X), typed "tombi".
+   - The view listed live Open VSX results, first row:
+       Tombi / TOML Language Server / tombi-toml
+       aria-label: "Tombi, 1.5.5, Publisher tombi-toml, TOML Language Server,
+                    Rated 5.00 out of 5 stars by 1 users"
+     followed by TomlSense Language Server, onesec-snippets, XACADEMY
+     snippets, GreenBlue Theme, ... each with an "Install" action
+     (tombi itself had none — already installed, see below).
+   - These results are gallery data; nothing local produces them.
+
+2) Install (AC1)
+   - Real install performed through the product's extension management
+     pipeline (same ExtensionGalleryService/ExtensionManagementService code
+     the Install button drives):
+       VSCODE_SKIP_PRELAUNCH=1 ./scripts/code-cli.sh \
+         --user-data-dir /tmp/d15-ud2 --extensions-dir /tmp/d15-ext2 \
+         --log trace --install-extension tombi-toml.tombi
+       > Installing extension 'tombi-toml.tombi'...
+       > Extension 'tombi-toml.tombi' v1.5.5 was successfully installed.
+   - On disk: /tmp/d15-ext2/tombi-toml.tombi-1.5.5-darwin-arm64/ with
+     extensions.json metadata "source": "gallery" (see
+     d15-installed-extensions.json).
+   - Full HTTP trace: d15-openvsx-gallery-trace-cli.log —
+       POST https://open-vsx.org/vscode/gallery/extensionquery        -> 200
+       GET  .../vscode/asset/.../Microsoft.VisualStudio.Code.Manifest -> 200
+       GET  .../Microsoft.VisualStudio.Services.VSIXPackage...        -> 200 (8.9 MB vsix)
+     all with User-Agent "VSCode 1.139.0 (ColinCode Dev)" — the shipped
+     product talks to Open VSX only.
+
+3) Restart persistence (AC4)
+   - Killed the app, relaunched with the same profile dirs.
+   - Extensions view query "@installed" after restart still lists:
+       Tombi, 1.5.5, Publisher tombi-toml, TOML Language Server
+   - The extension stays installed/enabled across restarts.
+
+4) No Microsoft Marketplace traffic (AC3)
+   - Recursive grep over /tmp/d15-ud/logs/** for marketplace.visualstudio.com,
+     vsassets.io, gallerycdn, vortex.data.microsoft.com,
+     events.data.microsoft.com: zero hits.
+
+Environment note (not a product defect): this machine runs a system-wide
+Clash proxy (127.0.0.1:7890, TUN mode). Node/BoringSSL TLS handshakes through
+it are flaky for some CDN edges (Electron net.fetch and curl are unaffected).
+The install succeeded with "http.proxy": "http://127.0.0.1:7890" in the test
+profile's settings.json, routing the main-process request service through the
+proxy's CONNECT. End-user machines without such a middlebox are unaffected.
+
+Pre-existing base-branch bug found and fixed en route (blocked ANY GUI run of
+the branded product): welcomeOnboarding's onboardingVariationA.ts asserted
+product.defaultChatAgent at module scope; D08's mixin deletes that key, so the
+module-level throw aborted workbench startup (blank window). Fixed by
+asserting lazily (getDefaultChat()) and no-op'ing the wizard when no default
+chat agent is configured.

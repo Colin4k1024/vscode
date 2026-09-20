@@ -1,0 +1,88 @@
+2026-09-20 19:32:40.698 [trace] PolicyConfiguration#initialize
+2026-09-20 19:32:40.698 [trace] PolicyConfiguration#updatePolicyDefinitions ["http.useLocalProxyConfiguration","http.electronFetch","http.proxy","http.proxyStrictSSL","http.proxyKerberosServicePrincipal","http.noProxy","http.proxyAuthorization","http.proxySupport","http.systemCertificates","http.systemCertificatesNode","http.experimental.systemCertificatesV2","http.fetchAdditionalSupport","http.webSocketAdditionalSupport","http.experimental.networkInterfaceCheckInterval","extensions.allowed","telemetry.telemetryLevel","telemetry.feedback.enabled","telemetry.enableTelemetry"]
+2026-09-20 19:32:40.698 [trace] NativePolicyService#_updatePolicyDefinitions - Found 3 policy definitions
+2026-09-20 19:32:40.698 [trace] Creating watcher for productName com.colin4k1024.colincode
+2026-09-20 19:32:40.698 [trace] NativePolicyService#_onDidPolicyChange - Updated policy values: {}
+2026-09-20 19:32:40.698 [trace] PolicyConfiguration#update ["extensions.allowed","telemetry.telemetryLevel","telemetry.feedback.enabled"]
+2026-09-20 19:32:40.698 [trace] [File Watcher (node.js)] Request to start watching: /tmp/d15-ud2/User (excludes: <none>, includes: <all>, filter: <none>, correlationId: <none>),/tmp/d15-ud2/User/settings.json (excludes: <none>, includes: <all>, filter: <none>, correlationId: <none>)
+2026-09-20 19:32:40.698 [trace] [File Watcher (node.js)] correcting a path to watch that seems to be a symbolic link (original: /tmp/d15-ud2/User, real: /private/tmp/d15-ud2/User)
+2026-09-20 19:32:40.698 [trace] [File Watcher (node.js)] Started watching: '/private/tmp/d15-ud2/User'
+2026-09-20 19:32:40.698 [trace] [File Watcher (node.js)] correcting a path to watch that seems to be a symbolic link (original: /tmp/d15-ud2/User/settings.json, real: /private/tmp/d15-ud2/User/settings.json)
+2026-09-20 19:32:40.698 [trace] [File Watcher (node.js)] Started watching: '/private/tmp/d15-ud2/User/settings.json'
+2026-09-20 19:32:40.711 [info] CLI main {"_":[],"diff":false,"merge":false,"add":false,"remove":false,"goto":false,"new-window":false,"reuse-window":false,"agents":false,"wait":false,"user-data-dir":"/tmp/d15-ud2","help":false,"extensions-dir":"/tmp/d15-ext2","list-extensions":false,"show-versions":false,"install-extension":["tombi-toml.tombi"],"pre-release":false,"update-extensions":false,"version":false,"verbose":false,"log":["trace"],"status":false,"prof-startup":false,"no-cached-data":false,"prof-v8-extensions":false,"disable-extensions":false,"disable-extension":["vscode.vscode-api-tests"],"disable-lcd-text":false,"disable-gpu":false,"disable-chromium-sandbox":false,"sandbox":false,"telemetry":false,"debugRenderer":false,"enable-smoke-test-driver":false,"skip-sessions-welcome":false,"logExtensionHostCommunication":false,"skip-release-notes":false,"skip-welcome":false,"disable-telemetry":false,"disable-updates":false,"share-secrets-with-agents-app":false,"transient":false,"use-inmemory-secretstorage":false,"disable-workspace-trust":false,"disable-crash-reporter":false,"skip-add-to-recently-opened":false,"open-url":false,"file-write":false,"file-chmod":false,"force":false,"do-not-sync":false,"do-not-include-pack-dependencies":false,"trace":false,"trace-memory-infra":false,"preserve-env":false,"force-user-env":false,"force-disable-user-env":false,"open-devtools":false,"disable-gpu-sandbox":false,"__enable-file-policy":false,"enable-coi":false,"enable-rdp-display-tracking":false,"disable-layout-restore":false,"disable-experiments":false,"no-proxy-server":false,"no-sandbox":false,"nolazy":false,"force-renderer-accessibility":false,"ignore-certificate-errors":false,"allow-insecure-localhost":false,"disable-dev-shm-usage":false,"profile-temp":false,"logsPath":"/tmp/d15-ud2/logs/20260920T193240"}
+2026-09-20 19:32:40.713 [trace] Started scanning system extensions
+2026-09-20 19:32:40.713 [trace] Started scanning dev system extensions
+2026-09-20 19:32:40.713 [trace] Started scanning user extensions {"$mid":1,"external":"vscode-userdata:/tmp/d15-ext2/extensions.json","path":"/tmp/d15-ext2/extensions.json","scheme":"vscode-userdata"}
+2026-09-20 19:32:40.714 [trace] Extension VSIX downloads cache dir does not exist
+2026-09-20 19:32:40.714 [info] Started initializing default profile extensions in extensions installation folder. file:///tmp/d15-ext2
+2026-09-20 19:32:40.717 [trace] [File Watcher (node.js)] Request to start watching: /tmp/d15-ext2 (excludes: <none>, includes: <all>, filter: <none>, correlationId: <none>)
+2026-09-20 19:32:40.719 [debug] ComputeTargetPlatform: darwin-arm64
+2026-09-20 19:32:40.729 [trace] [File Watcher (node.js)] correcting a path to watch that seems to be a symbolic link (original: /tmp/d15-ext2, real: /private/tmp/d15-ext2)
+2026-09-20 19:32:40.729 [trace] [File Watcher (node.js)] Started watching: '/private/tmp/d15-ext2'
+2026-09-20 19:32:40.732 [trace] Scanned dev system extensions: 3
+2026-09-20 19:32:40.738 [trace] Scanned system extensions: 96
+2026-09-20 19:32:40.743 [trace] [File Watcher (node.js)] [raw] ["rename"] extensions.json.vsctmp
+2026-09-20 19:32:40.746 [info] Completed initializing default profile extensions in extensions installation folder. file:///tmp/d15-ext2
+2026-09-20 19:32:40.746 [trace] Scanned user extensions: 0
+2026-09-20 19:32:40.748 [trace] [File Watcher (node.js)] Request to start watching: /tmp/d15-ext2/extensions.json (excludes: <none>, includes: <all>, filter: <none>, correlationId: <none>)
+2026-09-20 19:32:40.752 [debug] ComputeTargetPlatform: darwin-arm64
+2026-09-20 19:32:40.753 [trace] resolveShellEnv(): skipped (VSCODE_CLI is set)
+2026-09-20 19:32:40.758 [trace] #1: https://open-vsx.org/vscode/gallery/extensionquery - begin POST {"X-Market-Client-Id":"VSCode 1.139.0","User-Agent":"VSCode 1.139.0 (ColinCode Dev)","Content-Type":"application/json","Accept":"application/json;api-version=3.0-preview.1","Accept-Encoding":"gzip","Content-Length":"241"}
+2026-09-20 19:32:40.763 [trace] [File Watcher (node.js)] correcting a path to watch that seems to be a symbolic link (original: /tmp/d15-ext2/extensions.json, real: /private/tmp/d15-ext2/extensions.json)
+2026-09-20 19:32:40.763 [trace] [File Watcher (node.js)] Started watching: '/private/tmp/d15-ext2/extensions.json'
+2026-09-20 19:32:40.794 [trace] [File Watcher (node.js)] [raw] ["rename"] extensions.json.vsctmp
+2026-09-20 19:32:40.794 [trace] [File Watcher (node.js)] [raw] ["rename"] extensions.json
+2026-09-20 19:32:40.894 [trace] [File Watcher (node.js)] [DELETED] /tmp/d15-ext2/extensions.json.vsctmp
+2026-09-20 19:32:40.895 [trace] [File Watcher (node.js)] [ADDED] /tmp/d15-ext2/extensions.json
+2026-09-20 19:32:40.973 [trace] [File Watcher (node.js)]  >> normalized [DELETED] /tmp/d15-ext2/extensions.json.vsctmp
+2026-09-20 19:32:40.973 [trace] [File Watcher (node.js)]  >> normalized [ADDED] /tmp/d15-ext2/extensions.json
+2026-09-20 19:32:40.974 [debug] User data changed
+2026-09-20 19:32:41.320 [trace] #1: https://open-vsx.org/vscode/gallery/extensionquery - end POST 200 {"connection":"close","content-length":"1339","content-type":"application/json;api-version=3.0-preview.1","content-encoding":"gzip","via":"1.1 varnish, 1.1 varnish","cache-control":"public, max-age=600","content-security-policy":"frame-ancestors 'none'","accept-ranges":"bytes","age":"2101","date":"Sun, 20 Sep 2026 11:32:41 GMT","x-served-by":"cache-fra-eddf8230096-FRA, cache-fra-eddf8230096-FRA, cache-sin-wsat1880044-SIN","x-cache":"MISS, HIT, MISS","x-cache-hits":"0, 4, 0","x-timer":"S1789903962.551227,VS0,VE161","x-frame-options":"DENY","x-xss-protection":"1; mode=block","x-content-type-options":"nosniff","access-control-allow-origin":"*","vary":"Accept-Encoding","strict-transport-security":"max-age=31557600"}
+2026-09-20 19:32:41.324 [trace] resolveShellEnv(): skipped (VSCODE_CLI is set)
+2026-09-20 19:32:41.325 [trace] #2: https://open-vsx.org/vscode/asset/tombi-toml/tombi/1.5.5/Microsoft.VisualStudio.Code.Manifest?targetPlatform=darwin-arm64 - begin GET {"X-Market-Client-Id":"VSCode 1.139.0","User-Agent":"VSCode 1.139.0 (ColinCode Dev)"}
+2026-09-20 19:32:42.309 [trace] #2: https://open-vsx.org/vscode/asset/tombi-toml/tombi/1.5.5/Microsoft.VisualStudio.Code.Manifest?targetPlatform=darwin-arm64 - end GET 200 {"connection":"close","content-length":"6611","last-modified":"Sat, 12 Sep 2026 13:20:04 GMT","etag":"\"3c0aa63201822f9f9783b39759914106\"","x-amz-server-side-encryption":"AES256","cache-control":"max-age=86400, must-revalidate, public","x-amz-version-id":"TCCuGEqJg0vJXFFul.TeijXg4VzBPzZB","content-type":"application/json","via":"1.1 varnish, 1.1 varnish","access-control-allow-origin":"*","access-control-allow-methods":"GET, HEAD, OPTIONS","accept-ranges":"bytes","age":"72443","date":"Sun, 20 Sep 2026 11:32:42 GMT","x-served-by":"cache-fra-eddf8230210-FRA, cache-sin-wsat1880070-SIN","x-cache":"HIT, HIT","x-cache-hits":"2, 0","x-timer":"S1789903963.700497,VS0,VE1","vary":"Accept-Encoding","content-security-policy":"default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox","strict-transport-security":"max-age=300","alt-svc":"h3=\":443\";ma=86400,h3-29=\":443\";ma=86400,h3-27=\":443\";ma=86400"}
+2026-09-20 19:32:42.314 [trace] ExtensionManagementService.updateControlCache
+2026-09-20 19:32:42.316 [info] Getting Manifest... tombi-toml.tombi
+2026-09-20 19:32:42.316 [trace] resolveShellEnv(): skipped (VSCODE_CLI is set)
+2026-09-20 19:32:42.317 [trace] #3: https://open-vsx.org/vscode/asset/tombi-toml/tombi/1.5.5/Microsoft.VisualStudio.Code.Manifest?targetPlatform=darwin-arm64 - begin GET {"X-Market-Client-Id":"VSCode 1.139.0","User-Agent":"VSCode 1.139.0 (ColinCode Dev)"}
+2026-09-20 19:32:43.092 [trace] #3: https://open-vsx.org/vscode/asset/tombi-toml/tombi/1.5.5/Microsoft.VisualStudio.Code.Manifest?targetPlatform=darwin-arm64 - end GET 200 {"connection":"close","content-length":"6611","last-modified":"Sat, 12 Sep 2026 13:20:04 GMT","etag":"\"3c0aa63201822f9f9783b39759914106\"","x-amz-server-side-encryption":"AES256","cache-control":"max-age=86400, must-revalidate, public","x-amz-version-id":"TCCuGEqJg0vJXFFul.TeijXg4VzBPzZB","content-type":"application/json","via":"1.1 varnish, 1.1 varnish","access-control-allow-origin":"*","access-control-allow-methods":"GET, HEAD, OPTIONS","accept-ranges":"bytes","date":"Sun, 20 Sep 2026 11:32:43 GMT","age":"72444","x-served-by":"cache-fra-eddf8230210-FRA, cache-sin-wsat1880066-SIN","x-cache":"HIT, HIT","x-cache-hits":"2, 1","x-timer":"S1789903963.488318,VS0,VE1","vary":"Accept-Encoding","content-security-policy":"default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox","strict-transport-security":"max-age=300","alt-svc":"h3=\":443\";ma=86400,h3-29=\":443\";ma=86400,h3-27=\":443\";ma=86400"}
+2026-09-20 19:32:43.097 [trace] Started scanning system extensions
+2026-09-20 19:32:43.097 [trace] Started scanning dev system extensions
+2026-09-20 19:32:43.097 [trace] Started scanning user extensions {"$mid":1,"external":"vscode-userdata:/tmp/d15-ext2/extensions.json","path":"/tmp/d15-ext2/extensions.json","scheme":"vscode-userdata"}
+2026-09-20 19:32:43.099 [trace] Scanned user extensions: 0
+2026-09-20 19:32:43.113 [trace] Scanned dev system extensions: 3
+2026-09-20 19:32:43.118 [trace] Scanned system extensions: 96
+2026-09-20 19:32:43.124 [info] Installing extension: tombi-toml.tombi {"isMachineScoped":false,"installPreReleaseVersion":false,"donotIncludePackAndDependencies":false,"profileLocation":{"$mid":1,"external":"vscode-userdata:/tmp/d15-ext2/extensions.json","path":"/tmp/d15-ext2/extensions.json","scheme":"vscode-userdata"},"isBuiltin":false,"installGivenVersion":false,"isApplicationScoped":false,"productVersion":{"version":"1.139.0"}}
+2026-09-20 19:32:43.124 [trace] Started scanning system extensions
+2026-09-20 19:32:43.124 [trace] Started scanning dev system extensions
+2026-09-20 19:32:43.124 [trace] Started scanning user extensions {"$mid":1,"external":"vscode-userdata:/tmp/d15-ext2/extensions.json","path":"/tmp/d15-ext2/extensions.json","scheme":"vscode-userdata"}
+2026-09-20 19:32:43.127 [trace] Scanned user extensions: 0
+2026-09-20 19:32:43.134 [trace] Scanned dev system extensions: 3
+2026-09-20 19:32:43.139 [trace] Scanned system extensions: 96
+2026-09-20 19:32:43.142 [trace] Started scanning user extensions {"$mid":1,"external":"vscode-userdata:/tmp/d15-ext2/extensions.json","path":"/tmp/d15-ext2/extensions.json","scheme":"vscode-userdata"}
+2026-09-20 19:32:43.142 [trace] Scanned user extensions: 0
+2026-09-20 19:32:43.142 [trace] Started scanning system extensions
+2026-09-20 19:32:43.143 [trace] Started scanning dev system extensions
+2026-09-20 19:32:43.143 [trace] Started scanning user extensions {"$mid":1,"external":"vscode-userdata:/tmp/d15-ext2/extensions.json","path":"/tmp/d15-ext2/extensions.json","scheme":"vscode-userdata"}
+2026-09-20 19:32:43.143 [trace] Scanned user extensions: 0
+2026-09-20 19:32:43.151 [trace] Scanned dev system extensions: 3
+2026-09-20 19:32:43.156 [trace] Scanned system extensions: 96
+2026-09-20 19:32:43.160 [trace] ExtensionGalleryService#download tombi-toml.tombi
+2026-09-20 19:32:43.160 [trace] resolveShellEnv(): skipped (VSCODE_CLI is set)
+2026-09-20 19:32:43.161 [trace] #4: https://open-vsx.org/vscode/asset/tombi-toml/tombi/1.5.5/Microsoft.VisualStudio.Services.VSIXPackage?redirect=true&targetPlatform=darwin-arm64&install=true - begin GET {"X-Market-Client-Id":"VSCode 1.139.0","User-Agent":"VSCode 1.139.0 (ColinCode Dev)"}
+2026-09-20 19:32:44.192 [trace] #4: https://open-vsx.org/vscode/asset/tombi-toml/tombi/1.5.5/Microsoft.VisualStudio.Services.VSIXPackage?redirect=true&targetPlatform=darwin-arm64&install=true - end GET 200 {"connection":"close","content-length":"8949439","last-modified":"Sat, 12 Sep 2026 13:20:03 GMT","etag":"\"9f22449d6c2f6e6a3e27168d7dfec0da\"","x-amz-server-side-encryption":"AES256","content-disposition":"attachment; filename=\"tombi-toml.tombi-1.5.5@darwin-arm64.vsix\"","x-amz-version-id":"oYwXepK8YF2y.B.MfI0vo_lLy2.k6Z6Z","content-type":"application/octet-stream","via":"1.1 varnish, 1.1 varnish","access-control-allow-origin":"*","access-control-allow-methods":"GET, HEAD, OPTIONS","accept-ranges":"bytes","age":"1627","date":"Sun, 20 Sep 2026 11:32:44 GMT","x-served-by":"cache-fra-eddf8230055-FRA, cache-sin-wsat1880073-SIN","x-cache":"HIT, HIT","x-cache-hits":"1, 0","x-timer":"S1789903965.586438,VS0,VE1","strict-transport-security":"max-age=300","alt-svc":"h3=\":443\";ma=86400,h3-29=\":443\";ma=86400,h3-27=\":443\";ma=86400"}
+2026-09-20 19:32:45.711 [trace] ExtensionGalleryService#downloadSignatureArchive tombi-toml.tombi
+2026-09-20 19:32:45.711 [trace] resolveShellEnv(): skipped (VSCODE_CLI is set)
+2026-09-20 19:32:45.712 [trace] #5: https://open-vsx.org/vscode/asset/tombi-toml/tombi/1.5.5/Microsoft.VisualStudio.Services.VsixSignature?targetPlatform=darwin-arm64 - begin GET {"X-Market-Client-Id":"VSCode 1.139.0","User-Agent":"VSCode 1.139.0 (ColinCode Dev)"}
+2026-09-20 19:32:46.762 [trace] #5: https://open-vsx.org/vscode/asset/tombi-toml/tombi/1.5.5/Microsoft.VisualStudio.Services.VsixSignature?targetPlatform=darwin-arm64 - end GET 200 {"connection":"close","content-length":"1348","last-modified":"Sat, 12 Sep 2026 13:20:04 GMT","etag":"\"8924e38150850de6af96fbc88dab7b49\"","x-amz-server-side-encryption":"AES256","content-disposition":"attachment; filename=\"tombi-toml.tombi-1.5.5@darwin-arm64.sigzip\"","x-amz-version-id":"tvZWsN5vlz1RCcf1ANKigLbmrJKa6y9E","content-type":"application/zip","via":"1.1 varnish, 1.1 varnish","access-control-allow-origin":"*","access-control-allow-methods":"GET, HEAD, OPTIONS","accept-ranges":"bytes","age":"1625","date":"Sun, 20 Sep 2026 11:32:47 GMT","x-served-by":"cache-fra-eddf8230079-FRA, cache-sin-wsap440070-SIN","x-cache":"MISS, HIT","x-cache-hits":"0, 0","x-timer":"S1789903967.157664,VS0,VE1","content-security-policy":"default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox","strict-transport-security":"max-age=300","alt-svc":"h3=\":443\";ma=86400,h3-29=\":443\";ma=86400,h3-27=\":443\";ma=86400"}
+2026-09-20 19:32:46.774 [error] Could not load vsce-sign module Cannot find package '@vscode/vsce-sign' imported from /Users/ailabuser1/Desktop/gitcode/vscode-d15/out/vs/platform/extensionManagement/node/extensionSignatureVerificationService.js
+2026-09-20 19:32:46.774 [info] Extension signature verification is not done: tombi-toml.tombi
+2026-09-20 19:32:46.778 [trace] Started extracting the extension from /tmp/d15-ud2/CachedExtensionVSIXs/tombi-toml.tombi-1.5.5-darwin-arm64 to /tmp/d15-ext2/tombi-toml.tombi-1.5.5-darwin-arm64
+2026-09-20 19:32:46.784 [trace] [File Watcher (node.js)] [raw] ["rename"] .651cbdcc-0819-4e14-af93-09c3415201be
+2026-09-20 19:32:46.853 [info] Extracted extension to file:///tmp/d15-ext2/tombi-toml.tombi-1.5.5-darwin-arm64: tombi-toml.tombi
+2026-09-20 19:32:46.861 [trace] Started renaming the extension from /tmp/d15-ext2/.651cbdcc-0819-4e14-af93-09c3415201be to /tmp/d15-ext2/tombi-toml.tombi-1.5.5-darwin-arm64
+2026-09-20 19:32:46.861 [info] Renamed to /tmp/d15-ext2/tombi-toml.tombi-1.5.5-darwin-arm64
+2026-09-20 19:32:46.867 [trace] [File Watcher (node.js)] [raw] ["rename"] extensions.json
+2026-09-20 19:32:46.867 [trace] Started scanning user extensions {"$mid":1,"external":"vscode-userdata:/tmp/d15-ext2/extensions.json","path":"/tmp/d15-ext2/extensions.json","scheme":"vscode-userdata"}
+2026-09-20 19:32:46.868 [trace] Scanned user extensions: 1
+2026-09-20 19:32:46.868 [info] Extension installed successfully: tombi-toml.tombi vscode-userdata:/tmp/d15-ext2/extensions.json

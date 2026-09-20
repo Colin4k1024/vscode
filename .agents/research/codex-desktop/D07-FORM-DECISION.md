@@ -93,6 +93,8 @@
 
 **行为变化说明（有意为之）**：裸启动不再恢复上次常规窗口（`window.restoreWindows` 路径被 Agents 默认接管）；这与 `--agents` 既有语义一致（带 `urisToOpen` 的 initialStartup 不做 restore）。需要上次工作区的用户经深链/命令显式打开常规窗口。
 
+**Hot-exit/崩溃恢复影响（显式裁定，审查补记）**：常规窗口的 untitled 未保存内容 hot-exit 备份只在打开常规窗口（同 workspace/空窗口）时恢复。默认入口改为 Agents 窗口后，恢复路径从「自动弹出」变为「用户主动打开常规窗口」。这不是数据丢失（备份仍在磁盘），是恢复发现性的回退；接受该取舍，后续可加「存在未恢复备份时 Agents 窗口提示」的引导（FU 级跟进项）。
+
 **实测（验收 3 + 验收 8）**：全新 profile（`/tmp/d07-smoke*-ud`）裸启动，窗口标题 "Agents"、URL `out/vs/sessions/electron-browser/sessions-dev.html`，登录提示可跳过（F3 证据截图）。✅
 
 ---
@@ -126,7 +128,7 @@
 `shouldSurfaceLocalAgentHostProvider` 在两种窗口读不同设置项（Agents 窗口读 `chat.agentHost.codexAgent.enabled`，常规窗口读 `chat.editor.codex.preferAgentHost`）。产品默认下两者一致由两层断言保证：
 
 1. **穷举真值表**（`agentService.test.ts`「exhaustive isSessionsWindow x configuration truth table (D07 AC6)」）：`isSessionsWindow` × claude{unset,true,false} × codexEnabled{unset,true,false} × preferAgentHost{unset,true,false} 全组合，断言窗口隔离（各读各的设置）与跨窗一致性不变量（两 gate 同值时两窗结果一致）。
-2. **注册默认值平价**（`codexProviderGatesConfiguration.test.ts`「Codex provider gates default identically in both window forms」）：两个设置从真实配置注册表读出，`default` 严格相等（当前均为 `product.quality !== 'stable'`）——防止未来有人单边改默认值造成两窗形态分裂。
+2. **注册默认值平价**（`codexProviderGatesConfiguration.test.ts`「Codex provider gates default identically in both window forms」）：两个设置从真实配置注册表读出，`default` 严格相等（当前均为字面量 `true`（R12，D06 已固化并有守卫））——防止未来有人单边改默认值造成两窗形态分裂。
 
 ---
 

@@ -36,11 +36,19 @@ suite('Sessions - Show Sessions Picker keybinding (ISS-057 #17)', () => {
 			regularWindow: evaluate({}),
 			sessionsWindow: evaluate({ isSessionsWindow: true }),
 			sessionsEditorArea: evaluate({ isSessionsWindow: true, editorAreaFocus: true }),
+			sessionsTerminalFocus: evaluate({ isSessionsWindow: true, terminalFocusInAny: true }),
+			sessionsTerminalFind: evaluate({ isSessionsWindow: true, terminalFindFocused: true }),
+			sessionsChatFindInput: evaluate({ isSessionsWindow: true, chatFindInputFocused: true }),
 		}, {
 			regularWindow: false,
 			sessionsWindow: true,
 			// Editor chords (Find Next / Go to Line) keep the key while an editor is focused.
 			sessionsEditorArea: false,
+			// The terminal's own Find Next keeps the key while a terminal owns focus.
+			sessionsTerminalFocus: false,
+			sessionsTerminalFind: false,
+			// The chat transcript's Find Next keeps the key while its find input is focused.
+			sessionsChatFindInput: false,
 		});
 	});
 });

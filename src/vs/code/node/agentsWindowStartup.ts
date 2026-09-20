@@ -51,5 +51,11 @@ export function shouldOpenAgentsWindowOnStartup(productService: IProductService,
 		return false;
 	}
 
+	// Extension development/testing: the sessions window's extension host is
+	// allow-listed, so a dev extension would silently never load there.
+	if (args.extensionDevelopmentPath !== undefined || args.extensionTestsPath !== undefined) {
+		return false;
+	}
+
 	return true;
 }

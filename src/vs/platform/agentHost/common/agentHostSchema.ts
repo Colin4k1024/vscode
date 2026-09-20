@@ -873,7 +873,7 @@ export const platformRootSchema = createSchema({
 	[AgentHostGitHubMcpServerEnabledConfigKey]: schemaProperty<boolean>({
 		type: 'boolean',
 		title: localize('agentHost.config.githubMcpServerEnabled.title', "GitHub MCP Server"),
-		description: localize('agentHost.config.githubMcpServerEnabled.description', "Whether agent sessions include a GitHub MCP server by default."),
+		description: localize('agentHost.config.githubMcpServerEnabled.description', "Whether agent sessions include a GitHub MCP server by default. The server is only injected while a GitHub account is signed in; without a GitHub token sessions run without it regardless of this setting."),
 		default: true,
 	}),
 	[AgentHostActiveAgentTitleGenerationConfigKey]: schemaProperty<boolean>({

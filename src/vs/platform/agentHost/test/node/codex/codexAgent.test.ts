@@ -7,17 +7,20 @@ import assert from 'assert';
 import { DeferredPromise } from '../../../../../base/common/async.js';
 import { Emitter } from '../../../../../base/common/event.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
+import { observableValue } from '../../../../../base/common/observable.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { NullLogService } from '../../../../../platform/log/common/log.js';
 import { AgentChatMigrationDeferred, AgentSession, CODEX_AGENT_PROVIDER_ID, type AgentProvider, type IAgentChatContext, type IAgentDiscoveredChat } from '../../../common/agent.js';
 import { AgentSystemNotificationKind, toAgentSystemNotificationMeta } from '../../../common/meta/agentSystemNotificationMeta.js';
 import { ActionType, type ChatAction } from '../../../common/state/sessionActions.js';
+import { AHP_AUTH_REQUIRED, ProtocolError } from '../../../common/state/sessionProtocol.js';
+import { AgentHostGitHubMcpServerEnabledConfigKey } from '../../../common/agentHostSchema.js';
 import { CustomizationEnablementKind, CustomizationType, McpServerStatus, type McpServerCustomization } from '../../../common/state/protocol/channels-session/state.js';
 import { buildDefaultChatUri, parseRequiredSessionUriFromChatUri, ResponsePartKind } from '../../../common/state/sessionState.js';
 import { AgentHostStateManager } from '../../../node/agentHostStateManager.js';
 import { getCustomizationEnablementKey, type CustomizationEnablementResolution, type ICustomizationEnablementTarget } from '../../../node/agentHostCustomizationEnablementService.js';
-import { CodexAgent } from '../../../node/codex/codexAgent.js';
+import { CodexAgent, toCodexModelSelectionId } from '../../../node/codex/codexAgent.js';
 import { CodexClientCustomizationStore, type ICodexClientPlugin } from '../../../node/codex/codexClientCustomizations.js';
 import type { ICodexMcpServerConfigJson, ICodexMcpServerEntry } from '../../../node/codex/codexMcpServers.js';
 import type { ItemGuardianApprovalReviewCompletedNotification } from '../../../node/codex/protocol/generated/v2/ItemGuardianApprovalReviewCompletedNotification.js';
@@ -77,6 +80,19 @@ interface ICodexGitHubMcpHarness {
 
 interface ICodexGitHubEndpointChangeHarness {
 	_handleGitHubEndpointChange(): void;
+}
+
+interface ICodexBuiltInGitHubMcpHarness {
+	_builtInGitHubMcpServer(session: { readonly agentMergeTurn?: boolean }, configuredServers: Record<string, ICodexMcpServerConfigJson>): Record<string, ICodexMcpServerConfigJson>;
+}
+
+interface ICodexGitHubMcpEnabledHarness {
+	_githubMcpServerEnabled?: boolean;
+	_isGitHubMcpServerEnabled(): boolean;
+}
+
+interface ICodexCreationModelHarness {
+	_resolveCreationModel(requested: { readonly id: string } | undefined): { readonly id: string } | undefined;
 }
 
 interface ICodexAuthenticateHarness {
@@ -297,6 +313,99 @@ suite('CodexAgent', () => {
 		assert.deepStrictEqual(aliasedServers._buildSessionMcpServers({ sessionId: 'alias', workingDirectory: URI.file('/work') }), {
 			alias: { url: 'https://api.githubcopilot.com/mcp/' },
 		});
+	});
+
+	test('the built-in GitHub MCP server is withheld without a GitHub token (D04 AC4)', () => {
+		const createHarness = (options: { enabled: boolean; token: string | undefined }): ICodexBuiltInGitHubMcpHarness => Object.assign(Object.create(CodexAgent.prototype), {
+			_githubMcpServerEnabled: options.enabled,
+			_githubToken: options.token,
+			_gitHubMcpServerConfiguration: options.token ? createGitHubMcpServerConfiguration('https://api.githubcopilot.com') : undefined,
+			_isMcpServerEnabledForSdk: () => true,
+		}) as ICodexBuiltInGitHubMcpHarness;
+
+		// The tokenless row is the D04 regression guard: signed out of GitHub, the
+		// session's `mcp_servers` must carry no built-in GitHub entry at all. The
+		// merge-turn row covers agent-merge sessions, which never get the server.
+		assert.deepStrictEqual({
+			noToken: createHarness({ enabled: true, token: undefined })._builtInGitHubMcpServer({}, {}),
+			disabled: createHarness({ enabled: false, token: 'token' })._builtInGitHubMcpServer({}, {}),
+			mergeTurn: createHarness({ enabled: true, token: 'token' })._builtInGitHubMcpServer({ agentMergeTurn: true }, {}),
+			enabledKeys: Object.keys(createHarness({ enabled: true, token: 'token' })._builtInGitHubMcpServer({}, {})),
+		}, {
+			noToken: {},
+			disabled: {},
+			mergeTurn: {},
+			enabledKeys: ['github-mcp-server'],
+		});
+	});
+
+	test('chat.agentHost.githubMcpServer.enabled=false withholds the built-in GitHub MCP server (D04 AC7)', () => {
+		const createHarness = (rootValues: Record<string, unknown>): ICodexGitHubMcpEnabledHarness & ICodexBuiltInGitHubMcpHarness => Object.assign(Object.create(CodexAgent.prototype), {
+			_configurationService: { getRootValue: (_schema: unknown, key: string) => rootValues[key] },
+			_githubMcpServerEnabled: undefined,
+			_githubToken: 'token',
+			_gitHubMcpServerConfiguration: createGitHubMcpServerConfiguration('https://api.githubcopilot.com'),
+			_isMcpServerEnabledForSdk: () => true,
+		}) as ICodexGitHubMcpEnabledHarness & ICodexBuiltInGitHubMcpHarness;
+
+		const disabled = createHarness({ [AgentHostGitHubMcpServerEnabledConfigKey]: false });
+		const enabled = createHarness({ [AgentHostGitHubMcpServerEnabledConfigKey]: true });
+		const unset = createHarness({});
+
+		assert.deepStrictEqual({
+			disabledSetting: disabled._isGitHubMcpServerEnabled(),
+			enabledSetting: enabled._isGitHubMcpServerEnabled(),
+			unsetSetting: unset._isGitHubMcpServerEnabled(),
+		}, {
+			disabledSetting: false,
+			enabledSetting: true,
+			unsetSetting: true,
+		});
+
+		// End to end: the resolved flag is what gates injection, so a disabled
+		// setting must yield no GitHub server even with a valid token.
+		disabled._githubMcpServerEnabled = disabled._isGitHubMcpServerEnabled();
+		enabled._githubMcpServerEnabled = enabled._isGitHubMcpServerEnabled();
+		assert.deepStrictEqual({
+			disabled: disabled._builtInGitHubMcpServer({}, {}),
+			enabledKeys: Object.keys(enabled._builtInGitHubMcpServer({}, {})),
+		}, {
+			disabled: {},
+			enabledKeys: ['github-mcp-server'],
+		});
+	});
+
+	test('model resolution without a GitHub token falls back to the OpenAI provider and only Copilot models require GitHub (D04 B9)', () => {
+		const openAIModel = { id: toCodexModelSelectionId('openai', 'gpt-5-codex'), name: 'GPT-5 Codex', provider: 'codex', supportsVision: false };
+		const copilotModel = { id: toCodexModelSelectionId('vscode-proxy', 'gpt-5'), name: 'GPT-5', provider: 'codex', supportsVision: false };
+		const createHarness = (models: readonly typeof openAIModel[], token: string | undefined): ICodexCreationModelHarness => Object.assign(Object.create(CodexAgent.prototype), {
+			_models: observableValue('models', models),
+			_logService: new NullLogService(),
+			_githubToken: token,
+			_gitHubEndpointService: {
+				getCopilotResource: () => ({ resource: 'https://api.github.com/copilot_internal/user' }),
+				getRepoResource: () => ({ resource: 'https://api.github.com' }),
+			},
+		}) as ICodexCreationModelHarness;
+
+		// No explicit selection + OpenAI-backed catalog: the default resolves to the
+		// OpenAI model and no GitHub authentication is demanded.
+		assert.deepStrictEqual(createHarness([openAIModel], undefined)._resolveCreationModel(undefined), { id: openAIModel.id });
+
+		// An explicit OpenAI selection never needs a GitHub token either.
+		assert.deepStrictEqual(createHarness([openAIModel, copilotModel], undefined)._resolveCreationModel({ id: openAIModel.id }), { id: openAIModel.id });
+
+		// A Copilot-routed model without a token rejects with the structured
+		// AHP_AUTH_REQUIRED the client turns into a sign-in prompt — never an
+		// uncaught failure.
+		const copilotOnly = createHarness([copilotModel], undefined);
+		assert.throws(
+			() => copilotOnly._resolveCreationModel(undefined),
+			(error: unknown) => error instanceof ProtocolError && error.code === AHP_AUTH_REQUIRED,
+		);
+
+		// With a token the same Copilot default resolves fine.
+		assert.deepStrictEqual(createHarness([copilotModel], 'token')._resolveCreationModel(undefined), { id: copilotModel.id });
 	});
 
 	test('clears GitHub MCP credentials when the GitHub endpoint changes', () => {

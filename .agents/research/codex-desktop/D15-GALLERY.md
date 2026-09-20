@@ -79,7 +79,7 @@
 
 ## D15-06 VSIX 本地安装兜底（回滚权威口径：本节为准）
 
-- Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键——自补充 PR 起还须**同删**：① `scripts/audit-network-egress.sh` 与 ② `scripts/verify-beta-gates.sh` 中的 gallery 存在性断言，③ `src/vs/code/test/node/extensionGallery.test.ts` 中的 overlay pin / merged pin 两个 test（否则这两条随 baseline CI 的 test-node 步骤报红），④ `.github/workflows/codex-desktop-baseline.yml` 中该测试文件的 `--run` 行。缺任一即撞上有意的显式回滚门）后回到"无市场"状态，
+- Gallery 移除（回滚方式：删除覆盖层 `extensionsGallery` 键——自补充 PR 起还须**同删/同改**：① `scripts/audit-network-egress.sh` 与 ② `scripts/verify-beta-gates.sh` 中的 gallery 存在性断言；③ `src/vs/code/test/node/extensionGallery.test.ts` **整个文件**（5 个 test 全部为 D15 gallery 专属：overlay pin、merged pin、G9 pin、denylist pin、overlay-vs-base pin——只删前两个仍剩 G9 pin 红，且文件命中 `test/unit/node/index.js` 的全量 glob，只删 CI 行不删文件会让全量 `npm run test-node` 红）；④ `.github/workflows/codex-desktop-baseline.yml` 中该文件的 `--run` 行；⑤ `PRE-RELEASE-CHECKLIST.md` E1/E3 的勾销回退为未勾选（勾销声明的门禁已不存在）；⑥ `LICENSE-CLEARANCE.md` §10 的"D15 起缺失=硬失败"裁定回退为"未配置即合规基线"。缺任一即撞上有意的显式回滚门或留下不一致的合规声明）后回到"无市场"状态，
   仍可通过 `--install-extension <path-to.vsix>` 或 GUI "Install from VSIX" 安装。
   该路径不依赖 gallery 配置。
 
@@ -183,7 +183,8 @@ explicitly empty allow-list"（首轮已挂）。
 | ms-vscode.vscode-js-profile-table | 1.0.11 | `a962a1e6…48ae9` | `a962a1e6…48ae9` | 一致 |
 
 （`https://open-vsx.org/vscode/gallery/publishers/ms-vscode/vsextensions/{name}/{version}/vspackage`
-实拉 + `shasum -a 256`，2026-09-20。）
+实拉 + `shasum -a 256`，2026-09-20。注意 `{name}` 为**裸扩展名**（`js-debug-companion`，
+不含 `ms-vscode.` 前缀；填全 id 会 404）。）
 
 **更正 D15-04 的拉取来源表述**：`build/lib/builtInExtensions.ts` 的
 `syncMarketplaceExtension` 在 gallery 已配置时走 `fromMarketplace(serviceUrl, …)`，

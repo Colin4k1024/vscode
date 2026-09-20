@@ -96,12 +96,13 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 			// ColinCode mixin exemption (D15): the upstream product.json must not
 			// carry a gallery, but with the mixin applied the working-tree
 			// product.json legitimately carries the overlay's Open VSX config.
-			// Accept exactly that value, and only while the file differs from
-			// HEAD — a COMMITTED gallery in product.json (someone committing the
-			// applied mixin) must still fail here, since
-			// check-product-json-pristine.sh compares against HEAD and cannot
-			// catch that. Anything else (e.g. an MS Marketplace URL edited in
-			// directly) also fails.
+			// The exemption applies ONLY while the change is fully uncommitted
+			// AND unstaged: the working tree must differ from HEAD (mixin
+			// applied) and the index must match HEAD (nothing staged). Any other
+			// git state — committed gallery, staged gallery, or an errored git
+			// probe — fails here, because check-product-json-pristine.sh
+			// compares against HEAD and cannot catch those. Anything but the
+			// exact overlay value (e.g. an MS Marketplace URL) also fails.
 			let overlayGallery: unknown;
 			try {
 				// file.path is the root product.json being scanned; the mixin
@@ -110,8 +111,11 @@ export function hygiene(some: NodeJS.ReadWriteStream | string[] | undefined, run
 			} catch {
 				overlayGallery = undefined;
 			}
-			const committedToHead = cp.spawnSync('git', ['diff', '--quiet', 'HEAD', '--', file.relative], { cwd: path.dirname(file.path) }).status === 0;
-			if (committedToHead || !overlayGallery || JSON.stringify(product.extensionsGallery) !== JSON.stringify(overlayGallery)) {
+			const gitCwd = path.dirname(file.path);
+			const workingTreeDiffersFromHead = cp.spawnSync('git', ['diff', '--quiet', 'HEAD', '--', file.relative], { cwd: gitCwd }).status === 1;
+			const indexMatchesHead = cp.spawnSync('git', ['diff', '--cached', '--quiet', 'HEAD', '--', file.relative], { cwd: gitCwd }).status === 0;
+			const mixinAppliedUncommitted = workingTreeDiffersFromHead && indexMatchesHead;
+			if (!mixinAppliedUncommitted || !overlayGallery || JSON.stringify(product.extensionsGallery) !== JSON.stringify(overlayGallery)) {
 				console.error(`product.json: Contains 'extensionsGallery'`);
 				errorCount++;
 			}

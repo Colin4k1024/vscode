@@ -141,7 +141,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 - **上游内嵌默认值的空值守卫/移除**（5 个）：`platform/product/common/product.ts`（移除 `defaultChatAgent`）、`abstractExtensionManagementService.ts`、`extensionsWorkbenchService.ts`、`chatStatusEntry.ts`、`chatWidget.ts`（各 1 行空值守卫）——上游假设 `defaultChatAgent` 必存在，守卫只能写在判读处。
 - **入口/contribution 注册**（5 个）：`app.ts`、`agentHostStarter.config.contribution.ts`、`agentHost.contribution.ts`、`chat.shared.contribution.ts`、`chatStatusDashboard.ts`——注册点本体。
 - **测试文件**（24 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。
-- **构建/工具链/配置**（7 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）。
+- **构建/工具链/配置**（8 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）。
 
 注：fork 自有的 CI workflow（baseline/drift）、`scripts/*.sh`、`product/`、文档等均为
 **新增文件（覆盖层）**，即使后续被 fork 自己修改，相对上游仍是 A 类——上游没有同名
@@ -170,6 +170,8 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `.agents/research/codex-desktop/evidence/D01-agents-window.png` | A | bin | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/evidence/d07-first-launch-agents-default.png` | A | bin | D07 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/evidence/d07-first-launch-continue-without-signin.png` | A | bin | D07 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
+| `.agents/research/codex-desktop/D15-GALLERY.md` | A | +217/-0 | D15 | 覆盖层 | **覆盖层**：D15 裁定与两轮实测证据文档 |
+| `.agents/research/codex-desktop/evidence/d15-*`（9 个文件） | A | bin/txt | D15 | 覆盖层 | **覆盖层**：D15 实测证据（截图/日志/netlog 聚合/首轮 txt 工件） |
 | `.agents/research/codex-desktop/submit.sh` | A | +263/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/skills/launch/SKILL.md` | M | +4/-4 | D06 | 源码改动 | Dev-tool 文档，引用产品名/数据目录；随 D06 品牌更新（非发布运行时） |
 | `.agents/skills/launch/scripts/launch.ps1` | M | +32/-10 | D06 | 源码改动 | 开发启动脚本须传入 mixin 的 dataFolderName/应用名；shell 脚本无覆盖层挂点 |
@@ -205,6 +207,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `build/agent-sdk/common.ts` | M | +33/-2 | D02 | 源码改动 | D02 SDK 打包逻辑（CDN 端点等）；构建期工具链，无产品覆盖层机制可承载 |
 | `build/agent-sdk/test/cdnEndpoint.test.ts` | A | +85/-0 | D02,D14 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `build/filters.ts` | M | +5/-0 | D14 | 源码改动 | D14：hygiene copyright 豁免 UPSTREAM_COMMIT/VERSION（机器可读 pin 文件不能加注释头）；filters.ts 是上游既有的豁免注册表 |
+| `build/hygiene.ts` | M | +26/-2 | D15 | 源码改动 | D15：hygiene 的 extensionsGallery 检查改为 mixin 感知（工作树应用态放行、提交/暂存态仍红）；该检查是上游对产品 gallery 的硬约束，只能改在检查本体；覆盖层机制无法拦截构建脚本 |
 | `package.json` | M | +1/-0 | D14 | 源码改动 | D14：新增 1 行 `codex:check-protocol-sync` script alias；package.json 是冲突高发区，改动压到最小 |
 | `product/README.md` | A | +98/-0 | D06,D08 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/branding-residue-whitelist.txt` | A | +16/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
@@ -249,8 +252,6 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `product/product.json` | A | +48/-0 | D06,D07,D08,D15 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `scripts/apply-mixin.sh` | A | +188/-0 | D06,D08,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/audit-network-egress.sh` | A | +173/-0 | D08,D15 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件）；D15 追加合并配置 gallery 断言（Open VSX 前缀 + MS Marketplace 禁令 + G9 存在性门） |
-| `scripts/verify-beta-gates.sh` | A | +153/-0 | D09,D15 | 覆盖层 | D09 发布门禁链；D15 起 gate 4 增加 gallery 存在性硬门（与 audit-network-egress.sh 对齐） |
-| `src/vs/code/test/node/extensionGallery.test.ts` | A | +105/-0 | D15 | 覆盖层 | D15 gallery 裁定 pin 测试（overlay 值、merged 无 MS Marketplace、egress 脚本 G9 存在性断言钉住） |
 | `scripts/check-branding-identity.sh` | A | +86/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/check-branding-residue.sh` | A | +105/-0 | D06 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/check-no-copilot-artifacts.sh` | A | +52/-0 | D08,D14 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
@@ -262,10 +263,12 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `scripts/scan-credential-residue.sh` | A | +62/-0 | D08 | 覆盖层 | **覆盖层**：fork 自有工具脚本（新增文件） |
 | `scripts/sync-upstream.sh` | A | +174/-0 | D14 | 覆盖层 | **覆盖层**：D14 fork-merge 同步编排（移植自 grok-code-product） |
 | `scripts/upstream-drift-report.sh` | A | +126/-0 | D14 | 覆盖层 | **覆盖层**：D14 漂移报告生成器 |
+| `scripts/verify-beta-gates.sh` | A | +153/-0 | D09,D15 | 覆盖层 | **覆盖层**：D09 发布门禁链；D15 起 gate 4 增加 gallery 存在性硬门（与 audit-network-egress.sh 对齐） |
 | `src/vs/base/common/product.ts` | M | +14/-1 | D07,D08 | 源码改动 | 产品接口契约：`defaultWindow?` 字段 + `defaultChatAgent` 改可选；类型必须改在接口本体 |
 | `src/vs/code/electron-main/app.ts` | M | +14/-0 | D07 | 源码改动 | 启动入口分支（bare launch → Agents 窗口）；进程入口无覆盖层挂点 |
 | `src/vs/code/node/agentsWindowStartup.ts` | A | +61/-0 | D07 | 覆盖层 | D07：新增模块（append-only），启动判定逻辑独立成文件以缩小 app.ts 改动面 |
 | `src/vs/code/test/node/agentsWindowStartup.test.ts` | A | +101/-0 | D07 | 覆盖层 | 上述模块的测试（新增） |
+| `src/vs/code/test/node/extensionGallery.test.ts` | A | +105/-0 | D15 | 覆盖层 | **覆盖层**：D15 gallery 裁定 pin 测试（新增文件） |
 | `src/vs/platform/agentHost/common/agentHostCustomizationConfig.ts` | M | +29/-2 | D04,D05 | 源码改动 | D04/D05 默认 provider/权限策略的配置解析；策略是行为逻辑不是数据 |
 | `src/vs/platform/agentHost/common/agentHostSchema.ts` | M | +1/-1 | D04 | 源码改动 | 配置 schema 默认值；schema 定义本体 |
 | `src/vs/platform/agentHost/common/agentHostStarter.config.contribution.ts` | M | +3/-2 | D04,D06 | 源码改动 | starter 配置贡献点默认值；contribution 注册本体 |

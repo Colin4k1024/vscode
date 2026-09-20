@@ -226,10 +226,10 @@ if (process.env.SOURCE_DATE_EPOCH && /^\d+$/.test(process.env.SOURCE_DATE_EPOCH)
 
 // L5: fail loud when a source read silently produced nothing — per source,
 // so one broken input can't hide behind the others: cgmanifest.json has 14
-// registrations today (assert ≥ 10), cglicenses.json supplies most of the
-// document (assert ≥ 40), and the fork-specific agent SDK pins must be
+// registrations today (assert >= 10), cglicenses.json supplies most of the
+// document (assert >= 40), and the fork-specific agent SDK pins must be
 // present by construction (the loop above throws when the agents dir is
-// unreadable — assert ≥ 1 entry made it).
+// unreadable — assert >= 1 entry made it).
 const sdkPinCount = components.filter(c => String(c.description ?? '').includes("Agent SDK '")).length;
 if (cgmanifestCount < 10) {
 	throw new Error(`SBOM has only ${cgmanifestCount} cgmanifest-derived components — cgmanifest.json must have failed to merge (14 expected today). Refusing to write an incomplete manifest.`);

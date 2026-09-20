@@ -101,7 +101,7 @@ for dir in "$@"; do
 		rest="${hit##*/node_modules/}"
 		rest="${rest##*/node_modules.asar.unpacked/}"
 		case "$rest" in
-			@github/copilot-sdk|@github/copilot-sdk/*|@github/copilot-sdk-*|@github/copilot-sdk-*/*)
+			@github/copilot-sdk|@github/copilot-sdk/*|@github/copilot-sdk-*)
 				;; # allowlisted (MIT, load-bearing)
 			*)
 				echo "BLOCKED: restricted redistributable package present: $hit" >&2

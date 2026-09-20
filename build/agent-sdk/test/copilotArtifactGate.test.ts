@@ -107,7 +107,7 @@ suite('check-no-copilot-artifacts (positive control, issue #66)', () => {
 			fs.mkdirSync(path.join(fakeRepo, 'product'), { recursive: true });
 			fs.copyFileSync(GATE, path.join(fakeRepo, 'scripts', 'check-no-copilot-artifacts.sh'));
 			const mixin = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'product', 'product.json'), 'utf8')) as Record<string, unknown>;
-			delete mixin['copilotPackagingBlocklist'];
+			delete mixin.copilotPackagingBlocklist;
 			fs.writeFileSync(path.join(fakeRepo, 'product', 'product.json'), JSON.stringify(mixin, null, '\t'));
 			const appDir = path.join(dir, 'app');
 			fs.mkdirSync(appDir, { recursive: true });

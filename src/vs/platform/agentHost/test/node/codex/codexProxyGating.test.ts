@@ -7,7 +7,7 @@ import assert from 'assert';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
-import { join } from 'path';
+import { join } from '../../../../../base/common/path.js';
 import type { ChildProcessWithoutNullStreams } from 'child_process';
 import type { CCAModel } from '@vscode/copilot-api';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';

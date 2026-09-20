@@ -121,10 +121,10 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 ## 4. 薄覆盖层清单（对齐 R2 / D09 AC12）
 
 口径：`git diff fb20064c0f4..HEAD`（fork 相对上游基线的全部自有改动）。
-当前总计：**226 文件**（静态快照：§4.1 为手工维护清单，数字为表实测值——新增（覆盖层）145 / 源码改动 42 / 源码改动（测试）29；行数差口径以 `git diff --numstat fb20064c0f4 HEAD` 为准，不随表漂移）。
+当前总计：**216 文件**（静态快照：§4.1 为手工维护清单，数字为表实测值——新增（覆盖层）145 / 源码改动 42 / 源码改动（测试）29；行数差口径以 `git diff --numstat fb20064c0f4 HEAD` 为准，不随表漂移）。
 全量实时口径跑 `scripts/own-change-surface.sh`；该脚本口径更宽——除本清单声明排除项（`protocol/generated/`、`build/codex/`）外还含
 §4.1 尚未补录的条目，两者不可直接对账，补录为既有债留作后续跟进）；
-其中新增（覆盖层）134、修改（源码改动）58（含 25 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
+其中新增（覆盖层）145、修改（源码改动）42、修改（测试）29、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
 `scripts/own-change-surface.sh` 断言）。上游协议生成目录
 （`protocol/generated/` 828 文件）与 `build/codex/` 在基线中已存在（上游 in-tree），
 不计入自有改动面。
@@ -135,7 +135,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
   文档、新增测试/模块）。新增文件在 merge 时天然不与上游冲突。
 - **源码改动**：修改上游既有文件（M）。每项必须回答"为什么不能走覆盖层"。
 
-58 个源码改动文件的理由汇总（逐文件全表见 §4.1；清单为手工维护的快照，非实时生成——生成时点见本节顶部口径行）：
+42 个源码改动文件的理由汇总（逐文件全表见 §4.1；清单为手工维护的快照，非实时生成——生成时点见本节顶部口径行）：
 
 - **类型/枚举/接口契约本体**（4 个）：`base/common/product.ts`、`platform/window/common/window.ts`、`agentHostSchema.ts`、`meta/codexAccount.ts`——类型成员必须改在定义处，无覆盖层概念。D09 给 `base/common/product.ts` 追加 `IAgentSdkProductConfig`（agent SDK 下载配置；D66 改为按 target 键控 sha256）与 `excludeCopilotFromPackaging` 运行时语义。
 - **行为逻辑/策略裁决**（D09 后 14 个）：`agentService.ts`、`codexAgent.ts`、`codexAccountState.ts`、`agentHostCustomizationConfig.ts`、`codexAccountService.ts`、`defaultAccount.ts`、`telemetryService.ts`、`extensionGalleryService.ts`、`agentSessionsWelcome.ts`、`sessionsActions.ts`、`account.contribution.ts`——fork 改变的是运行时行为，不是数据；上游无对应扩展点。D09 追加 3 个：`node/agentSdkDownloader.ts`（按 urlTemplate 下载并校验 SDK——完整性校验是运行时行为）、`node/shared/copilotApiService.ts`（`loadCopilotApi()` 延迟解析——D10 section 5 要求缺包时 agent host 仍可启动，D66 起品牌化构建隐藏 Copilot 登录入口并短路 CAPI 路径）、`node/sshRemoteAgentHostHelpers.ts`（CLI 下载默认端点改为 fork 自有 releases——deny-by-default 策略，见下）。
@@ -166,6 +166,8 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 > 总变动行数（精确 +/- 拆分以 `git diff --numstat fb20064c0f4 HEAD -- <file>` 为准）；
 > `+A/-D` 行记录的是该行来源所示 D-number 落地时点的 diff 规模，后续 PR 的继续改动不
 > 回溯刷新（D66 评审实测若干行已漂移）。需要当前值时以 `git diff --numstat` 输出为准。
+| 文件 | 变更 | 行数 | 来源 | 分类 | 理由 |
+|---|---|---|---|---|---|
 | `.agents/goal/codex-desktop.json` | A | +338/-0 | D04 | 覆盖层 | **覆盖层**：编排目标状态 |
 | `.agents/research/codex-desktop/00-FINDINGS.md` | A | +390/-0 | D01,D17 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
 | `.agents/research/codex-desktop/01-ACCEPTANCE-CORE.md` | A | +213/-0 | D01 | 覆盖层 | **覆盖层**：调研与决策文档（含 bootstrap/提交脚本） |
@@ -383,11 +385,9 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/workbench/services/agentHost/browser/codexAccountService.ts` | M | +70/-3 | D03 | 源码改动 | D03：OpenAI 原生账号服务（+70/-3）；服务行为 |
 | `src/vs/workbench/services/agentHost/test/browser/codexAccountService.test.ts` | M | +131/-5 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 
-| 文件 | 变更 | 行数 | 来源 | 分类 | 理由 |
-|---|---|---|---|---|---|
 
 
-共 226 文件：覆盖层(新增) 145、源码改动 42、源码改动(测试) 29。
+共 216 文件：覆盖层(新增) 145、源码改动 42、源码改动(测试) 29。
 
 行数列说明：`±N (D09)` 行是 D66 补录的 D09 存量条目（M8——D14 制表时这些文件已计入
 178/56 总数，但 §4.1 逐行清单漏了它们）；`±N` 是 D09 changeset 的总变动行数

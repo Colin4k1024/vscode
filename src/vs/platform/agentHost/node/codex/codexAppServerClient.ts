@@ -123,7 +123,7 @@ export interface ICodexOverloadedRetryPolicy {
 
 /**
  * Default retry tuning for -32001 backpressure:
- * `500ms → 1s → 2s → 4s` (±50% jitter, capped at 8s), at most 4 retries,
+ * `500ms → 1s → 2s → 4s` (up to 50% symmetric jitter, capped at 8s), at most 4 retries,
  * never spending more than 20s on one logical request. With these values a
  * request can never retry more than once within any 100ms window, keeping
  * the retry stream well clear of "immediate dense retry" territory.
@@ -507,7 +507,7 @@ export class CodexAppServerClient extends Disposable implements ICodexAppServerC
 		const policy = this._overloadedRetryPolicy;
 		const startedAt = Date.now();
 		let attempt = 0;
-		for (;;) {
+		for (; ;) {
 			try {
 				return await this._requestOnce<M, R>(method, params, trace);
 			} catch (err) {

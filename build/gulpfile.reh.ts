@@ -260,6 +260,20 @@ function packageTask(type: string, platform: string, arch: string, sourceFolderN
 	const destination = path.join(BUILD_ROOT, destinationFolderName);
 
 	return () => {
+		// D10 section 5 fail-loud (M7): the desktop packageTask honors the
+		// mixin's `excludeCopilotFromPackaging` block list; this REH task does
+		// NOT implement it (the REH is declared out of scope for the branded
+		// desktop route — Issue #11). Silently shipping the block-listed
+		// packages in a server tarball is worse than no REH build: stop here
+		// instead of producing a non-compliant artifact. Building a compliant
+		// REH needs the same filter wiring the desktop task has; until then,
+		// build the REH from a product.json without the mixin.
+		if ((product as { readonly excludeCopilotFromPackaging?: boolean }).excludeCopilotFromPackaging === true) {
+			throw new Error(
+				'product.json sets excludeCopilotFromPackaging (D10 section 5), but the REH package task does not implement the Copilot block list — the REH is out of scope for the branded desktop route (Issue #11). Refusing to package a non-compliant REH.'
+			);
+		}
+
 		const src = gulp.src(sourceFolderName + '/**', { base: '.' })
 			.pipe(rename(function (path) { path.dirname = path.dirname!.replace(new RegExp('^' + sourceFolderName), 'out'); }))
 			.pipe(util.setExecutableBit(['**/*.sh']))

@@ -112,8 +112,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 
 | 区域 | 自有改动 | 备注 |
 |---|---|---|
-| `src/vs/platform/agentHost/`（common/node/test） | 15 M + 大量 A | 最高重叠区；`codexAgent.ts` +173/-16 是最大单文件改动 |
-| `src/vs/platform/agentHost/test/node/e2e/suites/copilotCoverageSuite.ts` | M | +4/-1 | D15 | 源码改动 | D15 评审发现：scratch 目录清理断言的 retry 预算过紧（CI flake）；e2e 时序断言只能改在测试本体 |
+| `src/vs/platform/agentHost/`（common/node/test） | 16 M + 大量 A | 最高重叠区；`codexAgent.ts` +173/-16 是最大单文件改动 |
 | `src/vs/sessions/` | 4 M + 2 A | 账号菜单、键位 |
 | `src/vs/workbench/contrib/chat/` | 6 M + 2 A | `chat.shared.contribution.ts` 已被 `sync-upstream.sh --dry-run` 实测预报冲突（2026-09-20 vs upstream/main） |
 | `product.json`（根） | 0 M | D06 mixin 保护：根 product.json 保持 0 diff（`check-product-json-pristine.sh` 把关） |
@@ -123,7 +122,8 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 
 口径：`git diff fb20064c0f4..HEAD`（fork 相对上游基线的全部自有改动）。
 当前总计：**192 文件**（静态快照：§4.1 为手工维护清单，数字为表实测值；行数差口径 +15580/-984 为 D14 合入时点快照。
-全量实时口径以 `scripts/own-change-surface.sh` 输出为准，该脚本含生成目录等本清单声明排除项）；
+全量实时口径跑 `scripts/own-change-surface.sh`；该脚本口径更宽——除本清单声明排除项（`protocol/generated/`、`build/codex/`）外还含
+§4.1 尚未补录的条目，两者不可直接对账，补录为既有债留作后续跟进）；
 其中新增（覆盖层）134、修改（源码改动）58（含 25 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
 `scripts/own-change-surface.sh` 断言）。上游协议生成目录
 （`protocol/generated/` 828 文件）与 `build/codex/` 在基线中已存在（上游 in-tree），
@@ -316,6 +316,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/test/node/e2e/harness/agentHostE2ETestHarness.ts` | M | +20/-0 | D11 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/e2e/providers/codexAgentHostE2E.integrationTest.ts` | M | +312/-4 | D11 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/e2e/suites/agentHostE2ESuites.ts` | M | +4/-0 | D11 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
+| `src/vs/platform/agentHost/test/node/e2e/suites/copilotCoverageSuite.ts` | M | +4/-1 | D15 | 源码改动(测试) | D15 评审发现：scratch 目录清理断言的 retry 预算过紧（CI flake）；e2e 时序断言只能改在测试本体 |
 | `src/vs/platform/agentHost/test/node/e2e/suites/replayStrictnessSuite.ts` | A | +105/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/extensionManagement/common/abstractExtensionManagementService.ts` | M | +1/-1 | D08 | 源码改动 | D08：`defaultChatAgent` 缺失时的空值守卫（1 行）；上游逻辑假设其必存在 |
 | `src/vs/platform/extensionManagement/common/extensionGalleryService.ts` | M | +14/-10 | D08 | 源码改动 | D08：画廊/遥测出口隔离（+14/-10）；网络出口是行为逻辑 |

@@ -519,6 +519,7 @@ suite('CodexAgent model refresh', () => {
 						await rateLimitStarted.complete();
 						await releaseRateLimit.p;
 						return {
+							ordinaryUsageAllowed: null,
 							rateLimits: {
 								primary: null,
 								secondary: { usedPercent: 1, windowDurationMins: 7 * 24 * 60, resetsAt: 123 },
@@ -1023,7 +1024,8 @@ suite('CodexAgent model refresh', () => {
 					throw new Error('rate limits unavailable');
 				}
 				return {
-					rateLimits: { limitId: null, limitName: null, primary: null, secondary: { usedPercent: 20, windowDurationMins: 10080, resetsAt: 200 }, credits: null, individualLimit: null, spendControlReached: null, planType: null, rateLimitReachedType: null },
+					ordinaryUsageAllowed: null,
+					rateLimits: { limitId: null, limitName: null, normalModelSlug: null, primary: null, secondary: { usedPercent: 20, windowDurationMins: 10080, resetsAt: 200 }, credits: null, individualLimit: null, spendControlReached: null, planType: null, rateLimitReachedType: null },
 					rateLimitsByLimitId: null,
 					rateLimitResetCredits: null,
 					accountId: null,
@@ -1740,7 +1742,8 @@ suite('CodexAgent model refresh', () => {
 		const first = agent['_refreshAccountRateLimits'](client, 'person@example.com');
 		const second = agent['_refreshAccountRateLimits'](client, 'person@example.com');
 		resolveSecond({
-			rateLimits: { limitId: null, limitName: null, primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: 200 }, secondary: null, credits: null, individualLimit: null, spendControlReached: null, planType: null, rateLimitReachedType: null },
+			ordinaryUsageAllowed: null,
+			rateLimits: { limitId: null, limitName: null, normalModelSlug: null, primary: { usedPercent: 20, windowDurationMins: 300, resetsAt: 200 }, secondary: null, credits: null, individualLimit: null, spendControlReached: null, planType: null, rateLimitReachedType: null },
 			rateLimitsByLimitId: null,
 			rateLimitResetCredits: null,
 			accountId: null,
@@ -1749,7 +1752,8 @@ suite('CodexAgent model refresh', () => {
 		await second;
 		const latestObservedAt = agent['_openAIAccountRateLimitUpdatedAt'];
 		resolveFirst({
-			rateLimits: { limitId: null, limitName: null, primary: { usedPercent: 90, windowDurationMins: 300, resetsAt: 100 }, secondary: null, credits: null, individualLimit: null, spendControlReached: null, planType: null, rateLimitReachedType: null },
+			ordinaryUsageAllowed: null,
+			rateLimits: { limitId: null, limitName: null, normalModelSlug: null, primary: { usedPercent: 90, windowDurationMins: 300, resetsAt: 100 }, secondary: null, credits: null, individualLimit: null, spendControlReached: null, planType: null, rateLimitReachedType: null },
 			rateLimitsByLimitId: null,
 			rateLimitResetCredits: null,
 			accountId: null,

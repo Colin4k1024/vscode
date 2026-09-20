@@ -25,6 +25,8 @@ import type { McpServerElicitationRequestResponse } from './protocol/generated/v
  *    user can still accept or decline.
  *  - `url` — surfaces the URL the server wants the user to open via
  *    {@link ChatInputRequest.url} with no questions.
+ *  - `openai/userVerification` — carries a title/description/challenge
+ *    instead of a message; surfaced as an accept/decline prompt only.
  *
  * MCP field names are used directly as the stable question id (the key
  * the answer map is later read back by).
@@ -36,6 +38,12 @@ export function buildElicitationRequest(requestId: string, params: McpServerElic
 			request.url = params.url;
 		}
 		return withChatInputRequestPurpose(request, ChatInputRequestPurpose.Elicitation);
+	}
+	if (params.mode === 'openai/userVerification') {
+		// `openai/userVerification` carries title/description/challenge
+		// instead of a message; surface them so the user can still accept
+		// or decline.
+		return withChatInputRequestPurpose({ id: requestId, message: `${params.title}\n\n${params.description}` }, ChatInputRequestPurpose.Elicitation);
 	}
 	if (params.mode !== 'form') {
 		// `openai/form` carries an opaque, OpenAI-specific schema we cannot

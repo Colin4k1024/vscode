@@ -23,7 +23,13 @@ export function codexAccountStateFromResponse(response: GetAccountResponse): ICo
 		return { usageSource: 'openai', status: 'signedIn', authType: 'chatgpt', email: response.account.email ?? undefined, planType: response.account.planType, requiresOpenaiAuth: response.requiresOpenaiAuth };
 	}
 	if (response.account?.type === 'apiKey') {
-		return { usageSource: 'openai', status: 'unavailable', authType: 'apiKey', requiresOpenaiAuth: response.requiresOpenaiAuth };
+		// An API key IS an authenticated account (D03/#5, fixes G4): mapping it to
+		// 'unavailable' made the account surfaces render a usable API-key setup as
+		// not usable. The chatgpt-subscription gates elsewhere key on
+		// `authType === 'chatgpt'` explicitly, so 'signedIn' with authType
+		// 'apiKey' keeps subscription-only features (image generation, plan
+		// badges, ChatGPT account pinning) off without penalizing key users.
+		return { usageSource: 'openai', status: 'signedIn', authType: 'apiKey', requiresOpenaiAuth: response.requiresOpenaiAuth };
 	}
 	if (response.account) {
 		return { usageSource: 'openai', status: 'unavailable', authType: 'other', requiresOpenaiAuth: response.requiresOpenaiAuth };

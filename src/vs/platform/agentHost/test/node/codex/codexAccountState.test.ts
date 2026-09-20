@@ -32,10 +32,18 @@ suite('CodexAccountState', () => {
 		);
 	});
 
-	test('does not classify API key or Bedrock credentials as human accounts', () => {
+	test('an API key is an authenticated account; Bedrock stays unusable (D03/G4)', () => {
+		// G4 fix (D03/#5): an API key must read as signed in — the account
+		// surfaces previously rendered a working key setup as unavailable.
+		// Subscription-only features key on authType === 'chatgpt' elsewhere,
+		// which an apiKey state never satisfies.
 		assert.deepStrictEqual(
 			codexAccountStateFromResponse({ account: { type: 'apiKey' }, requiresOpenaiAuth: true }),
-			{ usageSource: 'openai', status: 'unavailable', authType: 'apiKey', requiresOpenaiAuth: true },
+			{ usageSource: 'openai', status: 'signedIn', authType: 'apiKey', requiresOpenaiAuth: true },
+		);
+		assert.deepStrictEqual(
+			codexAccountStateFromResponse({ account: { type: 'apiKey' }, requiresOpenaiAuth: false }),
+			{ usageSource: 'openai', status: 'signedIn', authType: 'apiKey', requiresOpenaiAuth: false },
 		);
 		assert.deepStrictEqual(
 			codexAccountStateFromResponse({ account: { type: 'amazonBedrock', usesCodexManagedCredentials: true }, requiresOpenaiAuth: false }),

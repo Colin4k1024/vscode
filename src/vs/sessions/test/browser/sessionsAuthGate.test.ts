@@ -4,13 +4,35 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
+import { isWeb } from '../../../base/common/platform.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../base/test/common/utils.js';
-import { ConditionalAuthState, conditionalAuthState, resolveSignedOutWindowGate, shouldShowGitHubWorkspaceGroupSignIn, SignedOutWindowGate } from '../../browser/sessionsAuthGate.js';
+import { ConditionalAuthState, conditionalAuthState, isAllowSignedOutWhenUsableEnabled, resolveSignedOutWindowGate, shouldShowGitHubWorkspaceGroupSignIn, SignedOutWindowGate } from '../../browser/sessionsAuthGate.js';
+import { TestConfigurationService } from '../../../platform/configuration/test/common/testConfigurationService.js';
+import { AgentHostAllowSignedOutWhenUsableProductDefault, AgentHostAllowSignedOutWhenUsableSettingId } from '../../../platform/agentHost/common/agentService.js';
 import { SessionTypeAuthRequirement } from '../../services/sessions/common/session.js';
 
 suite('Sessions - Auth Gate', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
+
+	test('the fork product default for signed-out use is on (D04)', () => {
+		// Locks the single point of truth both registrations consume (workbench
+		// settings schema + agent-host root-config schema). Importing the
+		// registration modules themselves is not an option here: their side
+		// effects (command registrations) collide with their own tests when
+		// loaded in the same process, and the layering rules for this directory
+		// do not allow reaching vs/workbench/contrib/** anyway.
+		assert.strictEqual(AgentHostAllowSignedOutWhenUsableProductDefault, true);
+	});
+
+	test('signed-out use stays gated to desktop: enabled state is exactly `!isWeb` when the setting is on', () => {
+		// D04/#6 acceptance: web always requires sign-in. In a web context this
+		// asserts the `!isWeb` guard keeps the feature off even with the setting
+		// on; in an Electron renderer it asserts the same expression forwards
+		// `true`, so the test is meaningful in whichever suite loads it.
+		const configurationService = new TestConfigurationService({ [AgentHostAllowSignedOutWhenUsableSettingId]: true });
+		assert.strictEqual(isAllowSignedOutWhenUsableEnabled(configurationService), !isWeb);
+	});
 
 	test('blocking sign-in requires the opt-in and a provider that does not need GitHub', () => {
 		assert.deepStrictEqual({

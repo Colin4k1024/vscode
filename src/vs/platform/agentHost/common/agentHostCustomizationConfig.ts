@@ -7,6 +7,7 @@ import { localize } from '../../../nls.js';
 import { createSchema, schemaProperty } from './agentHostSchema.js';
 import { CustomizationType, type Customization, type PluginCustomization } from './state/protocol/state.js';
 import { customizationId } from './state/sessionState.js';
+import { AgentHostAllowSignedOutWhenUsableProductDefault } from './agentService.js';
 
 /**
  * Well-known root-config keys used by the platform to configure agent-host
@@ -93,8 +94,16 @@ export const agentHostCustomizationConfigSchema = createSchema({
 	[AgentHostConfigKey.AllowSignedOutWhenUsable]: schemaProperty<boolean>({
 		type: 'boolean',
 		title: localize('agentHost.config.allowSignedOutWhenUsable.title', "Allow Signed-Out Agent Host"),
-		description: localize('agentHost.config.allowSignedOutWhenUsable.description', "Experimental. When enabled, Agent Host sessions remain available while signed out as long as the selected agent has a usable model and authentication (for example Codex with ChatGPT authentication or Claude in native mode with your own Anthropic credentials). When disabled (the default), GitHub sign-in is required."),
-		default: false,
+		description: localize('agentHost.config.allowSignedOutWhenUsable.description', "When enabled, Agent Host sessions remain available while signed out as long as the selected agent has a usable model and authentication (for example Codex with ChatGPT authentication or Claude in native mode with your own Anthropic credentials). When disabled, GitHub sign-in is required."),
+		// Fork product default (D04/#6): metadata for the agent-host root-config
+		// protocol schema (published via toProtocol) only — not the VS Code
+		// settings schema users see. Node-side readers see the value through
+		// the workbench forwarder, which covers the LOCAL agent host (this
+		// product's primary path); a connected REMOTE agent host also gets no
+		// forwarding — its operator sets the key in that host's
+		// agent-host-config.json. `getRootValue` does not consult schema
+		// defaults. Upstream default: false, opt-in only.
+		default: AgentHostAllowSignedOutWhenUsableProductDefault,
 	}),
 	[AgentHostConfigKey.SessionCustomizationDiscoveryMode]: schemaProperty<SessionCustomizationDiscoveryMode>({
 		type: 'string',

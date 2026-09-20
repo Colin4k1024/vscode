@@ -11,7 +11,10 @@
 
 ```text
 product/
-├── product.json          # 覆盖层：品牌身份字段 + D08 隔离删除项；未列字段继承上游
+├── product.json          # 覆盖层：品牌身份字段 + D08 隔离删除项 + D15 扩展市场
+│                           # （extensionsGallery → Open VSX；sessionsWindowAllowedExtensions
+│                           #   显式 pin []，断言见 scripts/check-extension-gallery.sh）；
+│                           #   未列字段继承上游
 ├── default-settings.json # R12 声明记录（declarative record，非运行时机制，见下）
 ├── extensions.json       # 内置扩展清单（预留给 D09 打包管线；当前全空 = 继承上游）
 ├── branding-residue-whitelist.txt  # AC8 扫描白名单（仅第三方许可文本）

@@ -66,6 +66,14 @@ jobs:
       - name: D08 network egress audit (static)
         run: bash scripts/audit-network-egress.sh
 
+      # D15 (#17) extension gallery gate: the merged product configuration
+      # must point extensionsGallery at Open VSX only (never the Microsoft
+      # Marketplace — LICENSE-CLEARANCE.md §10 / checklist E1), and the
+      # sessionsWindowAllowedExtensions allow-list must stay pinned to the
+      # D15 empty-list decision. Needs only checkout + node.
+      - name: D15 extension gallery guard
+        run: bash scripts/check-extension-gallery.sh
+
       - name: Restore node_modules cache
         id: cache-node-modules
         uses: ./.github/actions/restore-node-modules

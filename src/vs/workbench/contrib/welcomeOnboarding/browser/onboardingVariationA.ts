@@ -10,7 +10,6 @@ import { isCancellationError } from '../../../../base/common/errors.js';
 import { StopWatch } from '../../../../base/common/stopwatch.js';
 import { URI } from '../../../../base/common/uri.js';
 import { isWindows, isMacintosh, isLinux } from '../../../../base/common/platform.js';
-import { assertDefined } from '../../../../base/common/types.js';
 import { FileAccess } from '../../../../base/common/network.js';
 import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
 import { KeyCode } from '../../../../base/common/keyCodes.js';
@@ -77,8 +76,12 @@ type OnboardingActionEvent = {
 
 type EnterpriseSignInUiState = 'options' | 'instance' | 'progress';
 
-assertDefined(product.defaultChatAgent, 'Onboarding requires a default chat agent product configuration.');
-const defaultChat = product.defaultChatAgent;
+// Products without a default chat agent (the ColinCode mixin deletes
+// `defaultChatAgent` with the Copilot isolation) have no sign-in onboarding:
+// `show()` no-ops. Every `defaultChat` use below is reachable only from
+// `show()`, so the assertion lives there instead of at module scope — a
+// module-scope throw aborts the whole workbench bundle evaluation.
+const defaultChat = product.defaultChatAgent!;
 
 /**
  * Variation A — Classic Wizard Modal
@@ -167,6 +170,12 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 
 	show(): void {
 		if (this.overlay) {
+			return;
+		}
+
+		if (!product.defaultChatAgent) {
+			// No default chat agent configured (ColinCode): the wizard's
+			// sign-in step has no meaning — skip onboarding entirely.
 			return;
 		}
 

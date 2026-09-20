@@ -114,6 +114,8 @@ export const enum AgentsWindowOpenSource {
 	Banner = 'banner',
 	CommandLine = 'commandLine',
 	Link = 'link',
+	/** Bare launch into the Agents window because it is the product's default desktop form (`product.defaultWindow === 'agents'`). */
+	StartupDefault = 'startupDefault',
 	Unknown = 'unknown',
 }
 
@@ -127,6 +129,7 @@ export function isAgentsWindowOpenSource(value: unknown): value is AgentsWindowO
 		case AgentsWindowOpenSource.Banner:
 		case AgentsWindowOpenSource.CommandLine:
 		case AgentsWindowOpenSource.Link:
+		case AgentsWindowOpenSource.StartupDefault:
 		case AgentsWindowOpenSource.Unknown:
 			return true;
 		default:

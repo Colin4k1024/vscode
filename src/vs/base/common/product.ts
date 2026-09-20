@@ -258,6 +258,16 @@ export interface IProductConfiguration {
 	readonly builtInExtensionsEnabledWithAutoUpdates: readonly string[];
 	readonly sessionsWindowAllowedExtensions?: readonly string[];
 
+	/**
+	 * The window form a bare launch (no file/folder arguments, no special
+	 * modes) opens into. When `'agents'`, the Agents window is the default
+	 * desktop form; the regular workbench window stays reachable through
+	 * explicit open intents (paths, `--new-window`, protocol links, remote /
+	 * diff / merge modes) and in-product commands. Absent preserves the
+	 * classic behavior (restore / empty workbench window).
+	 */
+	readonly defaultWindow?: 'agents';
+
 	readonly msftInternalDomains?: string[];
 	readonly linkProtectionTrustedDomains?: readonly string[];
 

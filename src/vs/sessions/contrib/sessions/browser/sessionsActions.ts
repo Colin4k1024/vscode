@@ -30,6 +30,7 @@ import { IUriIdentityService } from '../../../../platform/uriIdentity/common/uri
 import { IWorkbenchContribution } from '../../../../workbench/common/contributions.js';
 import { IQuickInputService, IQuickPickItem, IQuickPickSeparator } from '../../../../platform/quickinput/common/quickInput.js';
 import { EditorAreaFocusContext, FocusedViewContext, IsAuxiliaryWindowContext, IsSessionsWindowContext } from '../../../../workbench/common/contextkeys.js';
+import { TerminalContextKeys } from '../../../../workbench/contrib/terminal/common/terminalContextKey.js';
 import { IWorkbenchLayoutService, Parts } from '../../../../workbench/services/layout/browser/layoutService.js';
 import { IViewsService } from '../../../../workbench/services/views/common/viewsService.js';
 import { getQuickNavigateHandler, inQuickPickContext } from '../../../../workbench/browser/quickaccess.js';
@@ -85,12 +86,27 @@ registerAction2(class ShowSessionsPickerAction extends Action2 {
 			title: localize2('showSessionsPicker', "Show Sessions Picker"),
 			f1: true,
 			category: SessionsCategories.Sessions,
-			keybinding: {
+			keybinding: [{
 				primary: KeyMod.CtrlCmd | KeyCode.KeyR,
 				mac: { primary: KeyMod.WinCtrl | KeyMod.Alt | KeyCode.KeyR },
 				weight: KeybindingWeight.SessionsContrib,
 				when: IsSessionsWindowContext,
-			},
+			}, {
+				// Codex desktop parity (ISS-057 #17): Cmd/Ctrl+G opens the global
+				// thread search. Sessions weight (250) outranks editor chords, so
+				// negate editor-area focus to leave Find Next / Go to Line intact
+				// while an editor is focused — and yield to the terminal and the
+				// chat transcript's own Find Next while those surfaces own focus.
+				primary: KeyMod.CtrlCmd | KeyCode.KeyG,
+				weight: KeybindingWeight.SessionsContrib,
+				when: ContextKeyExpr.and(
+					IsSessionsWindowContext,
+					EditorAreaFocusContext.toNegated(),
+					TerminalContextKeys.focusInAny.negate(),
+					TerminalContextKeys.findFocus.negate(),
+					ChatContextKeys.findInputFocused.negate(),
+				),
+			}],
 		});
 	}
 

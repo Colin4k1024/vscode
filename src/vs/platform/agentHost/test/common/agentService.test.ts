@@ -129,6 +129,63 @@ suite('shouldSurfaceLocalAgentHostProvider', () => {
 			editorCodex: true,
 		});
 	});
+
+	test('exhaustive isSessionsWindow x configuration truth table (D07 AC6)', () => {
+		// Each window reads its own Codex gate: the Agents (sessions) window reads
+		// `chat.agentHost.codexAgent.enabled`, the regular workbench reads
+		// `chat.editor.codex.preferAgentHost`. The product keeps the two gates'
+		// registered defaults identical, so under the product default both window
+		// forms surface Codex consistently. This matrix pins the full truth table
+		// and the cross-window consistency invariant.
+		const tri = [undefined, true, false] as const;
+
+		for (const claude of tri) {
+			for (const codexEnabled of tri) {
+				for (const preferAgentHost of tri) {
+					const configurationService = new TestConfigurationService({
+						...(claude !== undefined ? { [AgentHostClaudeAgentEnabledSettingId]: claude } : {}),
+						...(codexEnabled !== undefined ? { [AgentHostCodexAgentEnabledSettingId]: codexEnabled } : {}),
+						...(preferAgentHost !== undefined ? { [CodexPreferAgentHostEditorSettingId]: preferAgentHost } : {}),
+					});
+					const label = `claude=${claude} codexEnabled=${codexEnabled} preferAgentHost=${preferAgentHost}`;
+
+					for (const isSessionsWindow of [true, false]) {
+						// Claude: hidden only when explicitly disabled, identical in both windows.
+						assert.strictEqual(
+							shouldSurfaceLocalAgentHostProvider('claude', configurationService, isSessionsWindow),
+							claude !== false,
+							`claude ${label} sessions=${isSessionsWindow}`,
+						);
+
+						// Codex: opt-in per window form, reading only that form's setting.
+						assert.strictEqual(
+							shouldSurfaceLocalAgentHostProvider('codex', configurationService, isSessionsWindow),
+							(isSessionsWindow ? codexEnabled : preferAgentHost) === true,
+							`codex ${label} sessions=${isSessionsWindow}`,
+						);
+
+						// Other providers always surface.
+						assert.strictEqual(
+							shouldSurfaceLocalAgentHostProvider('copilot', configurationService, isSessionsWindow),
+							true,
+							`other ${label} sessions=${isSessionsWindow}`,
+						);
+					}
+
+					// Cross-window consistency: whenever both Codex gates hold the same
+					// value (including both unset, which is the product-default shape),
+					// the two window forms agree on Codex visibility.
+					if (codexEnabled === preferAgentHost) {
+						assert.strictEqual(
+							shouldSurfaceLocalAgentHostProvider('codex', configurationService, true),
+							shouldSurfaceLocalAgentHostProvider('codex', configurationService, false),
+							`cross-window codex ${label}`,
+						);
+					}
+				}
+			}
+		}
+	});
 });
 
 suite('buildAgentHostOTelEnv', () => {

@@ -115,8 +115,9 @@ class RecordingLogService extends NullLogService {
 	readonly warnings: string[] = [];
 
 	override warn(message: string | Error, ...args: unknown[]): void {
-		this.warnings.push(typeof message === 'string' ? message : message.message);
-		super.warn(message, ...args);
+		const text = typeof message === 'string' ? message : message.message;
+		this.warnings.push(text);
+		super.warn(text, ...args);
 	}
 }
 

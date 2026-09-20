@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260919T132055493Z-95127-d8d1f8b6fd4b",
+  "runId": "20260919T132055493Z-95127-d8d1f8b6fd4b",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "bash_discovery_incomplete",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "39b68246e52dae038fb5dbc46dfa0ff761292154",
+  "diffHash": "c1d984be3f44d6ed1740d90d3ee8e98600f63b82a70f4617ca1e0b04a5fa0edc",
+  "rulesVersion": "unavailable",
+  "sessionHash": "8ae4dead8acc5a3d27af2805afe049dcdcce303d2ff034192ff4bf1aacf1e698",
+  "reportRef": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260919T132055493Z-95127-d8d1f8b6fd4b.json",
+  "events": [],
+  "observedFindingIds": [
+    "mimosa-6690b22af9169ef093f37f3f",
+    "mimosa-9126cd8d68819b7bcdcccf91"
+  ],
+  "verifiedFiles": [
+    {
+      "file": "build/agent-sdk/common.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "build/agent-sdk/test/cdnEndpoint.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-19T13:20:55.739Z"
+}

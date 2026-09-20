@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260919T231026098Z-50043-e82ea551a540",
+  "runId": "20260919T231026098Z-50043-e82ea551a540",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "bash_discovery_incomplete",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "baseline exceeded 5000 candidate files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "baseline_partial: baseline exceeded 5000 candidate files",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "3d8db0a34230869402e04935b97816f556584f55",
+  "diffHash": "842b7a3cb96a5509c86700c5ab396c520b8512f12f0567632c0b1da67db169c8",
+  "rulesVersion": "unavailable",
+  "sessionHash": "8ae4dead8acc5a3d27af2805afe049dcdcce303d2ff034192ff4bf1aacf1e698",
+  "reportRef": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260919T231026098Z-50043-e82ea551a540.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "src/vs/platform/agentHost/common/agentHostCustomizationConfig.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-19T23:10:26.369Z"
+}

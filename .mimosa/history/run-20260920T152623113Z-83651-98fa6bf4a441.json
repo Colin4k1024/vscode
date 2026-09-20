@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "mimosa-finding-history/v1",
+  "runId": "20260920T152623113Z-83651-98fa6bf4a441",
+  "runStatus": "inconclusive",
+  "errors": [
+    "bash-discovery:src/vs/sessions/contrib/onboardingTours/browser/newSessionViewV2TourVariation.ts: bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+    "candidate-select:src/vs/platform/agentHost/test/node/actionForClientVersion.test.ts: changed_file_unreadable: observed changed file no longer exists or cannot be read",
+    "baseline:.: baseline_partial: baseline capture had enumeration or snapshot errors"
+  ],
+  "target": ".",
+  "revision": "6f47753e40c5be9a807442655462987433f5fc1a",
+  "diffHash": "e29c84dfc3408c1328144ea69cbf10f13e526fd3609aae258e96a3c2a11f0231",
+  "rulesVersion": "unavailable",
+  "recordedAt": "2026-09-20T15:26:23.113Z",
+  "timing": {
+    "startedAt": "2026-09-20T15:26:22.227Z",
+    "completedAt": "2026-09-20T15:26:23.113Z",
+    "durationMs": 886
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "modelCalls": 0,
+    "measurement": "known-zero"
+  },
+  "findings": {
+    "total": 0,
+    "bySeverity": {},
+    "byStatus": {}
+  },
+  "coverage": {
+    "status": "partial",
+    "reasonCounts": {
+      "bash_discovery_incomplete": 1,
+      "changed_file_unreadable": 1,
+      "baseline_partial": 1,
+      "project_check_failed": 3
+    }
+  },
+  "evidenceBoundary": "static_only",
+  "immutableReport": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260920T152623113Z-83651-98fa6bf4a441.json"
+}

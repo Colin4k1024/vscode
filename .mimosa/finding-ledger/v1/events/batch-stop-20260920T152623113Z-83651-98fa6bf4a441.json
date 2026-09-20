@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260920T152623113Z-83651-98fa6bf4a441",
+  "runId": "20260920T152623113Z-83651-98fa6bf4a441",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "bash_discovery_incomplete",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/newSessionViewV2TourVariation.ts",
+        "detail": "project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "changed_file_unreadable",
+        "stage": "candidate-select",
+        "target": "src/vs/platform/agentHost/test/node/actionForClientVersion.test.ts",
+        "detail": "observed changed file no longer exists or cannot be read",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/newSessionViewV2TourVariation.ts",
+        "detail": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "src/vs/platform/agentHost/test/node/actionForClientVersion.test.ts",
+        "detail": "changed_file_unreadable: observed changed file no longer exists or cannot be read",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "6f47753e40c5be9a807442655462987433f5fc1a",
+  "diffHash": "e29c84dfc3408c1328144ea69cbf10f13e526fd3609aae258e96a3c2a11f0231",
+  "rulesVersion": "unavailable",
+  "sessionHash": "8ae4dead8acc5a3d27af2805afe049dcdcce303d2ff034192ff4bf1aacf1e698",
+  "reportRef": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260920T152623113Z-83651-98fa6bf4a441.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/vs/platform/agentHost/node/protocolServerHandler.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-20T15:26:23.395Z"
+}

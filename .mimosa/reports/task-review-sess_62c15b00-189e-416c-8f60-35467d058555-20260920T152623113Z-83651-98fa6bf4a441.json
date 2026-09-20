@@ -1,0 +1,208 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20260920T152623113Z-83651-98fa6bf4a441",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "bash-discovery",
+      "target": "src/vs/sessions/contrib/onboardingTours/browser/newSessionViewV2TourVariation.ts",
+      "reason": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files"
+    },
+    {
+      "stage": "candidate-select",
+      "target": "src/vs/platform/agentHost/test/node/actionForClientVersion.test.ts",
+      "reason": "changed_file_unreadable: observed changed file no longer exists or cannot be read"
+    },
+    {
+      "stage": "baseline",
+      "target": ".",
+      "reason": "baseline_partial: baseline capture had enumeration or snapshot errors"
+    }
+  ],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "partial",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": false,
+      "captured_files": 3,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 2
+    },
+    "change_tracking": {
+      "touched_observed": 3,
+      "touched_retained": 3,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 1,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 2,
+      "selected_files": 2,
+      "limit": 20,
+      "truncated": false
+    },
+    "scanning": {
+      "required_files": 2,
+      "scanned_files": 2,
+      "skipped_files": 0,
+      "failed_files": 0,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {
+      "bash_discovery_incomplete": 1,
+      "changed_file_unreadable": 1,
+      "baseline_partial": 1,
+      "project_check_failed": 3
+    },
+    "reasons": [
+      {
+        "code": "bash_discovery_incomplete",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/newSessionViewV2TourVariation.ts",
+        "detail": "project enumeration exceeded 5000 reviewable files",
+        "affects_completion": true
+      },
+      {
+        "code": "changed_file_unreadable",
+        "stage": "candidate-select",
+        "target": "src/vs/platform/agentHost/test/node/actionForClientVersion.test.ts",
+        "detail": "observed changed file no longer exists or cannot be read",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/newSessionViewV2TourVariation.ts",
+        "detail": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "src/vs/platform/agentHost/test/node/actionForClientVersion.test.ts",
+        "detail": "changed_file_unreadable: observed changed file no longer exists or cannot be read",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      }
+    ],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-09-20T15:26:23.113Z",
+  "session_id": "sess_62c15b00-189e-416c-8f60-35467d058555",
+  "target": ".",
+  "revision": "6f47753e40c5be9a807442655462987433f5fc1a",
+  "rules_version": "unavailable",
+  "diff_hash": "e29c84dfc3408c1328144ea69cbf10f13e526fd3609aae258e96a3c2a11f0231",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 2,
+    "changed_files": [
+      {
+        "file": "src/vs/platform/agentHost/node/protocolServerHandler.ts",
+        "ranges": [
+          {
+            "start": 2146,
+            "end": 2146
+          },
+          {
+            "start": 2150,
+            "end": 2150
+          }
+        ],
+        "before_hash": "9e9280568d7c69165e685b87a887cbfccb0ee9d8993d3b184f63532aa5137027",
+        "after_hash": "d2da4a854314bad509e46068fc179bf0a53a2dbbc2535d5567a6685f70dafaaf"
+      },
+      {
+        "file": "src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts",
+        "ranges": [
+          {
+            "start": 13,
+            "end": 13
+          },
+          {
+            "start": 80,
+            "end": 81
+          }
+        ],
+        "before_hash": "6d8c7942d9a665974320e3e0a56432096ce130dc9aa0cf9c330ca60ab40d29dd",
+        "after_hash": "ddfcbfd183da301359405c214187134debc04360657f0b5d444de4bd09b6414a"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-09-20T15:26:22.227Z",
+    "completed_at": "2026-09-20T15:26:23.113Z",
+    "duration_ms": 886,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 886,
+    "peakMemoryBytes": 214335488,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 2,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260920T152623113Z-83651-98fa6bf4a441.json",
+    "latest_report": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555.json",
+    "history_summary": ".mimosa/history/run-20260920T152623113Z-83651-98fa6bf4a441.json"
+  }
+}

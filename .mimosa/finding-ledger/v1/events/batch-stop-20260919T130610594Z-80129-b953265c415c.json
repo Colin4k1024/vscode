@@ -1,0 +1,107 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260919T130610594Z-80129-b953265c415c",
+  "runId": "20260919T130610594Z-80129-b953265c415c",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "bash_discovery_incomplete",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewV2Tour.ts",
+        "detail": "baseline exceeded 5000 candidate files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewV2Tour.ts",
+        "detail": "baseline_partial: baseline exceeded 5000 candidate files",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "67983486d099fefdac27299c5d3e8a893b548d48",
+  "diffHash": "6e9aeae0763e9fa56cd7187da829f23e3c963574b396da2c1fe7ef4f778a2baf",
+  "rulesVersion": "unavailable",
+  "sessionHash": "8ae4dead8acc5a3d27af2805afe049dcdcce303d2ff034192ff4bf1aacf1e698",
+  "reportRef": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260919T130610594Z-80129-b953265c415c.json",
+  "events": [
+    {
+      "eventId": "hook-a111daf7eb31a57f36d4e83e1468e5c9",
+      "findingId": "mimosa-940779e544c67bde9651deda",
+      "type": "finding_observed",
+      "at": "2026-09-19T13:06:10.594Z",
+      "identity": {
+        "projectRelativeFile": ".github/workflows/codex-desktop-baseline.yml",
+        "ruleId": "mimosa.supply.ci-npm-install",
+        "codeEvidenceHash": "ecf02aae72d93ca3f51b96e9a00c6ca8fc3c6126b8864e37daa0ce7da55f11b1",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 68,
+      "endLine": 68,
+      "reasonCode": "observe",
+      "reportedToAgent": false,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "ecf02aae72d93ca3f51b96e9a00c6ca8fc3c6126b8864e37daa0ce7da55f11b1"
+      },
+      "sequence": 0
+    },
+    {
+      "eventId": "hook-b30bb12565c28666afd0c7806af81ff8",
+      "findingId": "mimosa-02cfb2ea3b48a9f64af5ebbb",
+      "type": "finding_observed",
+      "at": "2026-09-19T13:06:10.594Z",
+      "identity": {
+        "projectRelativeFile": ".github/workflows/codex-desktop-baseline.yml",
+        "ruleId": "mimosa.supply.ci-npm-install",
+        "codeEvidenceHash": "3721709bf2bcbeccf2cacaaf2e776b37e2399527d2f381ca3f53ebd7e7f3fc30",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 71,
+      "endLine": 71,
+      "reasonCode": "observe",
+      "reportedToAgent": false,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "3721709bf2bcbeccf2cacaaf2e776b37e2399527d2f381ca3f53ebd7e7f3fc30"
+      },
+      "sequence": 1
+    }
+  ],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": ".agents/research/codex-desktop/bootstrap.sh",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-19T13:06:10.862Z"
+}

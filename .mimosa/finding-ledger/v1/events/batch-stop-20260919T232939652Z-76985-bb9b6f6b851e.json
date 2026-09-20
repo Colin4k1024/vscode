@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260919T232939652Z-76985-bb9b6f6b851e",
+  "runId": "20260919T232939652Z-76985-bb9b6f6b851e",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "bash_discovery_incomplete",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "9f594490faf649a59d208780119efd911363ff30",
+  "diffHash": "dd02c9ae82b64f1a64bb119bec576870e5fe94921f62dced6f29bccdd28984d0",
+  "rulesVersion": "unavailable",
+  "sessionHash": "8ae4dead8acc5a3d27af2805afe049dcdcce303d2ff034192ff4bf1aacf1e698",
+  "reportRef": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260919T232939652Z-76985-bb9b6f6b851e.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "src/vs/sessions/test/browser/sessionsAuthGate.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/vs/platform/agentHost/common/agentHostCustomizationConfig.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-19T23:29:39.921Z"
+}

@@ -1,0 +1,192 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20260920T000134625Z-23762-671035524fd4",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "bash-discovery",
+      "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+      "reason": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files"
+    },
+    {
+      "stage": "baseline",
+      "target": ".",
+      "reason": "baseline_partial: baseline capture had enumeration or snapshot errors"
+    }
+  ],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "partial",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": false,
+      "captured_files": 2,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 2
+    },
+    "change_tracking": {
+      "touched_observed": 2,
+      "touched_retained": 2,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 1,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 2,
+      "selected_files": 2,
+      "limit": 20,
+      "truncated": false
+    },
+    "scanning": {
+      "required_files": 2,
+      "scanned_files": 2,
+      "skipped_files": 0,
+      "failed_files": 0,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {
+      "bash_discovery_incomplete": 1,
+      "baseline_partial": 1,
+      "project_check_failed": 2
+    },
+    "reasons": [
+      {
+        "code": "bash_discovery_incomplete",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "project enumeration exceeded 5000 reviewable files",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "bash-discovery",
+        "target": "src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts",
+        "detail": "bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      }
+    ],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-09-20T00:01:34.625Z",
+  "session_id": "sess_62c15b00-189e-416c-8f60-35467d058555",
+  "target": ".",
+  "revision": "1b4e93535670d0787cf9351e33076499c9adaaa9",
+  "rules_version": "unavailable",
+  "diff_hash": "f4bb15e3b58c6693a7d1fc0cc43b578a36a4669c46a4a564b7b46c17b7a2ba50",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 2,
+    "changed_files": [
+      {
+        "file": "src/vs/platform/agentHost/common/agentService.ts",
+        "ranges": [
+          {
+            "start": 166,
+            "end": 167
+          },
+          {
+            "start": 172,
+            "end": 172
+          },
+          {
+            "start": 176,
+            "end": 190
+          }
+        ],
+        "before_hash": "ea2d95b3407754ff4a58de9c6c8459676535302bd2e1090189f97b6eacfc398d",
+        "after_hash": "ac9da031994de1ff8be09d01a30b337a965c664accc02fa8cc484e338ded179a"
+      },
+      {
+        "file": "src/vs/sessions/test/browser/sessionsAuthGate.test.ts",
+        "ranges": [
+          {
+            "start": 11,
+            "end": 11
+          },
+          {
+            "start": 18,
+            "end": 25
+          }
+        ],
+        "before_hash": "5609283dc590287d8b2a8d52bb478d41eee2a0123f5335bdfac39e4278cc1044",
+        "after_hash": "88417c5746b9161410393efacdcbe960d25677e3f7555b4c6b7863d67fe7a452"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-09-20T00:01:33.659Z",
+    "completed_at": "2026-09-20T00:01:34.625Z",
+    "duration_ms": 966,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 966,
+    "peakMemoryBytes": 189956096,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 2,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260920T000134625Z-23762-671035524fd4.json",
+    "latest_report": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555.json",
+    "history_summary": ".mimosa/history/run-20260920T000134625Z-23762-671035524fd4.json"
+  }
+}

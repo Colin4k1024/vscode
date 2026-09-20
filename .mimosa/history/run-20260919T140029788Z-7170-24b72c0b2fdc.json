@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "mimosa-finding-history/v1",
+  "runId": "20260919T140029788Z-7170-24b72c0b2fdc",
+  "runStatus": "inconclusive",
+  "errors": [
+    "bash-discovery:src/vs/sessions/contrib/onboardingTours/browser/tours/newSessionViewTourShared.ts: bash_discovery_incomplete: project enumeration exceeded 5000 reviewable files",
+    "baseline:.: baseline_partial: baseline capture had enumeration or snapshot errors"
+  ],
+  "target": ".",
+  "revision": "5cc08e4c2151a282468ebc327436c973294611bd",
+  "diffHash": "dc5a4b17a63d72232511186f4a974d0fc9f342c67618550e55f51af657ad1684",
+  "rulesVersion": "unavailable",
+  "recordedAt": "2026-09-19T14:00:29.788Z",
+  "timing": {
+    "startedAt": "2026-09-19T14:00:28.953Z",
+    "completedAt": "2026-09-19T14:00:29.788Z",
+    "durationMs": 835
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "modelCalls": 0,
+    "measurement": "known-zero"
+  },
+  "findings": {
+    "total": 0,
+    "bySeverity": {},
+    "byStatus": {}
+  },
+  "coverage": {
+    "status": "partial",
+    "reasonCounts": {
+      "bash_discovery_incomplete": 1,
+      "baseline_partial": 1,
+      "project_check_failed": 2
+    }
+  },
+  "evidenceBoundary": "static_only",
+  "immutableReport": ".mimosa/reports/task-review-sess_62c15b00-189e-416c-8f60-35467d058555-20260919T140029788Z-7170-24b72c0b2fdc.json"
+}

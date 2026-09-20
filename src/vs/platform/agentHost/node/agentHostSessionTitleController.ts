@@ -10,6 +10,7 @@ import { URI } from '../../../base/common/uri.js';
 import { isObject } from '../../../base/common/types.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
 import { ILogService } from '../../log/common/log.js';
+import { IProductService } from '../../product/common/productService.js';
 import { ISessionDataService } from '../common/sessionDataService.js';
 import { SessionServerToolName } from '../common/serverToolNames.js';
 import { ActionType } from '../common/state/sessionActions.js';
@@ -152,6 +153,7 @@ export class AgentHostSessionTitleController extends Disposable implements IAgen
 		private readonly _stateManager: AgentHostStateManager,
 		private readonly _options: IAgentHostSessionTitleControllerOptions,
 		@ILogService private readonly _logService: ILogService,
+		@IProductService private readonly _productService: IProductService,
 	) {
 		super();
 	}
@@ -631,6 +633,14 @@ export class AgentHostSessionTitleController extends Disposable implements IAgen
 
 	private async _generateTitleFromPrompt(prompt: ITitlePromptContext, token: CancellationToken): Promise<string | undefined> {
 		if (token.isCancellationRequested) {
+			return undefined;
+		}
+
+		// Branded build (D10 section 5): @vscode/copilot-api is not shipped, so
+		// the utility completion would reject per call — skip it instead of
+		// logging a warn per generated title. The fallback title path below is
+		// unaffected.
+		if (this._productService.excludeCopilotFromPackaging === true) {
 			return undefined;
 		}
 

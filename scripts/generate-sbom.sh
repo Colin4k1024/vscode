@@ -115,6 +115,7 @@ components.push({
 });
 
 // 1. cgmanifest registrations.
+let cgmanifestCount = 0;
 for (const reg of cgmanifest.registrations ?? []) {
 	const c = reg.component;
 	if (!c) { continue; }
@@ -141,9 +142,11 @@ for (const reg of cgmanifest.registrations ?? []) {
 		entry.licenses = [{ license: { text: { content: Buffer.from(reg.licenseDetail.join('\n')).toString('base64'), encoding: 'base64' } } }];
 	}
 	components.push(entry);
+	cgmanifestCount++;
 }
 
 // 2. cglicenses overrides (components detected from lockfiles).
+let cglicensesCount = 0;
 for (const entry of cglicenses) {
 	if (!entry.name) { continue; }
 	const lockVersion = lockPkgVersion(entry.name);
@@ -155,6 +158,7 @@ for (const entry of cglicenses) {
 		description: 'License override entry from cglicenses.json (component detected from package-lock/Cargo.lock)',
 		licenses: [{ license: { name: 'See cglicenses.json (prependLicenseText)' } }],
 	});
+	cglicensesCount++;
 }
 
 // 3. Agent SDK pins (D02) — the piece upstream manifests do not cover.
@@ -212,22 +216,28 @@ if (process.env.SOURCE_DATE_EPOCH && /^\d+$/.test(process.env.SOURCE_DATE_EPOCH)
 } else {
 	try {
 		const headEpoch = execSync('git log -1 --format=%ct', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-		timestamp = new Date(Number(headEpoch) * 1000).toISOString();
+		// Guard the parse: an empty/unexpected git answer would otherwise
+		// silently stamp the epoch (Number('') === 0).
+		timestamp = /^\d+$/.test(headEpoch) ? new Date(Number(headEpoch) * 1000).toISOString() : new Date().toISOString();
 	} catch {
 		timestamp = new Date().toISOString();
 	}
 }
 
-// L5: a merged SBOM with implausibly few components means a source read
-// silently produced nothing — fail loud instead of shipping an empty
-// manifest. The upstream cgmanifest alone registers hundreds of components;
-// 50 is a conservative floor. The fork-specific agent SDK pin must be
+// L5: fail loud when a source read silently produced nothing — per source,
+// so one broken input can't hide behind the others: cgmanifest.json has 14
+// registrations today (assert ≥ 10), cglicenses.json supplies most of the
+// document (assert ≥ 40), and the fork-specific agent SDK pins must be
 // present by construction (the loop above throws when the agents dir is
-// unreadable), so assert it explicitly.
-if (components.length < 50) {
-	throw new Error(`SBOM has only ${components.length} components — a source merge must have failed (cgmanifest.json alone registers hundreds). Refusing to write an empty manifest.`);
+// unreadable — assert ≥ 1 entry made it).
+const sdkPinCount = components.filter(c => String(c.description ?? '').includes("Agent SDK '")).length;
+if (cgmanifestCount < 10) {
+	throw new Error(`SBOM has only ${cgmanifestCount} cgmanifest-derived components — cgmanifest.json must have failed to merge (14 expected today). Refusing to write an incomplete manifest.`);
 }
-if (!components.some(c => c.description && String(c.description).includes("Agent SDK '"))) {
+if (cglicensesCount < 40) {
+	throw new Error(`SBOM has only ${cglicensesCount} cglicenses-derived components — cglicenses.json must have failed to merge. Refusing to write an incomplete manifest.`);
+}
+if (sdkPinCount < 1) {
 	throw new Error('SBOM is missing the agent SDK pin components (build/agent-sdk/agents/*) — the D02/D09 supply-chain entries must be present.');
 }
 

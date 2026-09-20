@@ -19,17 +19,9 @@ import { ILogService } from '../../../log/common/log.js';
 import { IProductService } from '../../../product/common/productService.js';
 import { IAgentHostGitHubEndpointService } from '../agentHostGitHubEndpointService.js';
 
-// #region Types
-
 type CopilotApiModule = typeof import('@vscode/copilot-api');
 
-// #endregion
-
-// #region Module state
-
 let _capiModule: Promise<CopilotApiModule> | undefined;
-
-// #endregion
 
 /**
  * Lazily resolve `@vscode/copilot-api`. The package is external to the

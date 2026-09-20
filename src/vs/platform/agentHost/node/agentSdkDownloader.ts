@@ -425,9 +425,14 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 		// single scalar hash stamped into product.json would fail closed for
 		// every target except the one that stamped it (the macOS Universal
 		// case, where one product.json serves both darwin-arm64 and
-		// darwin-x64). Fall back to the legacy scalar `sha256` for
-		// product.json files stamped before per-target keying existed.
-		const expectedSha256 = config.sha256ByTarget?.[sdkTarget] ?? config.sha256;
+		// darwin-x64). A present `sha256ByTarget` map wins OUTRIGHT: falling
+		// back to the legacy scalar when the map lacks this target would
+		// verify these bytes against a hash computed for an unknown target
+		// (mixed-provenance product.json) — the warn-and-proceed path exists
+		// for exactly that case instead. The legacy scalar is consulted only
+		// when no per-target map exists at all (product.json stamped before
+		// per-target keying).
+		const expectedSha256 = config.sha256ByTarget ? config.sha256ByTarget[sdkTarget] : config.sha256;
 		if (expectedSha256 === undefined && config.sha256ByTarget !== undefined) {
 			// A per-target map that lacks THIS target (e.g. a product.json
 			// stamped before this target's build ran) must not silently fall
@@ -518,11 +523,12 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 					);
 				}
 			} else {
-				// Backward compatibility: product.json stamped before the sha256
-				// field existed (or by an out-of-band publisher) carries no hash.
+				// No hash for this target: either a legacy product.json with no
+				// hash at all, or a sha256ByTarget map that lacks this
+				// sdkTarget (already warned about in _resolveOrDownload).
 				// Already-distributed artifacts keep working; the warning makes
 				// the missing integrity guarantee visible in logs.
-				this._logService.warn(`[AgentSdkDownloader] ${pkg.id}: product.agentSdks.${pkg.id} carries no sha256 (neither sha256ByTarget nor the legacy scalar) — downloading ${url} without integrity verification`);
+				this._logService.warn(`[AgentSdkDownloader] ${pkg.id}: no sha256 available for this download (no sha256ByTarget entry for this target, no legacy scalar) — downloading ${url} without integrity verification`);
 			}
 			await this._extractTarGz(tarballPath, tmpDir);
 			await this._fileService.del(URI.file(tarballPath));

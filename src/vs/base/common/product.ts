@@ -99,10 +99,12 @@ export interface IAgentSdkProductConfig {
 	readonly sha256ByTarget?: { readonly [sdkTarget: string]: string };
 	/**
 	 * Legacy single-target hash, stamped by builds predating
-	 * {@link IAgentSdkProductConfig.sha256ByTarget}. The downloader falls
-	 * back to it when no per-target entry exists. New builds must not stamp
-	 * it: on a multi-target product.json it is correct for at most one
-	 * target and poisons the others.
+	 * {@link IAgentSdkProductConfig.sha256ByTarget}. The downloader consults
+	 * it only when NO per-target map exists — when a map is present, the map
+	 * wins outright (a missing key warns and proceeds rather than verifying
+	 * these bytes against a hash computed for an unknown target). New builds
+	 * must not stamp it: on a multi-target product.json it is correct for at
+	 * most one target and poisons the others.
 	 */
 	readonly sha256?: string;
 }

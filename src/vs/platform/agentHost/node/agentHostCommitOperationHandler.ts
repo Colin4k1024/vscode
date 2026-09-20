@@ -15,6 +15,7 @@ import type { InvokeChangesetOperationParams, InvokeChangesetOperationResult } f
 import { AHP_AUTH_REQUIRED, AHP_SESSION_NOT_FOUND, JsonRpcErrorCodes, ProtocolError } from '../common/state/sessionProtocol.js';
 import { readSessionGitState, type ISessionFileDiff, type SessionState } from '../common/state/sessionState.js';
 import { ILogService } from '../../log/common/log.js';
+import { IProductService } from '../../product/common/productService.js';
 import { IAgentHostGitService } from '../common/agentHostGitService.js';
 import { CopilotApiError, ICopilotApiService } from './shared/copilotApiService.js';
 
@@ -32,6 +33,7 @@ export class AgentHostCommitOperationHandler implements IChangesetOperationHandl
 		@IAgentHostGitService private readonly _gitService: IAgentHostGitService,
 		@ICopilotApiService private readonly _copilotApiService: ICopilotApiService,
 		@ILogService private readonly _logService: ILogService,
+		@IProductService private readonly _productService: IProductService,
 	) { }
 
 	async invoke(params: InvokeChangesetOperationParams, token: CancellationToken): Promise<InvokeChangesetOperationResult> {
@@ -78,6 +80,15 @@ export class AgentHostCommitOperationHandler implements IChangesetOperationHandl
 		this._throwIfCancelled(token);
 
 		const copilotResource = this._gitHubEndpointService.getCopilotResource();
+		// Branded build (D10 section 5): @vscode/copilot-api is not shipped, so
+		// the utility completion cannot run — fail with a user-appropriate
+		// message instead of the internal D10 string from loadCopilotApi().
+		if (this._productService.excludeCopilotFromPackaging === true) {
+			throw new ProtocolError(
+				JsonRpcErrorCodes.InternalError,
+				localize('agentHost.changeset.commit.notAvailableInBuild', "Commit message generation is not available in this build. Write the commit message manually."),
+			);
+		}
 		const authToken = this._authenticationService.getAuthToken({
 			resource: copilotResource.resource,
 			scopes: copilotResource.scopes_supported,

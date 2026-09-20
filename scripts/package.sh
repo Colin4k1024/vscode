@@ -41,7 +41,7 @@ while [ $# -gt 0 ]; do
 		--skip-sdk) SKIP_SDK=1; shift ;;
 		--skip-gates) SKIP_GATES=1; shift ;;
 		--skip-zip) SKIP_ZIP=1; shift ;;
-		-h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0 ;;
+		-h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}"; exit 0 ;;
 		*) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
 	esac
 done
@@ -78,14 +78,13 @@ fi
 
 # The full extension compile + esbuild bundle OOMs node's default ~4GB heap
 # (observed: Ineffective mark-compacts near heap limit at ~4.1GB during
-# bundle-non-native-extensions-build). 8GB cap: comfortably above the observed
-# peak, and within the RAM of a 16GB runner (a 32GB reserve is not committable
-# there — node only commits pages it touches, but the address-space reservation
-# itself can fail on smaller machines). Override via NODE_OPTIONS if a future
-# step needs more.
+# bundle-non-native-extensions-build). Cap at half the machine's RAM: big
+# enough for the observed peak on the 48GB CI runner, committable on a 16GB
+# laptop. Override via NODE_OPTIONS if a future step needs more.
+HEAP_MB="$(node -p 'Math.floor(require("os").totalmem() / 1024 / 1024 / 2)')"
 case " ${NODE_OPTIONS:-} " in
 	*" --max-old-space-size"*) ;;
-	*) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=8192" ;;
+	*) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=$HEAP_MB" ;;
 esac
 
 DIST_DIR="$REPO_ROOT/.build/dist"
@@ -127,7 +126,11 @@ for (const [sdk, entry] of Object.entries(results)) {
 		bad = 1;
 		continue;
 	}
-	const hasTargetHash = Boolean(entry.sha256ByTarget?.[target]) || typeof entry.sha256 === 'string';
+	const hasTargetHash = Boolean(entry.sha256ByTarget?.[target]);
+	// No legacy-scalar acceptance: bundle-codex-sdk.sh deletes the scalar
+	// unconditionally, so a file still carrying one is by definition stale
+	// (and a scalar would pass this assertion for ANY target — the H1 hazard
+	// this check exists to stop).
 	if (!hasTargetHash) {
 		const have = Object.keys(entry.sha256ByTarget ?? {}).join(', ') || '<none>';
 		console.error(`ERROR: --skip-sdk: results file has no sha256 for ${sdk} target '${target}' (have: ${have}) — re-run bundle-codex-sdk.sh for this target first`);
@@ -208,16 +211,21 @@ SUMS="$DIST_DIR/SHA256SUMS.txt"
 	fi
 } > "$SUMS"
 TARBALL_SUMS="$REPO_ROOT/.build/agent-sdk/tarballs/SHA256SUMS.txt"
-{
+mkdir -p "$(dirname "$TARBALL_SUMS")"
+if compgen -G "$REPO_ROOT/.build/agent-sdk/tarballs/*.tgz" >/dev/null; then
 	for t in "$REPO_ROOT"/.build/agent-sdk/tarballs/*.tgz; do
-		if [ -e "$t" ]; then
-			(cd "$(dirname "$t")" && shasum -a 256 "$(basename "$t")")
-		fi
-	done
-} > "$TARBALL_SUMS"
+		(cd "$(dirname "$t")" && shasum -a 256 "$(basename "$t")")
+	done > "$TARBALL_SUMS"
+	echo "    manifest: $TARBALL_SUMS"
+	cat "$TARBALL_SUMS"
+else
+	# No tarballs — leave no empty manifest behind (an empty SHA256SUMS.txt
+	# in the uploaded artifact reads as "verified nothing", which is worse
+	# than absent).
+	rm -f "$TARBALL_SUMS"
+fi
 echo "    manifest: $SUMS"
 cat "$SUMS"
-[ ! -s "$TARBALL_SUMS" ] || { echo "    manifest: $TARBALL_SUMS"; cat "$TARBALL_SUMS"; }
 
 ZIP_DISPLAY="(skipped)"
 [ "$SKIP_ZIP" -eq 1 ] || ZIP_DISPLAY="$ZIP"

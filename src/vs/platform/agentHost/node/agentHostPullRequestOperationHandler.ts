@@ -13,6 +13,7 @@ import { parseChangesetUri } from '../common/changesetUri.js';
 import { AHP_AUTH_REQUIRED, AHP_SESSION_NOT_FOUND, JsonRpcErrorCodes, ProtocolError } from '../common/state/sessionProtocol.js';
 import { readSessionGitHubState, readSessionGitState, type ChangesetOperationFollowUp, type ISessionFileDiff, type ISessionWithDefaultChat } from '../common/state/sessionState.js';
 import { ILogService } from '../../log/common/log.js';
+import { IProductService } from '../../product/common/productService.js';
 import { IAgentHostGitService, parseUpstreamBranchName } from '../common/agentHostGitService.js';
 import { type IChangesetOperationHandler } from '../common/agentHostChangesetOperationService.js';
 import { type AutoMergeMethod, type CreatedPullRequest, type GitHubRepositoryMergeCapabilities, IAgentHostOctoKitService } from './shared/agentHostOctoKitService.js';
@@ -97,6 +98,7 @@ export class AgentHostPullRequestOperationHandler implements IChangesetOperation
 		@IAgentBranchNameGenerator private readonly _branchNameGenerator: IAgentBranchNameGenerator,
 		@IAgentConfigurationService private readonly _configurationService: IAgentConfigurationService,
 		@ILogService private readonly _logService: ILogService,
+		@IProductService private readonly _productService: IProductService,
 	) { }
 
 	async invoke(params: InvokeChangesetOperationParams, token: CancellationToken): Promise<InvokeChangesetOperationResult> {
@@ -580,6 +582,12 @@ export class AgentHostPullRequestOperationHandler implements IChangesetOperation
 		token: CancellationToken,
 	): Promise<{ title: string; description: string }> {
 		const copilotResource = this._gitHubEndpointService.getCopilotResource();
+		// Branded build (D10 section 5): @vscode/copilot-api is not shipped, so
+		// the utility completion cannot run — fail with a user-appropriate
+		// message instead of the internal D10 string from loadCopilotApi().
+		if (this._productService.excludeCopilotFromPackaging === true) {
+			throw new Error(localize('agentHost.changeset.pr.generationNotAvailableInBuild', "Pull request title and description generation is not available in this build. Enter them manually."));
+		}
 		const authToken = this._authenticationService.getAuthToken({
 			resource: copilotResource.resource,
 			scopes: copilotResource.scopes_supported,

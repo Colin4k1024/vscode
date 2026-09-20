@@ -346,6 +346,12 @@ export interface IAgentSdkResults {
  * A legacy scalar `sha256` in `existing` is dropped on merge: it is valid
  * for at most one target and would poison the others; the per-target map
  * replaces it.
+ *
+ * Note the merged entry is REBUILT from the known fields — any field a
+ * future schema revision adds is preserved for SDKs this run did not touch
+ * (carried via the outer `{ ...existing }`) but DROPPED for a merged SDK.
+ * That is deliberate: a field added to the producer must be threaded through
+ * this function explicitly so it is never silently lost mid-sequence.
  */
 export function mergeAgentSdkResults(existing: IAgentSdkResults, produced: IAgentSdkResults): IAgentSdkResults {
 	const merged: IAgentSdkResults = { ...existing };

@@ -248,6 +248,11 @@ const MCP_TOOL_APPROVAL_ANSWER_DECLINE = '__codex_mcp_decline__';
  */
 const CODEX_RESPONSES_ENDPOINT = '/responses';
 const CODEX_COPILOT_MODEL_PROVIDER = 'vscode-proxy';
+const CODEX_COPILOT_MODEL_GROUP = 'copilot';
+const CODEX_OPENAI_MODEL_PROVIDER = 'openai';
+const CODEX_MODEL_SELECTION_PREFIX = '@provider=';
+const CODEX_MODEL_CATALOG_TIMEOUT_MS = 15_000;
+const CODEX_MODEL_CATALOG_MAX_BUFFER = 8 * 1024 * 1024;
 
 /**
  * Whether `@vscode/copilot-api` is shipped in this build. The branded
@@ -263,11 +268,6 @@ const CODEX_COPILOT_MODEL_PROVIDER = 'vscode-proxy';
 function copilotApiShipped(productService: IProductService | undefined): boolean {
 	return productService?.excludeCopilotFromPackaging !== true;
 }
-const CODEX_COPILOT_MODEL_GROUP = 'copilot';
-const CODEX_OPENAI_MODEL_PROVIDER = 'openai';
-const CODEX_MODEL_SELECTION_PREFIX = '@provider=';
-const CODEX_MODEL_CATALOG_TIMEOUT_MS = 15_000;
-const CODEX_MODEL_CATALOG_MAX_BUFFER = 8 * 1024 * 1024;
 
 interface ICodexModelContextWindow {
 	readonly defaultSize: number;

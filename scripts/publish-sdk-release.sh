@@ -39,7 +39,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--tarball) TARBALLS+=("${2:?--tarball needs a value}"); EXPLICIT=1; shift 2 ;;
 		--dry-run) DRY_RUN=1; shift ;;
-		-h|--help) sed -n '2,29p' "${BASH_SOURCE[0]}"; exit 0 ;;
+		-h|--help) sed -n '2,26p' "${BASH_SOURCE[0]}"; exit 0 ;;
 		*) echo "ERROR: unknown argument: $1" >&2; exit 2 ;;
 	esac
 done
@@ -47,15 +47,21 @@ done
 fail() { echo "ERROR: $*" >&2; exit 1; }
 command -v gh >/dev/null 2>&1 || fail "gh CLI not found — install and authenticate (gh auth login) first"
 
-# Look up the sha256 results.json records for (sdk, target). Prints the hash,
-# or nothing when the results file is absent / has no such entry.
+# Look up the sha256 results.json records for (sdk, version, target). Prints
+# the hash, or nothing when the results file is absent, has no such entry, or
+# records a DIFFERENT version (a stale tarball from an older SDK version is
+# "not referenced", not "drifted" — the caller skips it instead of aborting
+# the whole publish on a misdiagnosed sha mismatch).
 results_sha() {
-	node - "$RESULTS_FILE" "$1" "$2" <<'NODE_EOF'
+	node - "$RESULTS_FILE" "$1" "$2" "$3" <<'NODE_EOF'
 const fs = require('fs');
-const [resultsFile, sdk, target] = process.argv.slice(2);
+const [resultsFile, sdk, target, version] = process.argv.slice(2);
 try {
 	const entry = JSON.parse(fs.readFileSync(resultsFile, 'utf8'))[sdk];
-	process.stdout.write(entry?.sha256ByTarget?.[target] ?? entry?.sha256 ?? '');
+	if (!entry || entry.version !== version) {
+		process.exit(0); // not referenced
+	}
+	process.stdout.write(entry.sha256ByTarget?.[target] ?? '');
 } catch { /* no results file — caller warns */ }
 NODE_EOF
 }
@@ -78,15 +84,15 @@ for TGZ in "${TARBALLS[@]}"; do
 	TAG="agent-sdk-$SDK-$VERSION"
 	SHA="$(shasum -a 256 "$TGZ" | awk '{print $1}')"
 
+	echo "==> $BASE"
 	# M5/M6: only publish what results.json references, and only when the
 	# bytes match the hash product.json was (or will be) stamped with.
-	RECORDED="$(results_sha "$SDK" "$TARGET")"
+	RECORDED="$(results_sha "$SDK" "$TARGET" "$VERSION")"
 	if [ -f "$RESULTS_FILE" ]; then
 		if [ -z "$RECORDED" ]; then
 			if [ "${EXPLICIT:-0}" = "1" ]; then
-				fail "$BASE is not referenced by $RESULTS_FILE for sdk '$SDK' target '$TARGET' — refusing to publish a tarball product.json does not point at. Re-run bundle-codex-sdk.sh for this target, or delete the stale tarball."
+				fail "$BASE is not referenced by $RESULTS_FILE for sdk '$SDK' version '$VERSION' target '$TARGET' — refusing to publish a tarball product.json does not point at. Re-run bundle-codex-sdk.sh for this target, or delete the stale tarball."
 			fi
-			echo "==> $BASE"
 			echo "    not referenced by results.json — skipping (stale tarball; see M5)"
 			continue
 		fi
@@ -98,7 +104,6 @@ for TGZ in "${TARBALLS[@]}"; do
 		echo "    note: no results.json at $RESULTS_FILE — publishing without the results cross-check"
 	fi
 
-	echo "==> $BASE"
 	echo "    release: $TAG   sha256: $SHA"
 
 	if [ "$DRY_RUN" -eq 1 ]; then

@@ -79,13 +79,9 @@
     },
     "#5": {
       "d": "D03",
-      "pri": "P0",
-      "wave": 3,
-      "deps": [
-        "D02"
-      ],
-      "state": "open",
-      "note": "D10 裁定输入：API Key 一等化必须，ChatGPT 登录标注个人自用"
+      "state": "in_progress",
+      "pr": 58,
+      "note": "G4 修复+联合冒烟完成; pi 审查中"
     },
     "#6": {
       "d": "D04",
@@ -119,9 +115,10 @@
         "D01",
         "D17"
       ],
-      "state": "open",
-      "note": "WIP 已推送（占位名 OpenAgents）；续作排队（等 D11 完成后重启以省配额）",
-      "deps_ok": true
+      "state": "in_progress",
+      "note": "WIP PR #60（明确勿合并）; 需收口代理",
+      "deps_ok": true,
+      "pr": 60
     },
     "#9": {
       "d": "D07",
@@ -180,7 +177,8 @@
         "D02"
       ],
       "state": "in_progress",
-      "note": "续作子代理运行中（分支 -cont，基于 WIP）"
+      "note": "WIP PR #59（明确勿合并）; 需收口代理",
+      "pr": 59
     },
     "#14": {
       "d": "D12",
@@ -314,6 +312,14 @@
     {
       "ts": "2026-09-20T08:05+08:00",
       "event": "D04 审查循环: r2 4.8(注册测试恒败) → 修复(副作用import) → r3 4.2(import 致全量套件崩溃+lint违规, pi 实测抓出) → 常量方案重写(ProductDefault 单一事实点) → 全量套件 38966/13既有=基线 + eslint 0 + 单文件6/6 + node 6492 → r4 终审中 (HEAD 1b4e9353567)。教训: goal state 曾随分支重写短暂丢失, 已从 goal-state-backup 恢复; 之后 goal state 只放备份分支或独立跟踪, 不再寄生 feature 分支"
+    },
+    {
+      "ts": "2026-09-20T09:05+08:00",
+      "event": "D03 进行中: G4 修复落地; CLI 真实 turn 验证; live 套件根因=空临时 CODEX_HOME(设计需交互登录)非产品缺陷; D11/D06 续作子代理运行中"
+    },
+    {
+      "ts": "2026-09-20T09:30+08:00",
+      "event": "D03 PR #58 建+pi 审查中; D11/D06 续作均再次被配额中断(11:58重置)——已代交残留并建 WIP PR #59/#60（明确标注勿合并、收口清单）; 下次实施在配额重置后"
     }
   ],
   "review_state": {

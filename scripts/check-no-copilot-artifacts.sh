@@ -11,6 +11,9 @@
 # Exit 0 when clean; exit 1 otherwise.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 if [ $# -lt 1 ]; then
 	echo "usage: $0 <artifact-dir> [<dir>...]" >&2
 	exit 2
@@ -58,6 +61,55 @@ for dir in "$@"; do
 				;;
 		esac
 	done < <(find "$dir" -type d \( -path '*node_modules/@vscode/copilot-api' -o -path '*node_modules/@vscode/copilot-api/*' -o -path '*node_modules/@github/copilot*' -o -path '*node_modules/@github/blackbird-external-ingest-utils' \) 2>/dev/null | head -50 || true)
+
+	# 2b. The same block list applies INSIDE the packaged node_modules.asar.
+	#     The asar is a FILE, so the `find -type d` above is blind to it (M1):
+	#     a block-listed package present only inside the asar would slip
+	#     through. List each asar's members and apply the same
+	#     patterns/allowlist. Member paths are asar-root-relative, so
+	#     `node_modules/<pkg>` in the listing corresponds to the shipped
+	#     `app/node_modules.asar/<pkg>` content.
+	ASAR_BIN="$REPO_ROOT/node_modules/.bin/asar"
+	while IFS= read -r asar_file; do
+		if [ ! -x "$ASAR_BIN" ]; then
+			echo "ERROR: cannot verify $asar_file — asar CLI missing at $ASAR_BIN (run npm ci). A gate that cannot inspect the asar must not silently pass." >&2
+			status=1
+			continue
+		fi
+		if ! asar_listing="$("$ASAR_BIN" list "$asar_file" 2>/dev/null)"; then
+			echo "ERROR: cannot list $asar_file — refusing to pass a gate that could not run" >&2
+			status=1
+			continue
+		fi
+		# Member filtering in node (the gate already requires it): match
+		# blocked package paths, collapse to unique package roots
+		# (node_modules/@scope/name), apply the @github/copilot-sdk*
+		# allowlist, print what is blocked. Fail-closed: a filter crash
+		# fails the gate instead of passing an unexamined asar.
+		if ! asar_blocked="$(printf '%s\n' "$asar_listing" | node -e "
+const readline = require('readline');
+const blocked = new Set();
+const pattern = /(?:^|\/)node_modules\/(@vscode\/copilot-api|@github\/copilot[^\/]*|@github\/blackbird-external-ingest-utils)(\/|$)/;
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', line => {
+	const m = pattern.exec(line);
+	if (!m) { return; }
+	const root = m[1];
+	if (root === '@github/copilot-sdk' || root.startsWith('@github/copilot-sdk-')) { return; } // allowlisted (MIT, load-bearing)
+	blocked.add(root);
+});
+rl.on('close', () => { for (const b of [...blocked].sort()) { console.log(b); } });
+")"; then
+			echo "ERROR: asar member scan crashed for $asar_file — refusing to pass a gate that could not run" >&2
+			status=1
+			continue
+		fi
+		while IFS= read -r pkg_root; do
+			[ -n "$pkg_root" ] || continue
+			echo "BLOCKED: restricted redistributable package inside asar: $asar_file — $pkg_root" >&2
+			status=1
+		done <<< "$asar_blocked"
+	done < <(find "$dir" -type f -name 'node_modules.asar' 2>/dev/null || true)
 
 	# 3. The shipped product configuration must not reference the Copilot
 	#    default chat agent or vscode-cdn.net.

@@ -85,7 +85,7 @@ export function elicitationResponseFromAnswers(
 		return { action: 'cancel', content: null, _meta: null };
 	}
 	if (params.mode === 'openai/userVerification') {
-		// Fails closed (issue #54): codex-rs 0.155.1's `validate_response`
+		// Fails closed (issue #54): codex-rs 0.155.1+'s `validate_response`
 		// requires a real passkey proof (credentialId + base64url signature)
 		// for `accept`, and silently degrades a proof-less accept to Cancel —
 		// the user would have clicked "Accept" and gotten a cancel. We cannot

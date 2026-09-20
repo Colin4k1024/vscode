@@ -77,10 +77,12 @@ type OnboardingActionEvent = {
 
 type EnterpriseSignInUiState = 'options' | 'instance' | 'progress';
 
-// The default chat agent is optional after D08 (this product removes GitHub
-// Copilot as the default chat agent). The GHE flow below only runs when a
-// default chat agent names the provider; without one the user never reaches
-// these paths, so the non-null assertions stay local to that flow.
+// The default chat agent is optional: the build-time product mixin (D09,
+// `scripts/apply-mixin.sh`) deletes the `defaultChatAgent` key from
+// `product.json` when the product ships no default chat agent. With the key
+// gone the old `assertDefined` here crashed startup on the first sign-in
+// step. Keep the reference optional; the GHE flow below uses neutral
+// labels/URI when it is absent.
 const defaultChat: IDefaultChatAgent | undefined = product.defaultChatAgent;
 
 /**

@@ -3390,6 +3390,17 @@ suite('CodexAgent chat backing durability', () => {
 	 * `threadId`, and drive the first send so the session-scoped materialize
 	 * receipt — the one carrying the refreshed chat backing — is emitted.
 	 */
+	/**
+	 * Settle the session's active turn so a later send starts a fresh turn:
+	 * sessions run one turn at a time (issue #30), and a send while a turn is
+	 * still active is refused before the claim.
+	 */
+	function settleActiveTurn(agent: CodexAgent, session: URI, threadId: string, appTurnId: string): void {
+		const entry = agent['_sessions'].get(AgentSession.id(session))!;
+		agent['_handleTurnStartedNotification'](entry, { threadId, turn: { id: appTurnId, items: [], itemsView: 'full', status: 'inProgress', error: null, startedAt: null, completedAt: null, durationMs: null } });
+		agent['_dispatchTurnCompleted']({ threadId, turn: { id: appTurnId, items: [], itemsView: 'full', status: 'completed', error: null, startedAt: 1, completedAt: 2, durationMs: 1000 } });
+	}
+
 	async function materializeSession(agent: CodexAgent, peer: ITestPeer, session: URI, chat: URI, folder: URI, threadId: string): Promise<IAgentMaterializeChatEvent> {
 		const receipts: IAgentMaterializeChatEvent[] = [];
 		const listener = agent.onDidMaterializeChat(e => receipts.push(e));
@@ -3647,6 +3658,9 @@ suite('CodexAgent chat backing durability', () => {
 
 		try {
 			await materializeSession(agent, firstPeer, session, chat, folder, 'mid-send-reconnect-thread');
+			// turn-1 must settle before the next send: one active turn per
+			// session (issue #30), or the send is refused before the claim.
+			settleActiveTurn(agent, session, 'mid-send-reconnect-thread', 'app-turn-1');
 			const buildCustomizationLaunch = agent['_buildCustomizationLaunch'].bind(agent);
 			let replaceDuringNextBuild = true;
 			agent['_buildCustomizationLaunch'] = async entry => {
@@ -3694,6 +3708,11 @@ suite('CodexAgent chat backing durability', () => {
 
 		try {
 			await materializeSession(agent, peer, session, chat, folder, 'disconnect-during-turn-start-thread');
+			// turn-1 must settle before the next send: one active turn per
+			// session (issue #30), or the send is refused before the claim.
+			// The signal listener attaches after the settle so only turn-2's
+			// finalization is observed below.
+			settleActiveTurn(agent, session, 'disconnect-during-turn-start-thread', 'app-turn-1');
 			const signals: AgentSignal[] = [];
 			const listener = agent.onDidChatProgress(signal => signals.push(signal));
 			try {

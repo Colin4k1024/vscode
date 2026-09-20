@@ -291,6 +291,17 @@ async function createSession(agent: CodexAgent, options: IAgentCreateChatOptions
 	return { ...result, session };
 }
 
+/**
+ * Settle the session's active turn so a later send starts a fresh turn:
+ * sessions run one turn at a time (issue #30), and a send while a turn is
+ * still active is refused before the claim.
+ */
+function settleActiveTurn(agent: CodexAgent, sessionId: string, threadId: string, appTurnId: string): void {
+	const entry = agent['_sessions'].get(sessionId)!;
+	agent['_handleTurnStartedNotification'](entry, { threadId, turn: { id: appTurnId, items: [], itemsView: 'full', status: 'inProgress', error: null, startedAt: null, completedAt: null, durationMs: null } });
+	agent['_dispatchTurnCompleted']({ threadId, turn: { id: appTurnId, items: [], itemsView: 'full', status: 'completed', error: null, startedAt: 1, completedAt: 2, durationMs: 1000 } });
+}
+
 async function assertPrewarmEvictedOnSend(disposables: Pick<DisposableStore, 'add'>, completePrewarmBeforeSend: boolean): Promise<void> {
 	const agent = await createAgent(disposables);
 	const peer = disposables.add(createTestPeer());
@@ -2367,6 +2378,9 @@ suite('CodexAgent prewarm eviction', () => {
 				await agent.chats.sendMessage(chat, 'continue', undefined, undefined, 'failed-turn', undefined, undefined, chatContext(session, chat));
 				assert.deepStrictEqual(telemetryService.events, []);
 				await agent.chats.sendMessage(chat, 'retry', undefined, undefined, 'retry-turn', undefined, undefined, chatContext(session, chat));
+				// 'retry-turn' must settle before the next send: one active turn per
+				// session (issue #30), or the send is refused before the claim.
+				settleActiveTurn(agent, AgentSession.id(session), 'native-chatgpt-thread', 'app-turn-retry');
 				await agent.chats.sendMessage(chat, 'continue again', undefined, undefined, 'next-turn', undefined, undefined, chatContext(session, chat));
 				assert.deepStrictEqual({
 					turnAttempts: requests.filter(method => method === 'turn/start').length,
@@ -2698,6 +2712,9 @@ suite('CodexAgent prewarm eviction', () => {
 		const returnedInventory = await returnedInventoryPromise;
 		peer.push({ id: returnedInventory.id, result: { data: [], nextCursor: null } });
 		assert.deepStrictEqual(telemetryService.events, []);
+		// 'first-turn' must settle before the next send: one active turn per
+		// session (issue #30), or the send is refused before the claim.
+		settleActiveTurn(agent, AgentSession.id(copilot.session), 'thread-copilot', 'app-turn-first');
 		const nextSend = agent.chats.sendMessage(defaultChatOf(copilot.session), 'second turn through Copilot', undefined, undefined, 'second-turn');
 		const nextTurn = await readNextRequest(peer.outbound);
 		peer.push({ id: nextTurn.id, result: {} });
@@ -2920,6 +2937,9 @@ suite('CodexAgent prewarm eviction', () => {
 		const firstTurn = await readNextRequest(peer.outbound);
 		peer.push({ id: firstTurn.id, result: {} });
 		await firstSend;
+		// turn-1 must settle before the next send: one active turn per session
+		// (issue #30), or the send is refused before the claim.
+		settleActiveTurn(agent, AgentSession.id(session), 'thread-workspace-agent', 'app-turn-1');
 
 		await agent['_fileService'].writeFile(agentUri, VSBuffer.fromString('---\nname: Reviewer\ndescription: Reviews changes\n---\nUse the updated instructions.'));
 		const secondSend = agent.chats.sendMessage(chat, 'second', [repo], undefined, 'turn-2');
@@ -3354,11 +3374,16 @@ suite('CodexAgent prewarm eviction', () => {
 			const firstTurn = await readNextRequest(peer.outbound);
 			peer.push({ id: firstTurn.id, result: {} });
 			await firstSend;
+			// Consecutive sends are sequential turns: each must settle before the
+			// next send — one active turn per session (issue #30), or the send is
+			// refused before the claim.
+			settleActiveTurn(agent, AgentSession.id(created.session), 'thread', 'app-turn-1');
 
 			const secondSend = agent.chats.sendMessage(URI.parse(buildDefaultChatUri(created.session)), 'second', [repoA, repoC], undefined, 'turn-2');
 			const secondTurn = await readNextRequest(peer.outbound);
 			peer.push({ id: secondTurn.id, result: {} });
 			await secondSend;
+			settleActiveTurn(agent, AgentSession.id(created.session), 'thread', 'app-turn-2');
 
 			const thirdSend = agent.chats.sendMessage(URI.parse(buildDefaultChatUri(created.session)), 'third', [repoA], undefined, 'turn-3');
 			const thirdTurn = await readNextRequest(peer.outbound);
@@ -4335,6 +4360,9 @@ suite('CodexAgent prewarm eviction', () => {
 		const turn = await readNextRequest(peer.outbound);
 		peer.push({ id: turn.id, result: {} });
 		await send;
+		// turn-1 must settle before the next send: one active turn per session
+		// (issue #30), or the send is refused before the claim.
+		settleActiveTurn(agent, AgentSession.id(session), 'desktop-thread', 'app-turn-live-1');
 
 		assert.deepStrictEqual({
 			metadataReadThreadId: metadataRead.params.threadId,
@@ -4437,6 +4465,9 @@ suite('CodexAgent baseline checkpoint', () => {
 			const turnStart1 = await readNextRequest(peer.outbound);
 			peer.push({ id: turnStart1.id, result: {} });
 			await send1;
+			// turn-1 must settle before the next send: one active turn per
+			// session (issue #30), or the send is refused before the claim.
+			settleActiveTurn(agent, AgentSession.id(session), 'thread-baseline', 'app-turn-1');
 
 			// The second send has `firstTurnSent === true`, so the gate prevents
 			// a second capture.

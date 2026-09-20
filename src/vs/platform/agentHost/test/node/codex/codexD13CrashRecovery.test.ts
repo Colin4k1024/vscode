@@ -6,6 +6,7 @@
 import type { CCAModel } from '@vscode/copilot-api';
 import assert from 'assert';
 import { PassThrough } from 'stream';
+import { DeferredPromise } from '../../../../../base/common/async.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { Schemas } from '../../../../../base/common/network.js';
@@ -571,7 +572,7 @@ suite('CodexAgent D13 crash / concurrency / recovery negatives (issue #15)', () 
 		}
 	});
 
-	test('AC15 (B27): mid-turn input is steered on the wire, and a rejected concurrent turn surfaces instead of vanishing', async () => {
+	test('AC15 (B27, issue #30): mid-turn input is steered on the wire, and a concurrent send is refused before the wire instead of racing the claim', async () => {
 		const disposables = new DisposableStore();
 		try {
 			const agent = await createAgent(disposables);
@@ -592,33 +593,138 @@ suite('CodexAgent D13 crash / concurrency / recovery negatives (issue #15)', () 
 			assert.strictEqual(steered.params.expectedTurnId, 'appTurn-1');
 			peer.push({ id: steered.id, result: {} });
 
-			// Write path under contention (B27): a second full send while a turn is
-			// active is attempted on the wire (never silently swallowed); when the
-			// app-server rejects it via its per-thread writer lock, the failure
-			// surfaces as a ChatError for the contender turn.
+			// Write path under contention (B27 / issue #30): a second full send
+			// while a turn is active is refused BEFORE the claim — it never
+			// reaches the wire (the app-server's per-thread writer lock would
+			// reject it anyway, and claiming first would overwrite the active
+			// turn's tracking, which the contender's failure path would then
+			// clear). The refusal surfaces as an ordinary failed contender turn.
 			const signals: AgentSignal[] = [];
 			disposables.add(agent.onDidChatProgress(signal => signals.push(signal)));
-			const second = agent.chats.sendMessage(chat, 'concurrent turn', [URI.file('/repo')], undefined, 'turn-2');
-			const secondTurn = await peer.nextMessage();
-			assert.strictEqual(secondTurn.method, 'turn/start', 'a concurrent send must be attempted on the wire, not dropped');
-			peer.push({ id: secondTurn.id, error: { code: -32000, message: 'thread already has an active turn' } });
-			await second;
+			await agent.chats.sendMessage(chat, 'concurrent turn', [URI.file('/repo')], undefined, 'turn-2');
+			assert.strictEqual(peer.pendingMessageCount, 0, 'a refused concurrent send must not reach the wire');
 
 			const actions = actionSignals(signals);
-			assert.ok(actions.some(a => a.type === ActionType.ChatError && (a as { turnId?: string }).turnId === 'turn-2'),
-				'the rejected concurrent turn must surface a failure');
+			assert.ok(actions.some(a => a.type === ActionType.ChatError && (a as { turnId?: string }).turnId === 'turn-2'
+				&& (a as { part?: { error?: { errorType?: string } } }).part?.error?.errorType === 'CodexTurnConflict'),
+				'the refused concurrent turn must surface a failure');
 			assert.ok(actions.some(a => a.type === ActionType.ChatTurnComplete && (a as { turnId?: string }).turnId === 'turn-2'),
-				'the rejected concurrent turn must be terminated');
+				'the refused concurrent turn must be terminated');
 
-			// The active turn still completes normally afterwards: its terminal
-			// event resolves through the recorded host-turn correlation.
+			// The refusal must not disturb the active turn's tracking — this is
+			// the regression issue #30 fixed.
+			const sessionEntry = agent['_sessions'].get(AgentSession.id(session))!;
+			assert.strictEqual(sessionEntry.currentTurnId, 'turn-1', 'the active turn must still be tracked after the contender is refused');
+			assert.strictEqual(sessionEntry.currentAppTurnId, 'appTurn-1', 'the active app-turn correlation must survive the refused contender');
+
+			// The active turn still completes normally afterwards.
 			peer.push({ method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'appTurn-1', items: [] } } });
 			await new Promise(r => setImmediate(r));
 			const allActions = actionSignals(signals);
 			assert.ok(allActions.some(a => a.type === ActionType.ChatTurnComplete && (a as { turnId?: string }).turnId === 'turn-1'),
-				'the active turn must still reach its terminal state after the contender is rejected');
-			const sessionEntry = agent['_sessions'].get(AgentSession.id(session))!;
+				'the active turn must still reach its terminal state after the contender is refused');
 			assert.strictEqual(sessionEntry.currentTurnId, undefined, 'all turn tracking settles once both turns terminate');
+		} finally {
+			disposables.dispose();
+		}
+	});
+
+	test('AC15c (issue #30, review): a send that loses the claim inside the prep window mutates nothing of the active turn', async () => {
+		const disposables = new DisposableStore();
+		try {
+			const agent = await createAgent(disposables);
+			const peer = new WirePeer(disposables);
+			await connectAgent(agent, peer);
+			const { session } = await createSession(agent, { workingDirectories: [URI.file('/repo')], model: { id: COPILOT_TEST_MODEL } });
+			const chat = defaultChatOf(session);
+
+			// Stall the contender inside its preparation (past the entry check,
+			// before the claim), then let a full send claim and start a turn.
+			// The contender's claim-site assertion must route to the dedicated
+			// conflict branch: zero session mutation, CodexTurnConflict, duration 0.
+			const releasePrep = new DeferredPromise<void>();
+			let stalled = false;
+			const adopt = agent['_adoptWorkingDirectoryBeforeSend'].bind(agent);
+			agent['_adoptWorkingDirectoryBeforeSend'] = (async (...a: unknown[]) => {
+				if (!stalled) {
+					stalled = true;
+					await releasePrep.p;
+				}
+				return (adopt as (...args: unknown[]) => Promise<void>)(...a);
+			}) as never;
+
+			const signals: AgentSignal[] = [];
+			disposables.add(agent.onDidChatProgress(signal => signals.push(signal)));
+			const contender = agent.chats.sendMessage(chat, 'contender in prep', [URI.file('/repo')], undefined, 'turn-2');
+			// Let the contender reach the stall (past its entry check).
+			while (!stalled) {
+				await new Promise(r => setImmediate(r));
+			}
+
+			// The winner claims and starts a turn while the contender is in prep.
+			await startTurn(peer, agent, session);
+			peer.push({ method: 'turn/started', params: { threadId: 'thread-1', turn: { id: 'appTurn-1', items: [] } } });
+			await new Promise(r => setImmediate(r));
+
+			releasePrep.complete();
+			await contender;
+
+			assert.strictEqual(peer.pendingMessageCount, 0, 'the claim-losing send must not reach the wire');
+			const actions = actionSignals(signals);
+			assert.ok(actions.some(a => a.type === ActionType.ChatError && (a as { turnId?: string }).turnId === 'turn-2'
+				&& (a as { part?: { error?: { errorType?: string } } }).part?.error?.errorType === 'CodexTurnConflict'),
+				'the claim-losing send must surface CodexTurnConflict (not the generic turn error)');
+			const contenderComplete = actions.find(a => a.type === ActionType.ChatTurnComplete && (a as { turnId?: string }).turnId === 'turn-2');
+			assert.ok(contenderComplete, 'the claim-losing turn must be terminated');
+			assert.strictEqual((contenderComplete as { duration?: number }).duration, 0, 'the loser never owned the stopwatch');
+
+			const sessionEntry = agent['_sessions'].get(AgentSession.id(session))!;
+			assert.strictEqual(sessionEntry.currentTurnId, 'turn-1', 'the active turn tracking must survive the claim-losing send');
+			assert.strictEqual(sessionEntry.currentAppTurnId, 'appTurn-1');
+			assert.ok(sessionEntry.turnStopWatch, 'the active turn stopwatch must survive (the loser must not clear it)');
+
+			peer.push({ method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'appTurn-1', items: [] } } });
+			await new Promise(r => setImmediate(r));
+			assert.strictEqual(sessionEntry.currentTurnId, undefined, 'the active turn settles normally afterwards');
+		} finally {
+			disposables.dispose();
+		}
+	});
+
+	test('AC15b (issue #30): abort after a refused concurrent send still interrupts the tracked active turn', async () => {
+		const disposables = new DisposableStore();
+		try {
+			const agent = await createAgent(disposables);
+			const peer = new WirePeer(disposables);
+			await connectAgent(agent, peer);
+			const { session } = await createSession(agent, { workingDirectories: [URI.file('/repo')], model: { id: COPILOT_TEST_MODEL } });
+			await startTurn(peer, agent, session);
+			peer.push({ method: 'turn/started', params: { threadId: 'thread-1', turn: { id: 'appTurn-1', items: [] } } });
+			await new Promise(r => setImmediate(r));
+			const chat = defaultChatOf(session);
+
+			// A refused contender used to clear the active turn's tracking before
+			// `turn/completed` self-healed it; an abort inside that window missed
+			// the active turn entirely. With the claim-side refusal the tracking
+			// is never lost, so the abort must reach the wire pinned to the
+			// active app turn.
+			await agent.chats.sendMessage(chat, 'concurrent turn', [URI.file('/repo')], undefined, 'turn-2');
+			const sessionEntry = agent['_sessions'].get(AgentSession.id(session))!;
+			assert.strictEqual(sessionEntry.currentTurnId, 'turn-1', 'the refused send must not clear the active turn');
+			assert.strictEqual(sessionEntry.currentAppTurnId, 'appTurn-1');
+
+			const aborting = agent.chats.abort(chat, chatContext(session, chat));
+			const interrupt = await peer.nextMessage();
+			assert.strictEqual(interrupt.method, 'turn/interrupt', 'abort must interrupt the active turn even after a refused contender');
+			assert.deepStrictEqual({ threadId: interrupt.params.threadId, turnId: interrupt.params.turnId }, { threadId: 'thread-1', turnId: 'appTurn-1' });
+			peer.push({ id: interrupt.id, result: {} });
+			await aborting;
+
+			// The interrupted turn then terminates and tracking settles.
+			peer.push({ method: 'turn/completed', params: { threadId: 'thread-1', turn: { id: 'appTurn-1', items: [] } } });
+			await new Promise(r => setImmediate(r));
+			assert.strictEqual(sessionEntry.currentTurnId, undefined);
+			assert.strictEqual(sessionEntry.currentAppTurnId, undefined);
 		} finally {
 			disposables.dispose();
 		}

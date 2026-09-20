@@ -1110,6 +1110,14 @@ function narrowFileChangeDecision(decision: CommandExecutionApprovalDecision): F
 	}
 }
 
+/**
+ * Marker for the concurrent-turn refusal raised by the claim-site assertion.
+ * Routed to a dedicated catch branch so a losing send performs zero session
+ * mutation (the generic catch's stopwatch/merge-flag cleanup belongs to the
+ * OWNING send — the one that claimed the turn).
+ */
+class CodexTurnConflictError extends Error { }
+
 export class CodexAgent extends Disposable implements IAgent {
 
 	readonly id: AgentProvider = CODEX_AGENT_PROVIDER_ID;
@@ -5927,6 +5935,21 @@ export class CodexAgent extends Disposable implements IAgent {
 		return stopWatch;
 	}
 
+	/**
+	 * A session runs one turn at a time. The early refusal at the top of
+	 * {@link _sendMessage} runs before that send's first await, so a concurrent
+	 * send can still reach the claim after another send claimed a turn in the
+	 * meantime — this is the authoritative check, made synchronously with the
+	 * claim. Throwing routes through the send catch with `turnRequestStarted`
+	 * still false, surfacing a ChatError for the contender while leaving the
+	 * active turn's tracking untouched.
+	 */
+	private _assertTurnClaimable(session: ICodexSession): void {
+		if (session.currentTurnId !== undefined || session.currentAppTurnId !== undefined) {
+			throw new CodexTurnConflictError(`Codex session already has an active turn; concurrent turn rejected (active host turn=${session.currentTurnId ?? 'none'}, app turn=${session.currentAppTurnId ?? 'none'})`);
+		}
+	}
+
 	private _clearTurnStopWatch(session: ICodexSession): number {
 		const elapsed = session.turnStopWatch?.elapsed();
 		session.turnStopWatch = undefined;
@@ -5944,7 +5967,36 @@ export class CodexAgent extends Disposable implements IAgent {
 		if (!session) {
 			throw new Error(`Codex session not found: ${sessionUri.toString()} (chat=${chat.toString()}, binding=${this._sessionIdByChatUri.get(chat.toString()) ?? 'none'}, sessions=${[...this._sessions.keys()].join(',') || 'none'})`);
 		}
+		const effectiveTurnId = turnId ?? generateUuid();
+		// A session runs one turn at a time. Refuse a concurrent send BEFORE any
+		// session mutation or preparation: letting it reach the claim below would
+		// overwrite the active turn's `currentTurnId`, and the app-server's
+		// inevitable `turn/start` rejection would then clear the ACTIVE turn's
+		// tracking in this method's catch, leaving abort and connection-loss
+		// cleanup blind to it until `turn/completed` self-heals the correlation
+		// via `hostTurnIdByAppTurnId`. The refusal surfaces as an ordinary failed
+		// turn for the contender and must not touch the active turn's tracking
+		// or its stopwatch.
+		if (session.currentTurnId !== undefined || session.currentAppTurnId !== undefined) {
+			const conflictMessage = `Codex session already has an active turn; concurrent turn rejected (active host turn=${session.currentTurnId ?? 'none'}, app turn=${session.currentAppTurnId ?? 'none'})`;
+			this._logService.warn(`[Codex:${sessionId}] ${conflictMessage}`);
+			this._fire(sessionUri, {
+				type: ActionType.ChatError,
+				turnId: effectiveTurnId,
+				duration: 0,
+				part: createErrorResponsePart({ errorType: 'CodexTurnConflict', message: conflictMessage }),
+			});
+			this._fire(sessionUri, { type: ActionType.ChatTurnComplete, turnId: effectiveTurnId, duration: 0 });
+			return;
+		}
 		const configResource = operationContext?.configurationResource ?? sessionUri;
+		// Residual race, documented and accepted: two sends that both pass the
+		// entry check write shared session fields (`agentMergeTurn` here,
+		// `workingDirectories` below) during preparation, before the claim-site
+		// assertion rejects the loser. The clobbered value persists until the
+		// active turn completes; impact is confined to merge-flag /
+		// tool-restriction reads of the in-flight turn. Closing it would require
+		// deferring these writes past the claim, which prep consumers depend on.
 		session.agentMergeTurn = operationContext?.agentMergeTurn === true;
 		this._ensureModelProviderAuthenticated(session.model);
 		// The host hands us the complete resolved snapshot (index 0 = the process
@@ -5967,7 +6019,6 @@ export class CodexAgent extends Disposable implements IAgent {
 				: workingDirectories;
 		}
 		await this._refreshSessionMcpDiscovery(session);
-		const effectiveTurnId = turnId ?? generateUuid();
 
 		// Materialize the addressed Codex thread on first send.
 		try {
@@ -6087,6 +6138,7 @@ export class CodexAgent extends Disposable implements IAgent {
 				const threadId = session.threadId!;
 				// Claim the host turn only once every reconnect-prone preparation step
 				// has completed. From here, connection-loss handling owns finalization.
+				this._assertTurnClaimable(session);
 				session.lastPromptText = prompt;
 				session.currentTurnId = effectiveTurnId;
 				session.modifiedTime = Date.now();
@@ -6111,6 +6163,7 @@ export class CodexAgent extends Disposable implements IAgent {
 				? { rateLimit: this._openAIAccountRateLimit, observedAt: this._openAIAccountRateLimitUpdatedAt }
 				: undefined;
 			const hostInstructions = resolveAgentHostInstructions(operationContext);
+			this._assertTurnClaimable(session);
 			session.lastPromptText = prompt;
 			session.currentTurnId = effectiveTurnId;
 			session.modifiedTime = Date.now();
@@ -6140,6 +6193,21 @@ export class CodexAgent extends Disposable implements IAgent {
 			// We don't await turn completion here — the notification
 			// stream emits ChatTurnComplete asynchronously.
 		} catch (err) {
+			// A concurrent send that lost the claim race owns nothing: no session
+			// mutation, no stopwatch/merge-flag cleanup (those belong to the
+			// active turn's owner). Surface the same refusal shape as the
+			// entry-level check so UI/telemetry see a single CodexTurnConflict shape.
+			if (err instanceof CodexTurnConflictError) {
+				this._logService.warn(`[Codex:${sessionId}] ${err.message}`);
+				this._fire(sessionUri, {
+					type: ActionType.ChatError,
+					turnId: effectiveTurnId,
+					duration: 0,
+					part: createErrorResponsePart({ errorType: 'CodexTurnConflict', message: err.message }),
+				});
+				this._fire(sessionUri, { type: ActionType.ChatTurnComplete, turnId: effectiveTurnId, duration: 0 });
+				return;
+			}
 			// A transport exit finalizes and clears an owned turn in
 			// `_handleConnectionLost`. Do not start or complete it a second time.
 			if (turnRequestStarted && session.currentTurnId !== effectiveTurnId) {

@@ -6275,7 +6275,7 @@ export abstract class BaseAgentHostSessionsProvider extends Disposable implement
 			if (e.rejectionReason) {
 				return;
 			}
-			if (e.action.type === ActionType.ChatTurnComplete && isChatAction(e.action)) {
+			if ((e.action.type === ActionType.ChatTurnComplete || e.action.type === ActionType.ChatTurnUncertain) && isChatAction(e.action)) {
 				this._keepChatSessionStateAlive(e.channel);
 				this._refreshSessions();
 			} else if (e.action.type === ActionType.SessionTitleChanged && isSessionAction(e.action)) {

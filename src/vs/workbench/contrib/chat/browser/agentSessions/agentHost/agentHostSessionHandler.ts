@@ -1975,7 +1975,9 @@ export class AgentHostSessionHandler extends Disposable implements IChatSessionC
 
 			failureStage = 'prepareTurn';
 			const completedTurn = await this._handleTurn(resolvedSession, request, measuredProgress, cancellationToken, stage => failureStage = stage, invocationKind === 'newTurn' ? text => firstResponse.observeText(text) : undefined);
-			outcome = completedTurn?.state === TurnState.Error ? 'error'
+			// An uncertain turn (issue #34) is never a success: its outcome was
+			// never observed, so it reports as an error-shaped terminal.
+			outcome = completedTurn?.state === TurnState.Error || completedTurn?.state === TurnState.Uncertain ? 'error'
 				: completedTurn?.state === TurnState.Cancelled || cancellationToken.isCancellationRequested ? 'cancelled'
 					: completedTurn ? 'success' : 'notDispatched';
 			const details = this._getTurnResponseDetails(request.sessionResource, resolvedSession, completedTurn);

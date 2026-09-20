@@ -559,6 +559,35 @@ suite('codexReplayMapper', () => {
 		}]);
 	});
 
+	test('in-progress turn maps to TurnState.Uncertain (issue #34: crash recovery never presents it as succeeded)', () => {
+		// A turn read back as still in progress was never finalized: the
+		// process was lost between `turn/start` and its result. Replay must not
+		// default it to Complete (phantom success) — it is `uncertain` and
+		// carries an explanatory error part so the UI can discern it.
+		const turns = replayThreadToTurns({
+			id: 'thr',
+			turns: [{
+				id: 'turn_a',
+				items: [
+					{ type: 'userMessage', id: 'u1', content: [{ type: 'text', text: 'q', text_elements: [] }] },
+					{ type: 'agentMessage', id: 'a1', text: 'partial answer', phase: null, memoryCitation: null },
+				],
+				itemsView: { type: 'full' } as never,
+				status: 'inProgress' as never,
+				error: null,
+				startedAt: null, completedAt: null, durationMs: null,
+			}],
+		} as never);
+		assert.strictEqual(turns.length, 1);
+		assert.strictEqual(turns[0].state, TurnState.Uncertain, 'an unfinalized replayed turn is uncertain, never complete');
+		const error = getTurnError(turns[0]);
+		assert.strictEqual(error?.errorType, 'CodexTurnUncertain', 'uncertain turns surface a discernible explanation');
+		assert.match(error?.message ?? '', /outcome is unknown/i);
+		// Streamed content is preserved ahead of the explanation.
+		assert.strictEqual(turns[0].responseParts[0].kind, ResponsePartKind.Markdown);
+		assert.strictEqual(turns[0].responseParts.at(-1)?.kind, ResponsePartKind.Error);
+	});
+
 	test('turn with no recognizable items is dropped', () => {
 		const turns = replayThreadToTurns({
 			id: 'thr',

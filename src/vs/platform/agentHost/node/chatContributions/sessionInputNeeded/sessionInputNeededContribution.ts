@@ -71,6 +71,7 @@ export class SessionInputNeededContribution extends Disposable implements IAgent
 			case ActionType.ChatTurnComplete:
 			case ActionType.ChatTurnCancelled:
 			case ActionType.ChatError:
+			case ActionType.ChatTurnUncertain:
 			case ActionType.ChatTruncated:
 				this._removeSessionInputNeededForChat(chatUri);
 				break;

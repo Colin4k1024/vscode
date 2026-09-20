@@ -1121,7 +1121,9 @@ export function createActiveTurn(id: string, message: Message, startedAt: string
 }
 
 export function getTurnError(turn: Turn | undefined): ErrorInfo | undefined {
-	if (turn?.state !== TurnState.Error) {
+	// Uncertain turns also terminate with an explanatory error part (the
+	// outcome was never observed); surface it like a terminal error.
+	if (turn?.state !== TurnState.Error && turn?.state !== TurnState.Uncertain) {
 		return undefined;
 	}
 	const part = turn.responseParts[turn.responseParts.length - 1];

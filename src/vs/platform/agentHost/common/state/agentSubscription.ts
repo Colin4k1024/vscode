@@ -532,7 +532,7 @@ export class ChatStateSubscription extends BaseAgentSubscription<ChatState> {
 		if (!isChatAction(action)) {
 			return;
 		}
-		if (action.type !== ActionType.ChatTurnComplete && action.type !== ActionType.ChatTurnCancelled && action.type !== ActionType.ChatError) {
+		if (action.type !== ActionType.ChatTurnComplete && action.type !== ActionType.ChatTurnCancelled && action.type !== ActionType.ChatError && action.type !== ActionType.ChatTurnUncertain) {
 			return;
 		}
 		const index = this._pendingActions.findIndex(p => p.action.type === ActionType.ChatTurnStarted && p.action.turnId === action.turnId);

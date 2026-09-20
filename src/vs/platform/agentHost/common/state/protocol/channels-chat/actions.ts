@@ -493,6 +493,49 @@ export interface ChatErrorAction {
 }
 
 /**
+ * The turn's outcome is unknown: its request reached the wire (e.g.
+ * `turn/start` was dispatched) but the connection or process was lost before
+ * a result arrived.
+ *
+ * This is a terminal action like {@link ChatTurnCompleteAction}, but it
+ * finalizes the turn as {@link TurnState.Uncertain} instead of `complete`:
+ * the turn MUST NOT be presented as succeeded, MUST NOT be treated as
+ * never-happened, and MUST NOT be auto-resumed (re-running could duplicate
+ * side effects the unobserved execution may already have performed).
+ *
+ * @category Chat Actions
+ * @version 1
+ */
+export interface ChatTurnUncertainAction {
+	type: ActionType.ChatTurnUncertain;
+	/** Turn identifier */
+	turnId: string;
+	/**
+	 * Elapsed turn duration in milliseconds, measured by the producer's own
+	 * clock. Clients MUST NOT derive this by subtracting timestamps — cross-
+	 * client clocks may differ — and MUST treat it as opaque, producer-supplied
+	 * data.
+	 */
+	duration: number;
+	/**
+	 * Error part appended to the response stream before finalizing the turn,
+	 * explaining that the outcome is unknown. It SHOULD NOT be marked
+	 * `resumable`.
+	 */
+	part: ErrorResponsePart;
+	/**
+	 * Additional provider-specific metadata for this action.
+	 *
+	 * Clients MAY look for well-known keys here to provide enhanced UI, and
+	 * agent hosts MAY use it to carry per-event context that does not fit any
+	 * other field — for example, attributing the event to a specific agent
+	 * (such as a sub-agent acting within the turn). Mirrors the MCP `_meta`
+	 * convention.
+	 */
+	_meta?: Record<string, unknown>;
+}
+
+/**
  * Resumes the latest errored turn without adding another message.
  *
  * The turn MUST be the latest turn, its state MUST be `error`, and its final
@@ -829,6 +872,7 @@ export type ChatAction =
 	| ChatTurnCompleteAction
 	| ChatTurnCancelledAction
 	| ChatErrorAction
+	| ChatTurnUncertainAction
 	| ChatTurnResumeAction
 	| ChatActivityChangedAction
 	| ChatWorkingDirectorySetAction

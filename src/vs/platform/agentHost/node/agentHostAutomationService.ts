@@ -863,7 +863,8 @@ export class AgentHostAutomationService extends Disposable implements IAgentHost
 		const action = envelope.action;
 		if (action.type !== ActionType.ChatTurnComplete
 			&& action.type !== ActionType.ChatTurnCancelled
-			&& action.type !== ActionType.ChatError) {
+			&& action.type !== ActionType.ChatError
+			&& action.type !== ActionType.ChatTurnUncertain) {
 			return;
 		}
 		const session = parseRequiredSessionUriFromChatUri(envelope.channel);
@@ -896,6 +897,10 @@ export class AgentHostAutomationService extends Disposable implements IAgentHost
 					};
 					break;
 				case ActionType.ChatError:
+				case ActionType.ChatTurnUncertain:
+					// An uncertain turn never completed observably: the run
+					// fails (it must not be marked Completed) with the
+					// uncertainty explanation as its error.
 					lifecycle = {
 						status: AutomationRunStatus.Failed,
 						createdAt: current.lifecycle.createdAt,

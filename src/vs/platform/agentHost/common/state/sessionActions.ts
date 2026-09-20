@@ -40,6 +40,7 @@ export {
 	type SessionTitleChangedAction,
 	type ChatTurnCancelledAction,
 	type ChatTurnCompleteAction,
+	type ChatTurnUncertainAction,
 	type ChatTurnStartedAction,
 	type ChatUsageAction,
 	type SessionServerToolsChangedAction,
@@ -128,6 +129,7 @@ import {
 	type SessionTitleChangedAction,
 	type ChatTurnCancelledAction,
 	type ChatTurnCompleteAction,
+	type ChatTurnUncertainAction,
 	type ChatTurnStartedAction,
 	type ChatErrorAction,
 	type ChatUsageAction,
@@ -207,6 +209,7 @@ export type IToolCallCompleteAction = ChatToolCallCompleteAction;
 export type IToolCallResultConfirmedAction = ChatToolCallResultConfirmedAction;
 export type ITurnCompleteAction = ChatTurnCompleteAction;
 export type ITurnCancelledAction = ChatTurnCancelledAction;
+export type ITurnUncertainAction = ChatTurnUncertainAction;
 export type ITitleChangedAction = SessionTitleChangedAction;
 export type IUsageAction = ChatUsageAction;
 export type IReasoningAction = ChatReasoningAction;

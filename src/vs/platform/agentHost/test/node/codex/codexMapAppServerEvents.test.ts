@@ -1466,6 +1466,8 @@ suite('codexMapAppServerEvents', () => {
 		assert.strictEqual(turnStateFromStatus('completed'), TurnState.Complete);
 		assert.strictEqual(turnStateFromStatus('interrupted'), TurnState.Cancelled);
 		assert.strictEqual(turnStateFromStatus('failed'), TurnState.Error);
+		// issue #34: an unfinalized turn is uncertain — never a phantom success.
+		assert.strictEqual(turnStateFromStatus('inProgress'), TurnState.Uncertain);
 		assert.strictEqual(turnStateFromStatus('weird'), TurnState.Complete);
 	});
 

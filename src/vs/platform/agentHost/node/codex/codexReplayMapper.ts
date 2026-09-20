@@ -221,6 +221,18 @@ function replayTurnToTurn(codexTurn: CodexTurn, model: ModelSelection | undefine
 	if (codexTurn.status === 'failed' && codexTurn.error) {
 		parts.push({ kind: ResponsePartKind.Error, error: mapCodexTurnError(codexTurn.error) });
 	}
+	if (codexTurn.status === 'inProgress') {
+		// Read back unfinalized: the process was lost between `turn/start` and
+		// its result. The turn may or may not have executed (issue #34) —
+		// explain the uncertainty instead of silently presenting a bare turn.
+		parts.push({
+			kind: ResponsePartKind.Error,
+			error: {
+				errorType: 'CodexTurnUncertain',
+				message: 'This turn was in progress when the session was interrupted; its outcome is unknown. Review the workspace before relying on its results.',
+			},
+		});
+	}
 	return {
 		id: codexTurn.id,
 		...codexTurnTiming(codexTurn),

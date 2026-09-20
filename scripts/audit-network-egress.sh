@@ -102,10 +102,34 @@ for (const host of denylist) {
 	}
 }
 
+// D15 (Issue #17) gallery pin: the shipped gallery must be Open VSX, and no
+// Microsoft Marketplace host may appear in the merged configuration (D10 ToS
+// ruling — Marketplace Offerings are licensed for official Visual Studio
+// products only). Host check covers the whole merged config (gallery URLs,
+// tips, templates), not just extensionsGallery.
+const MS_MARKETPLACE_HOSTS = ['marketplace.visualstudio.com', 'vsassets.io', 'gallerycdn', 'vscode.blob.core.windows.net'];
+for (const host of MS_MARKETPLACE_HOSTS) {
+	if (text.includes(host)) {
+		err(`merged product.json contains MS Marketplace host '${host}' (D10: third-party builds must not point at the Marketplace)`);
+	}
+}
+const gallery = merged.extensionsGallery;
+if (gallery) {
+	for (const [key, value] of Object.entries(gallery)) {
+		if (typeof value === 'string' && value && !value.startsWith('https://open-vsx.org/')) {
+			err(`merged product.json extensionsGallery.${key} must be an open-vsx.org URL, got: ${value}`);
+		}
+	}
+	if (!gallery.serviceUrl) {
+		err('merged product.json extensionsGallery.serviceUrl must be set');
+	}
+}
+
+
 if (failed) {
 	process.exit(1);
 }
-console.log('    shipped product.json: no defaultChatAgent, no vscode-cdn.net template, enableTelemetry=false, no denylisted hosts: OK');
+console.log('    shipped product.json: no defaultChatAgent, no vscode-cdn.net template, enableTelemetry=false, no denylisted hosts, gallery pinned to Open VSX: OK');
 NODE_EOF
 
 echo "==> [2/2] Code scan for denylisted egress hosts (non-test sources)"

@@ -230,6 +230,8 @@ const CLIENT_INFO = {
 
 **落地动作**：D15 #17（Open VSX 接入/私有 registry；不触碰 MS Marketplace）；D07 #9（Agents 窗口允许扩展列表随 gallery 方案走）。
 
+**落地状态（2026-09-20，D15 #17 完成）**：出厂 gallery 已配置为 Open VSX（mixin 覆盖层注入，D15-01）；`audit-network-egress.sh` 新增合并配置级断言——禁止 MS Marketplace 域名、gallery 各 URL 必须为 open-vsx.org（CI 门禁）；GUI 实测搜索/安装/重启持久通过，全程零 MS Marketplace 请求（AC1–AC4 证据见 `.agents/research/codex-desktop/D15-GALLERY.md` 与 `evidence/d15-*`）。本条目可勾销。
+
 ## 11. 其他第三方依赖中非 MIT/Apache/BSD 的抽样清单
 
 **扫描方法**：遍历主工作区 `node_modules/**/package.json`（顶层与 scoped，共 **1088** 个包），读 `license` 字段聚合；可疑项逐一打开 LICENSE 文件核对，并对照根 `package.json` 的 dependencies/devDependencies 判断是否进入分发产物。

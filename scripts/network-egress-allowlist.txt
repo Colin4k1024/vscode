@@ -1,0 +1,62 @@
+# D08 / Issue #10 AC1 — allowlist for scripts/audit-network-egress.sh.
+#
+# Format (one per line, TAB-separated):  <repo-relative path>\t<host substring>
+# A path may use `*` as the host to allowlist every denylisted host in it.
+# Every entry MUST have a justification comment immediately above it.
+#
+# These are references, not necessarily live egress: each entry documents why
+# the reference cannot produce implicit network traffic in the shipped
+# ColinCode product. Dynamic verification (mitmproxy) is a manual gate.
+
+# Upstream baseline file. The ColinCode mixin (product/product.json) deletes
+# webviewContentExternalBaseUrlTemplate and defaultChatAgent at build time;
+# layer 1 of the audit asserts the merged (shipped) configuration is clean.
+product.json	vscode-cdn.net
+
+# Build-time tooling only: sourcemap URL bases stamped into release bundles and
+# the maintainer-side upload scripts for agent SDK / dictation runtime
+# tarballs. The runtime download URLs come from product.agentSdks /
+# product.dictationRuntime, both of which are unset in the ColinCode product
+# (verified by layer 1). D09 must not point them at vscode-cdn.net.
+build/gulpfile.extensions.ts	vscode-cdn.net
+build/gulpfile.vscode.ts	vscode-cdn.net
+build/gulpfile.vscode.web.ts	vscode-cdn.net
+build/gulpfile.reh.ts	vscode-cdn.net
+build/lib/extensions.ts	vscode-cdn.net
+build/agent-sdk/common.ts	vscode-cdn.net
+build/agent-sdk/upload.ts	vscode-cdn.net
+build/dictation-runtime/common.ts	vscode-cdn.net
+build/dictation-runtime/upload.ts	vscode-cdn.net
+
+# Doc comment on the IProductConfiguration.agentSdks urlTemplate example.
+src/vs/base/common/product.ts	vscode-cdn.net
+
+# Browser-only fallback. The desktop product overrides webviewExternalEndpoint
+# to the local vscode-webview:// scheme (electron-browser environmentService),
+# so this constant is unreachable in the shipped desktop app.
+src/vs/workbench/services/environment/browser/environmentService.ts	vscode-cdn.net
+
+# Web-only: webview resource host rewriting and the code-server CSP. The
+# desktop product never serves webviews from the CDN.
+src/vs/workbench/contrib/webview/common/webview.ts	vscode-cdn.net
+src/vs/server/node/webClientServer.ts	vscode-cdn.net
+
+# Microsoft 1DS collector. Inert in this product: the appender is only
+# instantiated when product.json declares aiConfig/1DS keys, and the ColinCode
+# mixin sets enableTelemetry=false and ships no aiConfig.
+src/vs/platform/telemetry/common/1dsAppender.ts	events.data.microsoft.com
+
+# GitHub Copilot restricted-telemetry endpoint. Only reachable on the
+# explicitly user-initiated Copilot sign-in path (D08-05 keeps the provider
+# registered as an optional path). No credentials => never contacted.
+src/vs/platform/agentHost/node/agentHostRestrictedTelemetry.ts	copilot-telemetry.githubusercontent.com
+
+# extensions/copilot is kept in-tree but excluded from the shipped product
+# (D08-01 decision (a); scripts/check-no-copilot-artifacts.sh gates packaging).
+# These references cannot produce egress in the shipped product; any NEW hit
+# outside extensions/copilot fails the audit.
+extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts	vscode-cdn.net
+extensions/copilot/src/platform/embeddings/common/embeddingsIndex.ts	vscode-cdn.net
+extensions/copilot/src/extension/log/vscode-node/loggingActions.ts	dc.services.visualstudio.com
+extensions/copilot/src/extension/log/vscode-node/loggingActions.ts	events.data.microsoft.com
+extensions/copilot/src/extension/log/vscode-node/loggingActions.ts	exp-tas.com

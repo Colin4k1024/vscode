@@ -328,7 +328,11 @@ configurationRegistry.registerConfiguration({
 				localize('telemetry.telemetryLevel.off', "Disables all product telemetry.")
 			],
 			'markdownDescription': getTelemetryLevelSettingDescription(),
-			'default': TelemetryConfiguration.ON,
+			// D08: default telemetry off unless the product declares a first-party
+			// telemetry pipeline (`product.enableTelemetry`). The ColinCode product
+			// sets `enableTelemetry: false`, so the out-of-box level is OFF; users
+			// can still opt in explicitly. User-set values are unaffected.
+			'default': product.enableTelemetry ? TelemetryConfiguration.ON : TelemetryConfiguration.OFF,
 			'restricted': true,
 			'scope': ConfigurationScope.APPLICATION,
 			'tags': ['usesOnlineServices', 'telemetry'],

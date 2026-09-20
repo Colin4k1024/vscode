@@ -29,5 +29,13 @@
 	"licenseUrl": "https://github.com/microsoft/vscode/blob/main/LICENSE.txt",
 	"licenseFileName": "LICENSE.txt",
 	"reportIssueUrl": "https://github.com/Colin4k1024/vscode/issues/new",
-	"defaultWindow": "agents"
+	"defaultWindow": "agents",
+	"defaultChatAgent": null,
+	"webviewContentExternalBaseUrlTemplate": null,
+	"trustedExtensionAuthAccess": {
+		"microsoft": [
+			"vscode.github-authentication"
+		]
+	},
+	"enableTelemetry": false
 }

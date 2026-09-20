@@ -60,6 +60,12 @@ jobs:
           bash scripts/check-branding-identity.sh
           bash scripts/check-r12-guard.sh
 
+      # D08 (#10) telemetry/egress isolation gate — static half of AC1.
+      # Needs only checkout + node: merges the product mixin in memory and
+      # scans non-test sources for denylisted MS/GitHub egress endpoints.
+      - name: D08 network egress audit (static)
+        run: bash scripts/audit-network-egress.sh
+
       - name: Restore node_modules cache
         id: cache-node-modules
         uses: ./.github/actions/restore-node-modules

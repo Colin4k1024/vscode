@@ -11,7 +11,7 @@
 
 ```text
 product/
-├── product.json          # 覆盖层：仅品牌身份字段；未列字段继承上游
+├── product.json          # 覆盖层：品牌身份字段 + D08 隔离删除项；未列字段继承上游
 ├── default-settings.json # R12 声明记录（declarative record，非运行时机制，见下）
 ├── extensions.json       # 内置扩展清单（预留给 D09 打包管线；当前全空 = 继承上游）
 ├── branding-residue-whitelist.txt  # AC8 扫描白名单（仅第三方许可文本）
@@ -58,6 +58,12 @@ git checkout -- product.json resources/
 
 合并语义对齐 `build/azure-pipelines/distro/mixin-quality.ts`：覆盖层键胜出；
 `builtInExtensions` 只接受 `{include, exclude}` 对象形式（数组形式硬失败）。
+**D08 扩展**：覆盖层值为 `null` 的键会从出厂产物中**删除**（spread 无法表达
+删除；删除幂等，`--check` 仍收敛）。当前删除项：`defaultChatAgent`（GitHub
+Copilot 默认聊天代理 + aka.ms 链接，D08-02）、`webviewContentExternalBaseUrlTemplate`
+（vscode-cdn.net，D08-04）。同时收窄 `trustedExtensionAuthAccess`（去掉
+GitHub.copilot-chat 条目）并显式 `enableTelemetry: false`（D08-07）。
+详见 `.agents/research/codex-desktop/D08-DECISIONS.md`。
 
 ## R12（最重要的一条守卫）
 

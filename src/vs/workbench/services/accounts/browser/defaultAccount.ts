@@ -147,14 +147,21 @@ export class DefaultAccountService extends Disposable implements IDefaultAccount
 	private readonly _onDidChangeManagedSettingsFreshness = this._register(new Emitter<IManagedSettingsFreshness>());
 	readonly onDidChangeManagedSettingsFreshness = this._onDidChangeManagedSettingsFreshness.event;
 
-	private readonly defaultAccountConfig: IDefaultAccountConfig;
+	private readonly defaultAccountConfig: IDefaultAccountConfig | undefined;
 	private defaultAccountProvider: IDefaultAccountProvider | null = null;
 
 	constructor(
 		@IProductService productService: IProductService,
 	) {
 		super();
-		this.defaultAccountConfig = toDefaultAccountConfig(productService.defaultChatAgent);
+		// D08: the shipped product may not define a default chat agent (the
+		// ColinCode mixin removes `defaultChatAgent`). Without it there is no
+		// default account provider to configure — open the init barrier so
+		// `getDefaultAccount()` resolves to `null` instead of hanging.
+		this.defaultAccountConfig = productService.defaultChatAgent ? toDefaultAccountConfig(productService.defaultChatAgent) : undefined;
+		if (!this.defaultAccountConfig) {
+			this.initBarrier.open();
+		}
 	}
 
 	async getDefaultAccount(): Promise<IDefaultAccount | null> {
@@ -166,10 +173,16 @@ export class DefaultAccountService extends Disposable implements IDefaultAccount
 		if (this.defaultAccountProvider) {
 			return this.defaultAccountProvider.getDefaultAccountAuthenticationProvider();
 		}
-		return {
-			...this.defaultAccountConfig.authenticationProvider.default,
-			enterprise: false
-		};
+		if (this.defaultAccountConfig) {
+			return {
+				...this.defaultAccountConfig.authenticationProvider.default,
+				enterprise: false
+			};
+		}
+		// D08: no default chat agent configured — fall back to the built-in
+		// GitHub authentication provider so GitHub workbench features (PRs,
+		// issues, settings sync opt-in) keep working.
+		return { id: 'github', name: 'GitHub', enterprise: false };
 	}
 
 	setDefaultAccountProvider(provider: IDefaultAccountProvider): void {
@@ -1641,6 +1654,12 @@ class DefaultAccountProviderContribution extends Disposable implements IWorkbenc
 		@IDefaultAccountService defaultAccountService: IDefaultAccountService,
 	) {
 		super();
+		// D08: without a `defaultChatAgent` there is no Copilot default account
+		// provider to register (the ColinCode mixin removes it); the service
+		// stays provider-less and resolves accounts to `null`.
+		if (!productService.defaultChatAgent) {
+			return;
+		}
 		const defaultAccountProvider = this._register(instantiationService.createInstance(DefaultAccountProvider, toDefaultAccountConfig(productService.defaultChatAgent)));
 		defaultAccountService.setDefaultAccountProvider(defaultAccountProvider);
 	}

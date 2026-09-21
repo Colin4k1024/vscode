@@ -388,6 +388,9 @@ export class ChatEntitlementService extends Disposable implements IChatEntitleme
 	readonly context: Lazy<ChatEntitlementContext> | undefined;
 	readonly requests: Lazy<ChatEntitlementRequests> | undefined;
 
+	/** See the constructor: true when this build has no default chat agent. */
+	private readonly _setupHiddenByBuild: boolean;
+
 	constructor(
 		@IInstantiationService instantiationService: IInstantiationService,
 		@IProductService productService: IProductService,
@@ -399,6 +402,14 @@ export class ChatEntitlementService extends Disposable implements IChatEntitleme
 		@IStorageService private readonly storageService: IStorageService,
 	) {
 		super();
+
+		// Branded build (Issue #66 M3): no default chat agent means the Copilot
+		// chat stack is not part of this product. This is a BUILD-LEVEL fact,
+		// not a runtime state — so it must outrank every later writer of the
+		// chatSetupHidden key. (Observed: AccountPolicyGateContribution calls
+		// setForceHidden(false) at startup when no account policy blocks,
+		// which silently re-exposed the Copilot sign-in affordances.)
+		this._setupHiddenByBuild = !productService.defaultChatAgent;
 
 		const cachedUBB = this.storageService.getBoolean(ChatEntitlementService.CACHED_UBB_STORAGE_KEY, StorageScope.PROFILE);
 		this._quotas = cachedUBB !== undefined ? { usageBasedBilling: cachedUBB } : {};
@@ -455,7 +466,7 @@ export class ChatEntitlementService extends Disposable implements IChatEntitleme
 			return;
 		}
 
-		if (!productService.defaultChatAgent) {
+		if (this._setupHiddenByBuild) {
 			// Issue #66 (M3): no default chat agent configured means the
 			// Copilot chat stack is not part of this product (the branded
 			// mixin deletes `defaultChatAgent`; D10 section 5 also excludes
@@ -742,6 +753,13 @@ export class ChatEntitlementService extends Disposable implements IChatEntitleme
 	}
 
 	setForceHidden(hidden: boolean): void {
+		// A build without a default chat agent hides the setup UI
+		// unconditionally (see the constructor) — runtime callers (e.g. the
+		// account-policy gate resolving to "not blocked") must not re-expose
+		// an auth flow whose backend is not shipped.
+		if (this._setupHiddenByBuild) {
+			hidden = true;
+		}
 		if (this.context) {
 			this.context.value.setForceHidden(hidden);
 		} else {

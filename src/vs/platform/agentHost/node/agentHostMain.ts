@@ -151,7 +151,14 @@ async function startAgentHost(): Promise<void> {
 		const agentSdkDownloader = runtimeServices.agentSdkDownloader;
 		const providerService = runtimeServices.providerService;
 		sdkDownloadProgress = runtime.sdkDownloadProgress;
-		providerService.registerProvider(instantiationService.createInstance(CopilotAgent));
+		// Branded build (D10 section 5): the Copilot CLI provider drives
+		// GitHub Copilot models through CAPI, which is not shipped — do not
+		// register it at all so it never appears in the agent picker, the
+		// sessions import, or the BYOK bridge. Dev/pristine builds (no mixin
+		// flag) keep the upstream behavior.
+		if (productService.excludeCopilotFromPackaging !== true) {
+			providerService.registerProvider(instantiationService.createInstance(CopilotAgent));
+		}
 		// Claude and Codex providers are gated on two things:
 		//  1. The user-facing enable toggle (`chat.agentHost.<x>Agent.enabled`,
 		//     forwarded as an env var by the starters). Claude defaults to on.

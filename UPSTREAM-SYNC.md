@@ -296,7 +296,7 @@ agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEnt
 | `src/vs/platform/agentHost/node/agentSdkDownloader.ts` | M | +60/-1 | D09 | 源码改动 | D09 HIGH-1 sha256 完整性链消费端（下载后提取前校验；#66 H1 追加 sha256ByTarget 按目标解析，多目标 product.json 不再 fail-closed）；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexAccountState.ts` | M | +4/-1 | D03 | 源码改动 | D03 登录状态机；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexAgent.ts` | M | +393/-42 | D03,D04,D05,D08,D13,D14,D09 | 源码改动 | 最大源码改动（+393/-42）：D03 登录、D04 去 GitHub 耦合、D05 策略、D08 clientInfo 身份与遥测隔离、D13 负向路径；D14 追加 1 字符注释修复（§→section，hygiene）；#66 M3（PR #69 打捞）：品牌构建下隐藏 Copilot 登录资源、短路 Copilot 模型刷新（消除重试风暴）、不启动 CAPI proxy。会话宿主核心行为，无扩展点可覆盖 |
-| `src/vs/platform/agentHost/node/claude/claudeAgent.ts` | M | +25/-0 | D09 | 源码改动 | #66 M3（PR #71 审查轮补齐）：Claude provider 同款门禁——品牌构建不列 Copilot 登录资源、忽略 Copilot token、proxy 模型目录短路；运行时行为 |
+| `src/vs/platform/agentHost/node/claude/claudeAgent.ts` | M | +25/-1 | D09 | 源码改动 | #66 M3（PR #71 审查轮补齐）：Claude provider 同款门禁——品牌构建不列 Copilot 登录资源、忽略 Copilot token、proxy 模型目录短路；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexProxyService.ts` | M | +8/-0 | D09 | 源码改动 | #66 M3（PR #69 打捞）：proxy start 契约文档（品牌构建不启动 CAPI proxy）；接口契约本体 |
 | `src/vs/platform/agentHost/node/remoteAgentHostCliInstaller.ts` | M | +26/-7 | D09 | 源码改动 | D09（PR #64）：远端 CLI 安装失败回退到既有 CLI（pinned + loose 两条路径）；#66 L11：curl\|tar → 下载落盘 + `<url>.sha256` sidecar 校验；运行时行为 |
 | `src/vs/platform/agentHost/node/shared/copilotApiService.ts` | M | +39/-1 | D09 | 源码改动 | D09：`@vscode/copilot-api` 改 `loadCopilotApi()` 动态导入（D10 排除下 CAPI 路径 fail-loud 而非启动崩溃；#66 L8 import 顺序整理）；运行时行为 |

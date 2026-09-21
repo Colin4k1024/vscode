@@ -11,8 +11,20 @@ import type Anthropic from '@anthropic-ai/sdk';
 // only the CAPI-backed paths fail (loudly) when invoked.
 import type { CAPIClient, CCAModel, IExtensionInformation } from '@vscode/copilot-api';
 
+import { generateUuid } from '../../../../base/common/uuid.js';
+import { getDevDeviceId, getMachineId } from '../../../../base/node/id.js';
+import { getInternalOrg, isInternalAccount } from '../../../assignment/common/assignment.js';
+import { COPILOT_LICENSE_AGREEMENT } from '../../../endpoint/common/licenseAgreement.js';
+import { createDecorator } from '../../../instantiation/common/instantiation.js';
+import { ILogService } from '../../../log/common/log.js';
+import { IProductService } from '../../../product/common/productService.js';
+import { IAgentHostGitHubEndpointService } from '../agentHostGitHubEndpointService.js';
+
 type CopilotApiModule = typeof import('@vscode/copilot-api');
 
+// Review #66 (L8): module state kept AFTER the import block — hoisted
+// imports interleaved with statements are legal ESM but defeat the
+// imports-first reading contract.
 let _capiModule: Promise<CopilotApiModule> | undefined;
 
 /**
@@ -34,14 +46,6 @@ function loadCopilotApi(): Promise<CopilotApiModule> {
 	}
 	return _capiModule;
 }
-import { generateUuid } from '../../../../base/common/uuid.js';
-import { getDevDeviceId, getMachineId } from '../../../../base/node/id.js';
-import { getInternalOrg, isInternalAccount } from '../../../assignment/common/assignment.js';
-import { COPILOT_LICENSE_AGREEMENT } from '../../../endpoint/common/licenseAgreement.js';
-import { createDecorator } from '../../../instantiation/common/instantiation.js';
-import { ILogService } from '../../../log/common/log.js';
-import { IProductService } from '../../../product/common/productService.js';
-import { IAgentHostGitHubEndpointService } from '../agentHostGitHubEndpointService.js';
 
 // #region Types
 

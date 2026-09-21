@@ -424,9 +424,30 @@ export class AgentSdkDownloader extends Disposable implements IAgentSdkDownloade
 		// cacheDir is already unique per (pkg, version, sdkTarget) — within
 		// a single downloader instance userDataPath is fixed, so it serves
 		// as the dedup key without an extra string allocation.
+		// Issue #66 (H1): resolve the expected hash per sdkTarget. A
+		// product.json whose urlTemplate serves more than one target (macOS
+		// Universal, multi-target self-hosted flows) carries per-target
+		// hashes in `sha256ByTarget`; the scalar `sha256` is only
+		// unambiguous for single-target products.
+		//
+		// When the map is present but lacks this target we deliberately do
+		// NOT fall back to the scalar — it is likely another target's hash
+		// and would fail closed against good bytes (the exact breakage H1
+		// reports for macOS Universal x64 launches). Warn-and-proceed
+		// instead, matching the legacy no-hash path's posture.
+		let expectedSha256: string | undefined;
+		if (config.sha256ByTarget !== undefined) {
+			expectedSha256 = config.sha256ByTarget[sdkTarget];
+			if (expectedSha256 === undefined) {
+				this._logService.warn(`[AgentSdkDownloader] ${pkg.id}: product.agentSdks.${pkg.id}.sha256ByTarget has no entry for ${sdkTarget} — downloading ${url} without integrity verification`);
+			}
+		} else {
+			expectedSha256 = config.sha256;
+		}
+
 		let pending = this._pendingDownloads.get(cacheDir);
 		if (!pending) {
-			pending = this._download(pkg, url, cacheDir, sentinel, token, config.sha256).finally(() => {
+			pending = this._download(pkg, url, cacheDir, sentinel, token, expectedSha256).finally(() => {
 				this._pendingDownloads.delete(cacheDir);
 			});
 			this._pendingDownloads.set(cacheDir, pending);

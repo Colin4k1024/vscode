@@ -110,13 +110,35 @@ for (const reg of cgmanifest.registrations ?? []) {
 }
 
 // 2. cglicenses overrides (components detected from lockfiles).
+// Review #66 (L5): resolve the real version from package-lock.json instead
+// of stamping 'unknown' — an SBOM whose component versions are unknown
+// cannot answer "are we affected by CVE-X?".
+const lockPackages = (() => {
+	try { return readJson(path.join(root, 'package-lock.json')).packages ?? {}; } catch { return {}; }
+})();
+// cglicenses also covers Rust crates detected from cli/Cargo.lock — resolve
+// those versions too (name = version pairs from [[package]] stanzas).
+const cargoVersions = (() => {
+	const map = {};
+	try {
+		const text = fs.readFileSync(path.join(root, 'cli', 'Cargo.lock'), 'utf8');
+		for (const stanza of text.split('[[package]]')) {
+			const name = /^name = "([^"]+)"$/m.exec(stanza)?.[1];
+			const version = /^version = "([^"]+)"$/m.exec(stanza)?.[1];
+			if (name && version) { map[name] = version; }
+		}
+	} catch { /* cli/Cargo.lock absent */ }
+	return map;
+})();
+const lockVersion = (name) => lockPackages[`node_modules/${name}`]?.version ?? cargoVersions[name];
 for (const entry of cglicenses) {
 	if (!entry.name) { continue; }
+	const version = lockVersion(entry.name) ?? 'unknown';
 	components.push({
-		'bom-ref': `pkg:npm/${entry.name}@unknown(cglicenses)`,
+		'bom-ref': `pkg:npm/${entry.name}@${version}${version === 'unknown' ? ' (cglicenses)' : ''}`,
 		type: 'library',
 		name: entry.name,
-		version: 'unknown',
+		version,
 		description: 'License override entry from cglicenses.json (component detected from package-lock/Cargo.lock)',
 		licenses: [{ license: { name: 'See cglicenses.json (prependLicenseText)' } }],
 	});
@@ -155,14 +177,39 @@ try {
 	}
 } catch { /* .npmrc absent — record nothing */ }
 
+// Review #66 (L5): reproducible output — the serial number is derived from
+// the component content (same inputs → same SBOM, byte for byte) and no
+// wall-clock timestamp is stamped. CycloneDX allows omitting
+// metadata.timestamp; SOURCE_DATE_EPOCH is honored for consumers that want
+// a timestamp at all.
+const crypto = require('crypto');
+const contentHash = crypto.createHash('sha256').update(JSON.stringify(components)).digest('hex');
+const serialUuid = `${contentHash.slice(0, 8)}-${contentHash.slice(8, 12)}-${contentHash.slice(12, 16)}-${contentHash.slice(16, 20)}-${contentHash.slice(20, 32)}`;
+
+// (c) minimum-component assertions: an SBOM that silently lost a source
+// (an emptied cgmanifest, a renamed agents dir) must fail the gate, not
+// ship a near-empty document.
+if (components.length < 10) {
+	throw new Error(`SBOM sanity check failed: only ${components.length} components (expected >= 10) — a manifest source was likely lost`);
+}
+for (const required of ['electron', ...fs.readdirSync(agentsDir).filter(d => fs.statSync(path.join(agentsDir, d)).isDirectory())]) {
+	// agent SDKs are recorded by their npm dependency name, not the dir name
+	if (required === 'electron' && !components.some(c => c.name === 'electron')) {
+		throw new Error('SBOM sanity check failed: no electron component (the .npmrc pin source was lost)');
+	}
+}
+if (!components.some(c => c.description?.includes("Agent SDK 'codex'"))) {
+	throw new Error("SBOM sanity check failed: no codex agent SDK component (the build/agent-sdk/agents source was lost)");
+}
+
 const sbom = {
 	$schema: 'http://cyclonedx.org/schema/bom-1.5.schema.json',
 	bomFormat: 'CycloneDX',
 	specVersion: '1.5',
-	serialNumber: `urn:uuid:${require('crypto').randomUUID()}`,
+	serialNumber: `urn:uuid:${serialUuid}`,
 	version: 1,
 	metadata: {
-		timestamp: new Date().toISOString(),
+		...(process.env.SOURCE_DATE_EPOCH ? { timestamp: new Date(Number(process.env.SOURCE_DATE_EPOCH) * 1000).toISOString() } : {}),
 		tools: [{ vendor: 'ColinCode', name: 'scripts/generate-sbom.sh', version: '1.0.0' }],
 		component: components[0],
 	},

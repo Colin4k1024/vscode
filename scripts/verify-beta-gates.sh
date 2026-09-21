@@ -67,20 +67,33 @@ NODE_EOF
 if [ -n "$APP_DIR" ]; then
 	bash scripts/check-no-copilot-artifacts.sh "$APP_DIR"
 
-	# 2c. D10 section 5 conflict surfacing (NOT a pass/fail gate — flagged for the
-	# D10 owner): @vscode/copilot-api's code is INLINED into the bundled
-	# agent host (the codex/claude providers use CAPIClient for model
-	# listing), so its Module-Terms reach the artifact even though the
-	# package directory does not. Removing it is an agentHost refactor owned
-	# by D05/D10, not by packaging. External distribution requires that
-	# adjudication first.
-	if ls "$APP_DIR/Contents/Resources/app/out/vs/platform/agentHost/node/agentHostMain.js" >/dev/null 2>&1; then
-		if grep -q "copilot_internal/v2/token" "$APP_DIR/Contents/Resources/app/out/vs/platform/agentHost/node/agentHostMain.js" 2>/dev/null; then
-			echo "    ⚠️  COMPLIANCE WARNING: bundled agentHostMain.js contains inlined @vscode/copilot-api code (CAPIClient markers found)."
-			echo "        D10 section 5 blocks @vscode/copilot-api redistribution; the package dir is absent but its code is inlined."
-			echo "        ESCALATE to the D10 owner / tech-lead before any external distribution. (D09 packaging cannot resolve this.)"
+	# 2c. Review #66 (M2): the previous check grepped for
+	#     `copilot_internal/v2/token`, which occurs nowhere in the agent-host
+	#     graph (the bundle keeps packages external, so nothing is inlined) —
+	#     it never fired, was darwin-only, and was not pass/fail. Replaced by
+	#     a hard, cross-platform gate: the agent-host bundle(s) must not
+	#     STATICALLY reference @vscode/copilot-api. A static import would
+	#     crash agentHostMain at startup in the branded build (the package is
+	#     excluded from packaging per D10 section 5). Dynamic
+	#     `import('@vscode/copilot-api')` is the sanctioned pattern
+	#     (loadCopilotApi in copilotApiService.ts): the reference is a bare
+	#     specifier resolved at call time, ships no Copilot code, and fails
+	#     loud only if a CAPI-backed path is actually invoked (declared in
+	#     the D09 known limitations — see scripts/package.sh).
+	FOUND_BUNDLE=0
+	while IFS= read -r bundle; do
+		FOUND_BUNDLE=1
+		if grep -qE 'from ["'"'"']@vscode/copilot-api["'"'"']|require\(["'"'"']@vscode/copilot-api["'"'"']\)' "$bundle"; then
+			echo "GATE FAILED: $bundle statically references @vscode/copilot-api — the branded build excludes that package (D10 section 5), so this crashes the agent host at startup. Route the reference through loadCopilotApi() (dynamic import) instead." >&2
+			exit 1
 		fi
+	done < <(find "$APP_DIR" -name 'agentHostMain*.js' -path '*agentHost*' 2>/dev/null || true)
+	if [ "$FOUND_BUNDLE" -eq 0 ]; then
+		echo "GATE FAILED: no agent-host bundle (agentHostMain*.js) found under $APP_DIR — the static-import gate must not silently pass." >&2
+		exit 1
 	fi
+	echo "    agent-host bundle: no static @vscode/copilot-api reference — OK"
+
 else
 	echo "    packaged-artifact scan skipped (no --app; run against the packaged product before publishing)"
 fi

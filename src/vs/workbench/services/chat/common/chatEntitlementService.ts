@@ -456,6 +456,17 @@ export class ChatEntitlementService extends Disposable implements IChatEntitleme
 		}
 
 		if (!productService.defaultChatAgent) {
+			// Issue #66 (M3): no default chat agent configured means the
+			// Copilot chat stack is not part of this product (the branded
+			// mixin deletes `defaultChatAgent`; D10 section 5 also excludes
+			// @vscode/copilot-api from packaging, so every CAPI-backed path
+			// would fail loud anyway). Hide the Copilot setup / sign-in
+			// entry points globally instead of offering an auth flow whose
+			// backend cannot work in this build. `chatSetupHidden` is the
+			// single choke point consulted by the status-bar entry, the
+			// getting-started walkthrough, the help menu, and the editor
+			// watermark.
+			ChatEntitlementContextKeys.Setup.hidden.bindTo(this.contextKeyService).set(true);
 			return; // we need a default chat agent configured going forward from here
 		}
 

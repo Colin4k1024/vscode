@@ -26,7 +26,7 @@ import { createAsar } from './lib/asar.ts';
 import minimist from 'minimist';
 import { compileNonNativeExtensionsBuildTask, compileNativeExtensionsBuildTask, compileAllExtensionsBuildTask, compileExtensionMediaBuildTask, cleanExtensionsBuildTask, compileCopilotExtensionBuildTask } from './gulpfile.extensions.ts';
 import { checkApiProposalNamesTask, copyCodiconsTask } from './lib/compilation.ts';
-import { ensureCopilotPlatformPackage, getCopilotExcludeFilter, getCopilotFullExcludeFilter, getCopilotRuntimePrebuildFiles, getCopilotRuntimeVersion, getCopilotTgrepExcludeFilter, getMxcExcludeFilter, getRipgrepExcludeFilter, prepareBuiltInCopilotRipgrepShim } from './lib/copilot.ts';
+import { COPILOT_FULL_EXCLUDE_GLOBS, ensureCopilotPlatformPackage, getCopilotExcludeFilter, getCopilotRuntimePrebuildFiles, getCopilotRuntimeVersion, getCopilotTgrepExcludeFilter, getMxcExcludeFilter, getRipgrepExcludeFilter, prepareBuiltInCopilotRipgrepShim } from './lib/copilot.ts';
 import { ensureOSProxyResolverPlatformPackage, getOSProxyResolverExcludeFilter, getOSProxyResolverPlatformFiles } from './lib/osProxyResolver.ts';
 import { readAgentSdkResults } from './agent-sdk/common.ts';
 import { readDictationRuntimeResults } from './dictation-runtime/common.ts';
@@ -269,7 +269,7 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			// Upstream excludes the non-target copilot-sdk platform packages;
 			// the mixin additionally excludes the D10 section 5 block-listed packages.
 			.pipe(filter(copilotExcludedFromPackaging
-				? [...getCopilotExcludeFilter(platform, arch), ...getCopilotFullExcludeFilter().slice(1)]
+				? [...getCopilotExcludeFilter(platform, arch), ...COPILOT_FULL_EXCLUDE_GLOBS]
 				: getCopilotExcludeFilter(platform, arch)))
 			.pipe(filter(getCopilotTgrepExcludeFilter(platform, arch)))
 			.pipe(filter(getRipgrepExcludeFilter(platform, arch)))

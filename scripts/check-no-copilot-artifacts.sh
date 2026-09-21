@@ -11,6 +11,9 @@
 # Exit 0 when clean; exit 1 otherwise.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 if [ $# -lt 1 ]; then
 	echo "usage: $0 <artifact-dir> [<dir>...]" >&2
 	exit 2
@@ -58,6 +61,46 @@ for dir in "$@"; do
 				;;
 		esac
 	done < <(find "$dir" -type d \( -path '*node_modules/@vscode/copilot-api' -o -path '*node_modules/@vscode/copilot-api/*' -o -path '*node_modules/@github/copilot*' -o -path '*node_modules/@github/blackbird-external-ingest-utils' \) 2>/dev/null | head -50 || true)
+
+	# 2b. Review #66 (M1): the packaged dependency tree ships as
+	#     node_modules.asar — a FILE — so the `find -type d` pass above is
+	#     blind to the asar half of the D10 block list. List every asar
+	#     archive's entries and apply the same block rules. Fail-closed when
+	#     the repo's asar module is unavailable: a gate that cannot see must
+	#     not pass.
+	while IFS= read -r asar_file; do
+		if ! asar_listing="$(cd "$REPO_ROOT" && node -e '
+			try {
+				const asar = require("asar");
+				process.stdout.write(asar.listPackage(process.argv[1]).join("\n"));
+			} catch (err) {
+				console.error("ASAR_LIST_ERROR: " + (err instanceof Error ? err.message : String(err)));
+				process.exit(3);
+			}
+		' "$asar_file" 2>&1)"; then
+			echo "BLOCKED: cannot list asar archive $asar_file (is the repo\'s asar devDependency installed? run npm ci): $asar_listing" >&2
+			status=1
+			continue
+		fi
+		while IFS= read -r entry; do
+			case "$entry" in
+				*node_modules/@vscode/copilot-api|*node_modules/@vscode/copilot-api/*|*node_modules/@github/blackbird-external-ingest-utils|*node_modules/@github/blackbird-external-ingest-utils/*)
+					echo "BLOCKED: restricted redistributable package inside asar: $asar_file!$entry" >&2
+					status=1
+					;;
+				*node_modules/@github/copilot*)
+					case "$entry" in
+						*node_modules/@github/copilot-sdk|*node_modules/@github/copilot-sdk/*|*node_modules/@github/copilot-sdk-*)
+							;; # allowlisted (MIT, load-bearing)
+						*)
+							echo "BLOCKED: restricted redistributable package inside asar: $asar_file!$entry" >&2
+							status=1
+							;;
+					esac
+					;;
+			esac
+		done <<< "$asar_listing"
+	done < <(find "$dir" -name '*.asar' -type f 2>/dev/null || true)
 
 	# 3. The shipped product configuration must not reference the Copilot
 	#    default chat agent or vscode-cdn.net.

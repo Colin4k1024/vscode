@@ -37,10 +37,38 @@ while [ $# -gt 0 ]; do
 done
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
+# Portable file size (review #66, L3): this script runs on the CI publish
+# job's ubuntu runners, where BSD `stat -f%z` does not exist.
+filesize() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1"; }
 command -v gh >/dev/null 2>&1 || fail "gh CLI not found — install and authenticate (gh auth login) first"
 
 if [ "${#TARBALLS[@]}" -eq 0 ]; then
 	while IFS= read -r f; do TARBALLS+=("$f"); done < <(ls .build/agent-sdk/tarballs/*.tgz 2>/dev/null || true)
+	# Review #66 (M5): the tarballs dir is never cleaned, so publishing
+	# everything found would let a stale tarball from a previous SDK bump
+	# create/update its own release tag. When a results file exists, only
+	# publish tarballs whose <sdk>-<version> it records.
+	RESULTS_FILE="${AGENT_SDK_RESULTS_FILE:-$REPO_ROOT/.build/agent-sdk/results.json}"
+	if [ -f "$RESULTS_FILE" ] && [ "${#TARBALLS[@]}" -gt 0 ]; then
+		FILTERED=()
+		while IFS= read -r f; do FILTERED+=("$f"); done < <(node - "$RESULTS_FILE" "${TARBALLS[@]}" <<'NODE_EOF'
+const fs = require('fs');
+const path = require('path');
+const [resultsFile, ...tarballs] = process.argv.slice(2);
+const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+const versions = new Set(Object.entries(results).map(([sdk, e]) => `${sdk}-${e.version}`));
+for (const t of tarballs) {
+	const m = /^([a-z]+-[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)-(?:darwin|linux|win32)-(?:x64|arm64)(?:-musl)?\.tgz$/.exec(path.basename(t));
+	if (m && versions.has(m[1])) {
+		console.log(t);
+	} else {
+		console.error(`    skipping stale/foreign tarball: ${path.basename(t)}`);
+	}
+}
+NODE_EOF
+)
+		TARBALLS=(${FILTERED[@]+"${FILTERED[@]}"})
+	fi
 fi
 [ "${#TARBALLS[@]}" -gt 0 ] || fail "no tarballs to publish (looked in .build/agent-sdk/tarballs/)"
 
@@ -58,6 +86,34 @@ for TGZ in "${TARBALLS[@]}"; do
 
 	echo "==> $BASE"
 	echo "    release: $TAG   sha256: $SHA"
+
+	# Review #66 (M6): the hash baked into product.json comes from the
+	# results file; publishing bytes that differ from it would ship a
+	# release every runtime launch rejects. Fail BEFORE creating the tag.
+	RESULTS_FILE="${AGENT_SDK_RESULTS_FILE:-$REPO_ROOT/.build/agent-sdk/results.json}"
+	if [ -f "$RESULTS_FILE" ]; then
+		node - "$RESULTS_FILE" "$SDK" "$VERSION" "$BASE" "$SHA" <<'NODE_EOF'
+const fs = require('fs');
+const [resultsFile, sdk, version, base, sha] = process.argv.slice(2);
+const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+const entry = results[sdk];
+if (!entry || entry.version !== version) {
+	console.error(`ERROR: results file ${resultsFile} has no entry for ${sdk} ${version} — refusing to publish bytes product.json does not know about`);
+	process.exit(1);
+}
+const target = base.replace(/\.tgz$/, '').slice(`${sdk}-${version}-`.length);
+const expected = entry.sha256ByTarget?.[target] ?? (entry.sha256ByTarget ? undefined : entry.sha256);
+if (expected === undefined) {
+	console.error(`ERROR: results file has no recorded hash for target ${target} — refusing to publish unrecorded bytes`);
+	process.exit(1);
+}
+if (expected !== sha) {
+	console.error(`ERROR: tarball sha256 (${sha}) != results-file hash (${expected}) for ${target} — the bytes differ from what product.json will verify; re-run the bundle step`);
+	process.exit(1);
+}
+console.log(`    ✓ tarball sha matches the results-file hash for ${target}`);
+NODE_EOF
+	fi
 
 	if [ "$DRY_RUN" -eq 1 ]; then
 		echo "    [dry-run] would ensure release $TAG and upload $BASE"
@@ -89,7 +145,7 @@ for TGZ in "${TARBALLS[@]}"; do
 		fail "asset $BASE exists in $TAG but its digest could not be read — refusing to overwrite. Delete the asset on GitHub and re-run."
 	fi
 
-	echo "    uploading $(stat -f%z "$TGZ") bytes"
+	echo "    uploading $(filesize "$TGZ") bytes"
 	gh release upload "$TAG" "$TGZ" --repo "$REPO"
 	echo "    ✓ uploaded"
 done

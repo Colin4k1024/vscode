@@ -58,6 +58,7 @@ import {
 	getSdkTargetForBuild,
 	type IAgentSdkResults,
 	KNOWN_VSCODE_PLATFORMS,
+	mergeAgentSdkResults,
 	parseFlags,
 	type Sdk,
 	type VscodeBuildPlatform,
@@ -171,8 +172,17 @@ async function main(): Promise<void> {
 		console.log(`[${SCRIPT}] upload=false but AGENT_SDK_WRITE_RESULTS=true — writing the results file without uploading. The urlTemplate entries point at the configured endpoint; make sure the tarballs there are (or will be) published, e.g. via scripts/publish-sdk-release.sh.`);
 	}
 
+	// Merge into the results file already on disk (if any) so repeated
+	// per-target runs accumulate `sha256ByTarget` instead of clobbering
+	// each other — see mergeAgentSdkResults.
+	let toWrite = results;
+	if (fs.existsSync(args.resultsFile)) {
+		const existing = JSON.parse(fs.readFileSync(args.resultsFile, 'utf8')) as IAgentSdkResults;
+		toWrite = mergeAgentSdkResults(existing, results);
+		console.log(`[${SCRIPT}] merged into existing results file ${args.resultsFile} (per-target hashes accumulate)`);
+	}
 	fs.mkdirSync(path.dirname(args.resultsFile), { recursive: true });
-	fs.writeFileSync(args.resultsFile, JSON.stringify(results, null, 2) + '\n');
+	fs.writeFileSync(args.resultsFile, JSON.stringify(toWrite, null, 2) + '\n');
 	const sdkCount = Object.keys(results).length;
 	console.log(`[${SCRIPT}] Wrote ${sdkCount} SDK entr${sdkCount === 1 ? 'y' : 'ies'} to ${args.resultsFile}`);
 
@@ -212,7 +222,14 @@ async function produceOne(
 			sha256: built.sha256,
 		});
 	}
-	return { version: built.sdkVersion, urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion), sha256: built.sha256 };
+	return {
+		version: built.sdkVersion,
+		urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion),
+		sha256: built.sha256,
+		// Issue #66 (H1): per-target hashes — the scalar alone cannot describe
+		// a product.json whose urlTemplate serves more than one sdkTarget.
+		sha256ByTarget: { [sdkTarget]: built.sha256 },
+	};
 }
 
 main().catch(err => {

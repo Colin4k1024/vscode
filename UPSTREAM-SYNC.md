@@ -121,10 +121,12 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 ## 4. 薄覆盖层清单（对齐 R2 / D09 AC12）
 
 口径：`git diff fb20064c0f4..HEAD`（fork 相对上游基线的全部自有改动）。
-当前总计：**192 文件**（静态快照：§4.1 为手工维护清单，数字为表实测值；行数差口径 +15580/-984 为 D14 合入时点快照。
+当前总计：**272 文件**（静态快照：§4.1 为手工维护清单；2026-09-21 #66 刷新：行数差 +23475/-2072。
 全量实时口径跑 `scripts/own-change-surface.sh`；该脚本口径更宽——除本清单声明排除项（`protocol/generated/`、`build/codex/`）外还含
-§4.1 尚未补录的条目，两者不可直接对账，补录为既有债留作后续跟进）；
-其中新增（覆盖层）134、修改（源码改动）58（含 25 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
+§4.1 尚未补录的条目，两者不可直接对账。**#66（M8）已补录 D09 的全部源码改动行**（16 行：gulpfile×3、lib/copilot、
+agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEntitlementService、5 个测试文件、1 个冒烟 fixture）；
+其余漂移（D11–D16 新增 M 文件）仍为既有债留作后续跟进）；
+其中新增（覆盖层）153、修改（源码改动）119（含 43 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
 `scripts/own-change-surface.sh` 断言）。上游协议生成目录
 （`protocol/generated/` 828 文件）与 `build/codex/` 在基线中已存在（上游 in-tree），
 不计入自有改动面。
@@ -135,14 +137,17 @@ bash scripts/sync-upstream.sh [--ref <ref>]
   文档、新增测试/模块）。新增文件在 merge 时天然不与上游冲突。
 - **源码改动**：修改上游既有文件（M）。每项必须回答"为什么不能走覆盖层"。
 
-58 个源码改动文件的理由汇总（逐文件全表见 §4.1；清单为手工维护的快照，非实时生成——生成时点见本节顶部口径行）：
+源码改动文件的理由汇总（逐文件全表见 §4.1；清单为手工维护的快照，非实时生成——生成时点见本节顶部口径行）：
 
 - **类型/枚举/接口契约本体**（4 个）：`base/common/product.ts`、`platform/window/common/window.ts`、`agentHostSchema.ts`、`meta/codexAccount.ts`——类型成员必须改在定义处，无覆盖层概念。
 - **行为逻辑/策略裁决**（11 个）：`agentService.ts`、`codexAgent.ts`、`codexAccountState.ts`、`agentHostCustomizationConfig.ts`、`codexAccountService.ts`、`defaultAccount.ts`、`telemetryService.ts`、`extensionGalleryService.ts`、`agentSessionsWelcome.ts`、`sessionsActions.ts`、`account.contribution.ts`——fork 改变的是运行时行为，不是数据；上游无对应扩展点。
 - **上游内嵌默认值的空值守卫/移除**（5 个）：`platform/product/common/product.ts`（移除 `defaultChatAgent`）、`abstractExtensionManagementService.ts`、`extensionsWorkbenchService.ts`、`chatStatusEntry.ts`、`chatWidget.ts`（各 1 行空值守卫）——上游假设 `defaultChatAgent` 必存在，守卫只能写在判读处。
 - **入口/contribution 注册**（5 个）：`app.ts`、`agentHostStarter.config.contribution.ts`、`agentHost.contribution.ts`、`chat.shared.contribution.ts`、`chatStatusDashboard.ts`——注册点本体。
 - **测试文件**（25 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。
-- **构建/工具链/配置**（8 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免）、`build/hygiene.ts`（D15 extensionsGallery 检查 mixin 感知豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）。
+- **构建/工具链/配置**（11 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免）、`build/hygiene.ts`（D15 extensionsGallery 检查 mixin 感知豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）、`build/gulpfile.vscode.ts` + `build/gulpfile.reh.ts` + `build/lib/copilot.ts`（D09 打包链路：agentSdks 盖章、D10 排除过滤器、REH fail-loud——打包任务/构建库本体，无覆盖层挂点）。
+- **远端安装/引导链路**（4 个）：`sshRemoteAgentHostHelpers.ts`、`sshRemoteAgentHostService.ts`、`remoteAgentHostCliInstaller.ts`、`wslRemoteAgentHostHelpers.ts`（D09：CLI 下载端点去 Microsoft CDN + fallback 回退 + digest 校验）——远端引导脚本生成是运行时行为，无扩展点可覆盖。
+- **运行时 SDK/CAPI 加载**（2 个）：`agentSdkDownloader.ts`（D09 sha256 完整性链 + #66 H1 per-target 哈希）、`copilotApiService.ts`（D09 loadCopilotApi 懒加载）。
+- **Copilot 入口隐藏**（1 个）：`chatEntitlementService.ts`（#66 M3：无 defaultChatAgent 时绑定 chatSetupHidden）。
 
 注：fork 自有的 CI workflow（baseline/drift）、`scripts/*.sh`、`product/`、文档等均为
 **新增文件（覆盖层）**，即使后续被 fork 自己修改，相对上游仍是 A 类——上游没有同名
@@ -216,7 +221,10 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `build/agent-sdk/common.ts` | M | +33/-2 | D02 | 源码改动 | D02 SDK 打包逻辑（CDN 端点等）；构建期工具链，无产品覆盖层机制可承载 |
 | `build/agent-sdk/test/cdnEndpoint.test.ts` | A | +85/-0 | D02,D14 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `build/filters.ts` | M | +5/-0 | D14 | 源码改动 | D14：hygiene copyright 豁免 UPSTREAM_COMMIT/VERSION（机器可读 pin 文件不能加注释头）；filters.ts 是上游既有的豁免注册表 |
+| `build/gulpfile.reh.ts` | M | +14/-0 | D09 | 源码改动 | #66 M7：mixin 置 `excludeCopilotFromPackaging` 时 REH/server 打包任务被调用时 fail-loud（#11 声明 REH 出范围，不得静默发货 D10 section 5 block-list 包）；打包任务本体，无覆盖层挂点 |
+| `build/gulpfile.vscode.ts` | M | +22/-3 | D09 | 源码改动 | D09 packageTask：product.agentSdks 盖章（build/agent-sdk results → product.json 交接，#66 H1 追加 sha256ByTarget）+ `excludeCopilotFromPackaging` 排除过滤器挂接（#66 L2 改具名 glob）；打包任务本体 |
 | `build/hygiene.ts` | M | +26/-2 | D15 | 源码改动 | D15：hygiene 的 extensionsGallery 检查改为 mixin 感知（工作树应用态放行、提交/暂存态仍红）；该检查是上游对产品 gallery 的硬约束，只能改在检查本体；覆盖层机制无法拦截构建脚本 |
+| `build/lib/copilot.ts` | M | +31/-0 | D09 | 源码改动 | D09 `getCopilotFullExcludeFilter`/`COPILOT_FULL_EXCLUDE_GLOBS`（D10 section 5 排除 glob，#66 L2 消除位置依赖）；构建库本体 |
 | `package.json` | M | +1/-0 | D14 | 源码改动 | D14：新增 1 行 `codex:check-protocol-sync` script alias；package.json 是冲突高发区，改动压到最小 |
 | `product/README.md` | A | +98/-0 | D06,D08 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/branding-residue-whitelist.txt` | A | +16/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
@@ -283,8 +291,14 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/common/agentHostStarter.config.contribution.ts` | M | +3/-2 | D04,D06 | 源码改动 | starter 配置贡献点默认值；contribution 注册本体 |
 | `src/vs/platform/agentHost/common/agentService.ts` | M | +48/-4 | D04,D05 | 源码改动 | D04/D05 provider 策略裁决逻辑；核心服务行为 |
 | `src/vs/platform/agentHost/common/meta/codexAccount.ts` | M | +14/-0 | D03 | 源码改动 | D03 OpenAI 原生登录的账号元数据类型；协议元数据本体 |
+| `src/vs/platform/agentHost/node/agentSdkDownloader.ts` | M | +60/-1 | D09 | 源码改动 | D09 HIGH-1 sha256 完整性链消费端（下载后提取前校验；#66 H1 追加 sha256ByTarget 按目标解析，多目标 product.json 不再 fail-closed）；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexAccountState.ts` | M | +4/-1 | D03 | 源码改动 | D03 登录状态机；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexAgent.ts` | M | +173/-16 | D03,D04,D05,D08,D13,D14 | 源码改动 | 最大源码改动（+173/-16）：D03 登录、D04 去 GitHub 耦合、D05 策略、D08 clientInfo 身份与遥测隔离、D13 负向路径；D14 追加 1 字符注释修复（§→section，hygiene）。会话宿主核心行为，无扩展点可覆盖 |
+| `src/vs/platform/agentHost/node/remoteAgentHostCliInstaller.ts` | M | +26/-7 | D09 | 源码改动 | D09（PR #64）：远端 CLI 安装失败回退到既有 CLI（pinned + loose 两条路径）；#66 L11：curl\|tar → 下载落盘 + `<url>.sha256` sidecar 校验；运行时行为 |
+| `src/vs/platform/agentHost/node/shared/copilotApiService.ts` | M | +39/-1 | D09 | 源码改动 | D09：`@vscode/copilot-api` 改 `loadCopilotApi()` 动态导入（D10 排除下 CAPI 路径 fail-loud 而非启动崩溃；#66 L8 import 顺序整理）；运行时行为 |
+| `src/vs/platform/agentHost/node/sshRemoteAgentHostHelpers.ts` | M | +57/-4 | D09 | 源码改动 | D09：CLI 下载端点默认改本仓库 Releases（去 Microsoft update CDN，可用 AGENT_HOST_CLI_DOWNLOAD_BASE 覆盖）；#66 L11：`buildCliDownloadAndVerifyCommand`（digest sidecar 校验）；运行时行为 |
+| `src/vs/platform/agentHost/node/sshRemoteAgentHostService.ts` | M | +6/-3 | D09 | 源码改动 | D09（PR #64）：SSH bootstrap 接线 fallback CLI 回退；运行时行为 |
+| `src/vs/platform/agentHost/node/wslRemoteAgentHostHelpers.ts` | M | +42/-8 | D09 | 源码改动 | D09（PR #64）：WSL bootstrap 同款 fallback 回退；#66 L11 digest 校验接入；运行时行为 |
 | `src/vs/platform/agentHost/test/common/agentService.test.ts` | M | +57/-0 | D07 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/common/codexAccount.test.ts` | M | +82/-0 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/common/openSessionLink.test.ts` | M | +15/-0 | D06 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
@@ -293,6 +307,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/test/node/agentHostOrchestrationGuards.test.ts` | A | +416/-0 | D12 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/agentHostPullRequestOperationHandler.test.ts` | M | +32/-5 | D04 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/agentService.test.ts` | M | +154/-0 | D13 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
+| `src/vs/platform/agentHost/test/node/agentSdkDownloader.test.ts` | M | +118/-4 | D09 | 源码改动(测试) | 随对应源文件更新的测试/数据（HIGH-1 校验链 + #66 H1 per-target 哈希用例） |
 | `src/vs/platform/agentHost/test/node/baselines/d12-i4-chat-entries-writers.json` | A | +11/-0 | D12 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/baselines/d12-i8-codex-host-state-imports.json` | A | +4/-0 | D12 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/codex/codexAccountState.test.ts` | M | +79/-2 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
@@ -309,6 +324,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/test/node/codex/codexSessionConfigKeys.test.ts` | M | +21/-1 | D05 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/codex/codexThreadCoordination.test.ts` | A | +212/-0 | D13 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/codex/codexTurnLifecycleInvariants.test.ts` | A | +597/-0 | D12 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
+| `src/vs/platform/agentHost/test/node/devContainerAgentHostService.test.ts` | M | +3/-1 | D09 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/e2e/captures/codex-a-client-tool-call-with-an-empty-result-body-is-backfilled-before-it-reaches-the-model.yaml` | A | +35/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/e2e/captures/codex-a-failing-mcp-server-surfaces-an-error-state-without-blocking-the-turn.yaml` | A | +12/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/platform/agentHost/test/node/e2e/captures/codex-an-ambient-codex-home-override-does-not-leak-into-the-agent-host-or-provider-processes.yaml` | A | +12/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
@@ -318,6 +334,9 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/platform/agentHost/test/node/e2e/suites/agentHostE2ESuites.ts` | M | +4/-0 | D11 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 | `src/vs/platform/agentHost/test/node/e2e/suites/copilotCoverageSuite.ts` | M | +4/-1 | D15 | 源码改动(测试) | D15 评审发现：scratch 目录清理断言的 retry 预算过紧（CI flake）；e2e 时序断言只能改在测试本体 |
 | `src/vs/platform/agentHost/test/node/e2e/suites/replayStrictnessSuite.ts` | A | +105/-0 | D11 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
+| `src/vs/platform/agentHost/test/node/sshRemoteAgentHostHelpers.test.ts` | M | +48/-6 | D09 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
+| `src/vs/platform/agentHost/test/node/sshRemoteAgentHostService.test.ts` | M | +46/-2 | D09 | 源码改动(测试) | 随对应源文件更新的测试/数据（PR #64 fallback 行为断言） |
+| `src/vs/platform/agentHost/test/node/wslRemoteAgentHostHelpers.test.ts` | M | +117/-21 | D09 | 源码改动(测试) | 随对应源文件更新的测试/数据（PR #64 WSL fallback 行为断言） |
 | `src/vs/platform/extensionManagement/common/abstractExtensionManagementService.ts` | M | +1/-1 | D08 | 源码改动 | D08：`defaultChatAgent` 缺失时的空值守卫（1 行）；上游逻辑假设其必存在 |
 | `src/vs/platform/extensionManagement/common/extensionGalleryService.ts` | M | +14/-10 | D08 | 源码改动 | D08：画廊/遥测出口隔离（+14/-10）；网络出口是行为逻辑 |
 | `src/vs/platform/product/common/product.ts` | M | +3/-15 | D08 | 源码改动 | D08：OSS 默认 product 中移除 `defaultChatAgent`（-15 行）；上游内嵌默认值只能改本体 |
@@ -341,11 +360,13 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/workbench/contrib/chat/test/browser/codexProviderGatesConfiguration.test.ts` | A | +46/-0 | D07 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `src/vs/workbench/contrib/extensions/browser/extensionsWorkbenchService.ts` | M | +1/-1 | D08 | 源码改动 | D08：`defaultChatAgent` 空值守卫（1 行） |
 | `src/vs/workbench/contrib/welcomeAgentSessions/browser/agentSessionsWelcome.ts` | M | +5/-4 | D08 | 源码改动 | D08：欢迎页去 Copilot 假设（+5/-4）；UI 逻辑 |
+| `src/vs/workbench/services/chat/common/chatEntitlementService.ts` | M | +11/-0 | D09 | 源码改动 | #66 M3：无 `defaultChatAgent`（品牌构建）时绑定 `chatSetupHidden=true`，隐藏 Copilot 设置/登录入口（状态栏、Getting Started、帮助菜单、编辑器水印共用该 context key）；服务初始化本体 |
 | `src/vs/workbench/services/accounts/browser/defaultAccount.ts` | M | +25/-6 | D08 | 源码改动 | D08：默认账号服务去 GitHub 假设（+25/-6）；服务行为 |
 | `src/vs/workbench/services/agentHost/browser/codexAccountService.ts` | M | +70/-3 | D03 | 源码改动 | D03：OpenAI 原生账号服务（+70/-3）；服务行为 |
 | `src/vs/workbench/services/agentHost/test/browser/codexAccountService.test.ts` | M | +131/-5 | D03 | 源码改动(测试) | 随对应源文件更新的测试/数据 |
 
 共 192 文件：覆盖层(新增) 134、源码改动 33、源码改动(测试) 25。
+| `test/smoke/src/areas/agentsWindow/remoteDevContainerFixtures.ts` | M | +31/-0 | D09 | 源码改动(测试) | D09（PR #64）：冒烟 fixture 预置 CLI（对齐 devcontainer postCreateCommand）；测试基建本体 |
 
 ## 5. 漂移监控
 

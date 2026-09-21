@@ -300,24 +300,72 @@ export function parseFlags(argv: readonly string[]): Map<string, string> {
  * `src/vs/base/common/product.ts` so the values can be dropped straight
  * into `product.agentSdks`.
  *
- * Every platform job emits the SAME `{version, urlTemplate, sha256}` per
- * SDK — the `{sdkTarget}` placeholder is resolved at runtime per launch
- * (see `resolveSdkTarget` in `agentSdkDownloader.ts`). This is what lets a
+ * Every platform job emits the SAME `{version, urlTemplate}` per SDK —
+ * the `{sdkTarget}` placeholder is resolved at runtime per launch (see
+ * `resolveSdkTarget` in `agentSdkDownloader.ts`). This is what lets a
  * macOS Universal bundle share one `product.json` across arm64+x64.
  *
- * `sha256` is the hash of the tarball bytes the urlTemplate resolves to
- * (every target's tarball under one SDK version share the version, but
- * each platform job ships only its own target's tarball — the hash covers
- * the bytes THAT job published). The runtime downloader verifies the
- * downloaded bytes against it before extracting (HIGH-1 integrity chain:
- * build computes → results.json → product.json → runtime verifies).
+ * `sha256` is the hash of the tarball bytes the urlTemplate resolves to.
+ * Per-target tarballs contain per-target native binaries, so bytes and
+ * hashes differ per target (Issue #66, H1): the scalar `sha256` covers the
+ * target THAT job produced and is only unambiguous for single-target
+ * products. Multi-target products (macOS Universal, or repeated
+ * `bundle-codex-sdk.sh --target=…` runs against one results file) MUST
+ * populate `sha256ByTarget`; the runtime downloader prefers
+ * `sha256ByTarget[resolvedTarget]` and warns-and-proceeds when the map is
+ * present but lacks the target (it deliberately does NOT fall back to the
+ * scalar, which would be another target's hash and fail closed against
+ * good bytes).
+ *
+ * The runtime downloader verifies the downloaded bytes against the
+ * resolved hash before extracting (HIGH-1 integrity chain: build computes
+ * → results.json → product.json → runtime verifies).
  */
 export interface IAgentSdkResults {
 	[packageId: string]: {
 		readonly version: string;
 		readonly urlTemplate: string;
 		readonly sha256: string;
+		readonly sha256ByTarget?: { readonly [sdkTarget: string]: string };
 	};
+}
+
+/**
+ * Merges freshly produced per-SDK entries into the results file that is
+ * already on disk (Issue #66, H1 follow-up): the local packaging flow
+ * (`scripts/bundle-codex-sdk.sh`) shares ONE results file across repeated
+ * `--target=` runs, so an unconditional overwrite would drop every other
+ * target's hash — the exact multi-target hole H1 closes.
+ *
+ * Merge rules per SDK:
+ *   - `version` / `urlTemplate` must agree with the existing entry — a
+ *     drift means the on-disk file is stale (a previous SDK bump), which
+ *     fails loud instead of silently mixing versions.
+ *   - `sha256ByTarget` is unioned (the fresh run wins for its own target).
+ *   - the scalar `sha256` tracks the freshly produced target (legacy
+ *     single-target readers keep working).
+ * SDKs absent from this run keep their existing entries untouched.
+ */
+export function mergeAgentSdkResults(existing: IAgentSdkResults, produced: IAgentSdkResults): IAgentSdkResults {
+	const merged: IAgentSdkResults = { ...existing };
+	for (const [sdk, entry] of Object.entries(produced)) {
+		const prior = existing[sdk];
+		if (!prior) {
+			merged[sdk] = entry;
+			continue;
+		}
+		if (prior.version !== entry.version) {
+			throw new Error(`results-file merge: sdk '${sdk}' version drift (on-disk ${prior.version} vs freshly produced ${entry.version}) — the existing results file is stale; delete it and re-run the bundle step for every target`);
+		}
+		if (prior.urlTemplate !== entry.urlTemplate) {
+			throw new Error(`results-file merge: sdk '${sdk}' urlTemplate drift (on-disk ${prior.urlTemplate} vs freshly produced ${entry.urlTemplate}) — refusing to mix distribution endpoints in one results file`);
+		}
+		merged[sdk] = {
+			...entry,
+			sha256ByTarget: { ...prior.sha256ByTarget, ...entry.sha256ByTarget },
+		};
+	}
+	return merged;
 }
 
 /**

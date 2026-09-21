@@ -38,9 +38,25 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { ClientAssertionCredential } from '@azure/identity';
-import { BlobServiceClient } from '@azure/storage-blob';
 import { buildCdnUrl, getAgentMeta, parseFlags, type Sdk, sha256OfFile } from './common.ts';
+
+// Review #66 (L10): the Azure SDK is imported lazily inside the azure
+// backend so the http backend — and its unit tests — load without the
+// Azure dependency tree installed.
+async function loadAzureSdk(): Promise<{
+	ClientAssertionCredential: typeof import('@azure/identity').ClientAssertionCredential;
+	BlobServiceClient: typeof import('@azure/storage-blob').BlobServiceClient;
+}> {
+	try {
+		const [{ ClientAssertionCredential }, { BlobServiceClient }] = await Promise.all([
+			import('@azure/identity'),
+			import('@azure/storage-blob'),
+		]);
+		return { ClientAssertionCredential, BlobServiceClient };
+	} catch (err) {
+		throw new Error(`[${SCRIPT}] the azure upload backend requires @azure/identity and @azure/storage-blob (${err instanceof Error ? err.message : String(err)})`);
+	}
+}
 
 const SCRIPT = 'upload.ts';
 
@@ -94,6 +110,7 @@ async function uploadOneAzure(args: IUploadArgs, sha256: string): Promise<IUploa
 	const clientId = requireEnv('AZURE_CLIENT_ID');
 	const idToken = requireEnv('AZURE_ID_TOKEN');
 
+	const { ClientAssertionCredential, BlobServiceClient } = await loadAzureSdk();
 	const credential = new ClientAssertionCredential(tenantId, clientId, () => Promise.resolve(idToken));
 	const service = new BlobServiceClient(`https://${account}.blob.core.windows.net`, credential);
 	const container = service.getContainerClient('$web');

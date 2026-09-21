@@ -1,33 +1,30 @@
 # Goal State — 关闭 Colin4k1024/vscode 全部 open issue
-Updated: 2026-09-20
-Base branch: main (HEAD 567ebe16ed7)
+Updated: 2026-09-21T10:15+08:00
+Base branch: main (HEAD 69d35b2db83b，本轮已 fast-forward 同步)
 
 ## 总览
-- 总数: 15 open (含 Epic #1)
-- 已关闭(本轮): 0
-- 剩余: 15
-
-## 依赖图（Epic #1 Wave 定义；D01/D02/D10/D17 已关闭）
-- READY P0: D03(#5), D04(#6), D11(#13), D12(#14), D13(#15)
-- READY P1: D06(#8), D08(#10)
-- 阻塞: D05(#7)←D03+D04; D07(#9)←D04; D14(#16)←D11; D09(#11)←D06+D08; D15(#17)←D09; D16(#18)←D03+D05
-- Epic D00(#1) 最后关闭
+- 会话开始时的实际 open 数: **2**（#1 Epic、#66 D09 post-merge audit）——此前会话已关闭 D01–D16 全部子任务（D15 #17 已于 69d35b2db83b 合入）
+- 剩余: #66（PR #70 审查通过，打包实证中）→ #1（Epic，最后关闭）
 
 ## 当前执行
-| Issue | 状态 | 分支 | Worker | 测试 | 审查 |
-|---|---|---|---|---|---|
-| #5 D03 | WORKER_RUNNING | codex-desktop/d03-openai-native-auth | Dirac | - | - |
-| #6 D04 | WORKER_RUNNING (编排者已提交 2 处实现 5d06389641e) | codex-desktop/d04-remove-github-coupling | Nash | - | - |
-| #14 D12 | WORKER_RUNNING | codex-desktop/d12-state-invariants | Turing | - | - |
-| #15 D13 | WORKER_RUNNING | codex-desktop/d13-negative-acceptance | Hypatia | - | - |
-| #13 D11 | WORKER_RUNNING | codex-desktop/d11-replay-matrix | Confucius | - | - |
-| #8 D06 | SPEC_READY（品牌代号 ColinCode，可一行改名） | codex-desktop/d06-product-branding | - | - | - |
-| #10 D08 | SPEC_READY | codex-desktop/d08-telemetry-isolation | - | - | - |
+| Issue | 状态 | 分支/PR | 测试 | 审查 |
+|---|---|---|---|---|
+| #66 D09 audit | PR_OPEN，审查 APPROVE | codex-desktop/issue66-d09-audit-fixes / PR #70 | 35 build + 6700 node 全绿；beta gates 全绿 | Pascal 两轮，round-2 APPROVE |
+| #1 D00 Epic | 待 #66 关闭后收口 | - | - | - |
 
-## 环境
-- Node 24.21.0 (brew node@24)；.nvmrc 要 24.18.0，24.21.0 兼容
-- npm ci 完成（exit=0），须用 node@24：export PATH="/opt/homebrew/opt/node@24/bin:$PATH"
-- 测试: npm run gulp transpile-client-esbuild && npm run test-node -- --runGlob "vs/platform/agentHost/test/node/**/*.test.js" 
+## #66 修复清单（H1 + M1–M3/M5–M8 + L1–L11）
+- H1 per-target sha256：product.ts/common.ts/produce.ts/downloader/bundle/package 全链路；mergeAgentSdkResults 合并共享 results.json
+- M1 asar 感知门禁（实证双向）；M2 gate 2c 静态引用硬门禁；M3 chatSetupHidden + 已知限制声明
+- M5 tarball 卫生；M6 发布前哈希比对（实证正负路径）；M7 REH 任务体内 fail-loud（round-1 审查修复：load-time throw 会杀死桌面打包）；M8 UPSTREAM-SYNC 补录 16 行
+- L1 白名单实证收紧（out/** 全名豁免限定 main/extensionHost 包、shell-integration 头、nls 表）；L2–L11 全部落地
 
-## 阻塞
-（无）
+## 验证
+- `node --test build/agent-sdk/test/*.test.ts`: 35 pass
+- `npm run test-node -- --runGlob "vs/platform/agentHost/test/node/**/*.test.js"`: 6700 passing
+- `verify-beta-gates.sh --app`（真实 darwin-arm64 产物）: ALL BETA GATES PASSED
+- 全量 `package.sh`（本分支源码）实证: 进行中（/tmp/package-run.log）
+
+## 环境备注
+- 仓库 GitHub Actions 当前 disabled（actions/permissions enabled=false）→ CI 不跑，本地实证替代
+- git origin 已切 HTTPS（SSH 22 端口不通）；node 须用 node@24
+- vscode-d14/、vscode-i24/ 为既有内嵌仓库目录，勿提交

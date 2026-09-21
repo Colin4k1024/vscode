@@ -6,13 +6,13 @@
 import { ILogService } from '../../log/common/log.js';
 import {
 	buildCLIDownloadUrl,
+	buildCliDownloadAndVerifyCommand,
 	buildCleanupOldCLIsCommand,
 	buildFindFallbackCLICommand,
 	getRemoteCLIBin,
 	getRemoteCLIInstallRoot,
 	isValidFallbackCLIPath,
 	ISshExec,
-	shellEscape,
 } from './sshRemoteAgentHostHelpers.js';
 
 export interface IRemoteAgentHostCliInstallOptions {
@@ -70,7 +70,9 @@ async function ensurePinnedCliInstalled(
 	const installCommand = [
 		`mkdir -p ${installRoot}`,
 		`tmpdir=$(mktemp -d ${installRoot}/.cli-install-XXXXXX)`,
-		`(cd "$tmpdir" && curl -fsSL ${shellEscape(url)} | tar xz)`,
+		// L11 (Issue #66): download + verify the published sha256 sidecar
+		// before extracting instead of a bare `curl | tar`.
+		`(cd "$tmpdir" && ${buildCliDownloadAndVerifyCommand(url, '.')})`,
 		`mv "$tmpdir"/* ${cliBin}`,
 		`chmod +x ${cliBin}`,
 		`rm -rf "$tmpdir"`,
@@ -124,7 +126,8 @@ async function ensureLooseCliInstalled(
 	try {
 		await exec([
 			`mkdir -p ${installRoot}`,
-			`curl -fsSL ${shellEscape(url)} | tar xz -C ${installRoot}`,
+			// L11 (Issue #66): verify the published sha256 sidecar when present.
+			`(cd ${installRoot} && ${buildCliDownloadAndVerifyCommand(url, '.')})`,
 			`chmod +x ${cliBin}`,
 		].join(' && '));
 	} catch (error) {

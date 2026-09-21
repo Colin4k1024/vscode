@@ -216,11 +216,21 @@ export function getCopilotExcludeFilter(platform: string, arch: string): string[
 export function getCopilotFullExcludeFilter(): string[] {
 	return [
 		'**',
-		'!**/node_modules/@github/copilot/**',
-		'!**/node_modules/@github/blackbird-external-ingest-utils/**',
-		'!**/node_modules/@vscode/copilot-api/**',
+		...COPILOT_FULL_EXCLUDE_GLOBS,
 	];
 }
+
+/**
+ * The bare negation globs of {@link getCopilotFullExcludeFilter}, for
+ * callers composing their own filter chain (review #66, L2 — the previous
+ * `.slice(1)` positional drop broke silently if the leading '**' entry
+ * ever moved).
+ */
+export const COPILOT_FULL_EXCLUDE_GLOBS = [
+	'!**/node_modules/@github/copilot/**',
+	'!**/node_modules/@github/blackbird-external-ingest-utils/**',
+	'!**/node_modules/@vscode/copilot-api/**',
+];
 
 /**
  * Returns the SDK-owned runtime files that must survive app/remote packaging

@@ -91,8 +91,30 @@ export interface IAgentSdkProductConfig {
 	 * before this field existed carry no hash — the downloader logs a
 	 * warning and proceeds, matching the previous behavior for
 	 * already-distributed artifacts.
+	 *
+	 * NOTE: this scalar is only unambiguous when the product serves a
+	 * single sdkTarget. Builds whose urlTemplate serves more than one
+	 * target (e.g. macOS Universal) MUST rely on `sha256ByTarget`
+	 * instead — the scalar then carries the hash of whichever target
+	 * stamped it last (Issue #66, H1).
 	 */
 	readonly sha256?: string;
+	/**
+	 * Per-sdkTarget sha256 of the tarball bytes published for each target
+	 * (Issue #66, H1). `urlTemplate` resolves per target via `{sdkTarget}`
+	 * and per-target tarballs contain per-target native binaries, so their
+	 * bytes — and hashes — differ per target; a single scalar cannot
+	 * describe a multi-target product.json.
+	 *
+	 * Lookup order in the runtime downloader:
+	 *   1. `sha256ByTarget[resolvedSdkTarget]` when the map is present;
+	 *      an absent key logs a warning and proceeds WITHOUT verification
+	 *      (never fall back to the scalar — it is likely another target's
+	 *      hash and would fail closed against good bytes).
+	 *   2. the scalar `sha256` when no map is present (legacy
+	 *      single-target product.json).
+	 */
+	readonly sha256ByTarget?: { readonly [sdkTarget: string]: string };
 }
 
 /**

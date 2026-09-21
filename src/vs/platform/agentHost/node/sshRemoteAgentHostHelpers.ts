@@ -224,6 +224,34 @@ export function buildCLIDownloadUrl(os: string, arch: string, quality: string, c
 }
 
 /**
+ * Issue #66 (L11): download the CLI tarball to a file and verify it against
+ * the publisher's `<url>.sha256` sidecar BEFORE extracting — the SDK
+ * tarballs are sha-verified end to end, and the CLI tarball deserves the
+ * same integrity bar instead of a bare `curl | tar`.
+ *
+ * Sidecar format: `<hex sha256>` optionally followed by whitespace and a
+ * filename (the `shasum`/`sha256sum` output convention); the first token is
+ * compared. When no sidecar is published (the fork does not ship CLI
+ * artifacts yet — see buildCLIDownloadUrl), the install proceeds with a
+ * stderr warning, mirroring the SDK downloader's legacy no-hash posture.
+ * A published-but-mismatching digest fails the install loud.
+ *
+ * `workDirShellToken` is embedded as-is (caller quotes/escapes); the
+ * archive lands at `<workDir>/cli.tar.gz` and is extracted in place.
+ */
+export function buildCliDownloadAndVerifyCommand(url: string, workDirShellToken: string): string {
+	const u = shellEscape(url);
+	const shaUrl = shellEscape(`${url}.sha256`);
+	const archive = `${workDirShellToken}/cli.tar.gz`;
+	return [
+		`curl -fsSL ${u} -o ${archive}`,
+		`(if curl -fsSL ${shaUrl} -o ${archive}.sha256 2>/dev/null; then expected=$(awk '{print $1}' ${archive}.sha256); actual=$( (shasum -a 256 ${archive} 2>/dev/null || sha256sum ${archive}) | awk '{print $1}'); if [ "$expected" != "$actual" ]; then echo "CLI tarball sha256 mismatch (expected $expected, got $actual)" >&2; exit 1; fi; else echo "warning: no sha256 sidecar published for the CLI tarball — installing unverified" >&2; fi)`,
+		`tar xzf ${archive} -C ${workDirShellToken}`,
+		`rm -f ${archive} ${archive}.sha256`,
+	].join(' && ');
+}
+
+/**
  * Shell snippet that prunes older commit-keyed CLI binaries from the
  * install root, keeping the 5 most recently modified. Mirrors the
  * retention policy in Remote-SSH's exec-server installer.

@@ -39,6 +39,11 @@
 	},
 	"enableTelemetry": false,
 	"excludeCopilotFromPackaging": true,
+	"copilotPackagingBlocklist": [
+		"@github/copilot",
+		"@github/blackbird-external-ingest-utils",
+		"@vscode/copilot-api"
+	],
 	"extensionsGallery": {
 		"serviceUrl": "https://open-vsx.org/vscode/gallery",
 		"itemUrl": "https://open-vsx.org/vscode/item",

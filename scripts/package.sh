@@ -254,9 +254,10 @@ bash scripts/publish-sdk-release.sh
 until then the urlTemplate stamped into product.agentSdks resolves 404.
 * COPILOT/CAPI-BACKED PATHS UNAVAILABLE (Issue #66, M3 — declared
 regression): excludeCopilotFromPackaging removes @vscode/copilot-api
-(D10 section 5), so Copilot model refresh, Copilot-backed Responses
-proxying, and Copilot PR title/description generation fail loud if
-invoked. The Copilot setup / sign-in UI is hidden in this build
-(chatSetupHidden when product.json has no defaultChatAgent).
+(D10 section 5). The branded build hides the Copilot sign-in entry
+(chatSetupHidden + the agent host does not list the Copilot resource),
+never starts the CAPI proxy, and short-circuits the Copilot model
+catalog; PR/commit message generation fails with a user-facing
+"not available in this build" error.
 ================================================================
 EOT

@@ -70,7 +70,7 @@ import { MODEL_REFRESH_BASE_DELAY_MS, MODEL_REFRESH_MAX_ATTEMPTS, MODEL_REFRESH_
 import { AGENT_HOST_WORKSPACELESS_INSTRUCTIONS } from '../shared/workspacelessInstructions.js';
 import { IAgentHostCheckpointService } from '../../common/agentHostCheckpointService.js';
 import { ISessionDataService } from '../../common/sessionDataService.js';
-import { ICopilotApiService } from '../shared/copilotApiService.js';
+import { copilotApiShipped, ICopilotApiService } from '../shared/copilotApiService.js';
 import { IAgentHostWorktreeIsolation, type IAgentHostWorktreePendingState } from '../shared/worktreeIsolation.js';
 import { getServerToolDisplay } from '../shared/serverToolGroups.js';
 import { IAgentSdkDownloader, IAgentSdkPackage } from '../agentSdkDownloader.js';
@@ -253,21 +253,6 @@ const CODEX_OPENAI_MODEL_PROVIDER = 'openai';
 const CODEX_MODEL_SELECTION_PREFIX = '@provider=';
 const CODEX_MODEL_CATALOG_TIMEOUT_MS = 15_000;
 const CODEX_MODEL_CATALOG_MAX_BUFFER = 8 * 1024 * 1024;
-
-/**
- * Whether `@vscode/copilot-api` is shipped in this build. The branded
- * product sets `excludeCopilotFromPackaging` (D10 section 5 hard block),
- * which strips the package — every CAPI-backed path would reject with the
- * D10 error from `loadCopilotApi()`.
- *
- * A module-level function (not a method) so the `_startRawConnection`
- * harness — a plain object without the class prototype — gets the same
- * answer. An absent product service is not the branded build: CAPI paths
- * stay available (dev/default behavior).
- */
-function copilotApiShipped(productService: IProductService | undefined): boolean {
-	return productService?.excludeCopilotFromPackaging !== true;
-}
 
 interface ICodexModelContextWindow {
 	readonly defaultSize: number;

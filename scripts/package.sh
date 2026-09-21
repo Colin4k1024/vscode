@@ -255,9 +255,9 @@ until then the urlTemplate stamped into product.agentSdks resolves 404.
 * COPILOT/CAPI-BACKED PATHS UNAVAILABLE (Issue #66, M3 — declared
 regression): excludeCopilotFromPackaging removes @vscode/copilot-api
 (D10 section 5). The branded build hides the Copilot sign-in entry
-(chatSetupHidden + the agent host does not list the Copilot resource),
-never starts the CAPI proxy, and short-circuits the Copilot model
-catalog; PR/commit message generation fails with a user-facing
-"not available in this build" error.
+(chatSetupHidden + neither the Codex nor the Claude provider lists the
+Copilot resource), never starts the CAPI proxy, and short-circuits
+Copilot model catalogs; PR/commit message generation fails with a
+user-facing "not available in this build" error.
 ================================================================
 EOT

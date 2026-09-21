@@ -107,13 +107,26 @@ if [ -n "$APP_DIR" ]; then
 	if [ -z "$OUT_ROOT" ]; then
 		fail "gate 2c: no app out/ directory found under $APP_DIR — cannot verify the bundles have no static @vscode/copilot-api import"
 	fi
+	BUNDLE_COUNT=0
 	while IFS= read -r bundle; do
-		if perl -pe 's/\bimport\(\s*["'"'"']\@vscode\/copilot-api["'"'"']\s*\)//g; s/"?copilotPackagingBlocklist"?\s*:\s*\[[^\]]*\]//g; s/"\@vscode\/copilot-api"\s*:\s*"[^"]*"//g' "$bundle" | grep -Eq "[\"']@vscode/copilot-api[\"']"; then
+		BUNDLE_COUNT=$((BUNDLE_COUNT + 1))
+		# The final grep requires a closing quote OR a subpath slash after the
+		# specifier (review #71, LOW-2): a trailing-quote-only anchor lets
+		# subpath (`@vscode/copilot-api/sub`) and backtick forms slip through,
+		# while an opening-quote-only anchor false-positives on the bundled
+		# loadCopilotApi error string (a template literal whose specifier is
+		# followed by a SPACE — verified against the packaged agentHostMain.js).
+		if perl -pe 's/\bimport\(\s*["'"'"'`]\@vscode\/copilot-api["'"'"'`]\s*\)//g; s/"?copilotPackagingBlocklist"?\s*:\s*\[[^\]]*\]//g; s/"\@vscode\/copilot-api"\s*:\s*"[^"]*"//g' "$bundle" | grep -Eq "[\"'\x60]@vscode/copilot-api[\"'\x60/]"; then
 			echo "GATE FAILED: $bundle statically links @vscode/copilot-api (D10 section 5: the package is not redistributable; a static import also crashes the agent host at startup in the branded build). Use the lazy loadCopilotApi() path instead." >&2
 			exit 1
 		fi
 	done < <(find "$OUT_ROOT" -type f -name '*.js' 2>/dev/null || true)
-	echo "    out/ bundles: no static @vscode/copilot-api import — OK"
+	# Review #71 (LOW-1): fail closed on an empty scan — a broken/partial
+	# package with no bundles must not print OK.
+	if [ "$BUNDLE_COUNT" -eq 0 ]; then
+		fail "gate 2c: no .js bundles found under $OUT_ROOT — cannot verify the bundles have no static @vscode/copilot-api import"
+	fi
+	echo "    out/ bundles: no static @vscode/copilot-api import ($BUNDLE_COUNT bundles scanned) — OK"
 else
 	echo "    packaged-artifact scan skipped (no --app; run against the packaged product before publishing)"
 fi

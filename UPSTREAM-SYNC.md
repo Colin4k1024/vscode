@@ -126,7 +126,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 §4.1 尚未补录的条目，两者不可直接对账。**#66（M8）已补录 D09 的全部源码改动行**（16 行：gulpfile×3、lib/copilot、
 agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEntitlementService、5 个测试文件、1 个冒烟 fixture）；
 其余漂移（D11–D16 新增 M 文件）仍为既有债留作后续跟进）；
-其中新增（覆盖层）153、修改（源码改动）128（含 49 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
+其中新增（覆盖层）153、修改（源码改动）129（含 49 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
 `scripts/own-change-surface.sh` 断言）。上游协议生成目录
 （`protocol/generated/` 828 文件）与 `build/codex/` 在基线中已存在（上游 in-tree），
 不计入自有改动面。
@@ -296,6 +296,7 @@ agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEnt
 | `src/vs/platform/agentHost/node/agentSdkDownloader.ts` | M | +60/-1 | D09 | 源码改动 | D09 HIGH-1 sha256 完整性链消费端（下载后提取前校验；#66 H1 追加 sha256ByTarget 按目标解析，多目标 product.json 不再 fail-closed）；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexAccountState.ts` | M | +4/-1 | D03 | 源码改动 | D03 登录状态机；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexAgent.ts` | M | +393/-42 | D03,D04,D05,D08,D13,D14,D09 | 源码改动 | 最大源码改动（+393/-42）：D03 登录、D04 去 GitHub 耦合、D05 策略、D08 clientInfo 身份与遥测隔离、D13 负向路径；D14 追加 1 字符注释修复（§→section，hygiene）；#66 M3（PR #69 打捞）：品牌构建下隐藏 Copilot 登录资源、短路 Copilot 模型刷新（消除重试风暴）、不启动 CAPI proxy。会话宿主核心行为，无扩展点可覆盖 |
+| `src/vs/platform/agentHost/node/claude/claudeAgent.ts` | M | +25/-0 | D09 | 源码改动 | #66 M3（PR #71 审查轮补齐）：Claude provider 同款门禁——品牌构建不列 Copilot 登录资源、忽略 Copilot token、proxy 模型目录短路；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexProxyService.ts` | M | +8/-0 | D09 | 源码改动 | #66 M3（PR #69 打捞）：proxy start 契约文档（品牌构建不启动 CAPI proxy）；接口契约本体 |
 | `src/vs/platform/agentHost/node/remoteAgentHostCliInstaller.ts` | M | +26/-7 | D09 | 源码改动 | D09（PR #64）：远端 CLI 安装失败回退到既有 CLI（pinned + loose 两条路径）；#66 L11：curl\|tar → 下载落盘 + `<url>.sha256` sidecar 校验；运行时行为 |
 | `src/vs/platform/agentHost/node/shared/copilotApiService.ts` | M | +39/-1 | D09 | 源码改动 | D09：`@vscode/copilot-api` 改 `loadCopilotApi()` 动态导入（D10 排除下 CAPI 路径 fail-loud 而非启动崩溃；#66 L8 import 顺序整理）；运行时行为 |

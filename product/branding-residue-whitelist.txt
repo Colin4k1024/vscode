@@ -27,10 +27,16 @@
 # "Welcome to Visual Studio Code") still ship — same posture as VSCodium;
 # tightening is a product-branding decision, not a packaging bug.
 
-# Bundled app code (esbuild output), NLS tables, sourcemaps, shell scripts:
-# upstream dev fallbacks (`Code - OSS Dev`, `code-oss`, `.vscode-oss`) and
-# documentation links (code.visualstudio.com) baked in at bundle time.
-(^|/)out/.*\.(js|map|json|fish|sh|css|html|md)$	code-oss|Code - OSS|code\.visualstudio\.com|Visual Studio Code
+# Bundled app code (esbuild output), sourcemaps, shell scripts: upstream dev
+# fallbacks (`Code - OSS Dev`, `code-oss`, `.vscode-oss`) and documentation
+# links (code.visualstudio.com) baked in at bundle time.
+# Review #66 (L1): the previous entry also exempted the full product name
+# "Visual Studio Code" for ALL of out/** — that made gate 8 metadata-only
+# (every scanned token was exempt in the two biggest trees). The full name
+# is now exempt ONLY where user-visible upstream strings legitimately ship:
+# NLS string tables (the documented VSCodium-posture limitation above).
+(^|/)out/.*\.(js|map|json|fish|sh|css|html|md)$	code-oss|Code - OSS|code\.visualstudio\.com
+(^|/)out/.*nls[^/]*\.(js|json)$	Visual Studio Code
 # vscode.d.ts / vscode.proposed.*.d.ts — API documentation comments.
 (^|/)out/vscode-dts/	Visual Studio Code|code\.visualstudio\.com|code-oss
 # Built-in extension documentation and localization metadata (upstream
@@ -42,4 +48,7 @@
 # codicon font CSS with the `codicon-code-oss` glyph id).
 (^|/)extensions/([^/]+/)*(dist|media|[A-Za-z-]*out)/	Visual Studio Code|code\.visualstudio\.com|code-oss|Code - OSS
 # Third-party npm packages as shipped in node_modules(.asar.unpacked).
-(^|/)node_modules/	Visual Studio Code|code\.visualstudio\.com|code-oss|Code - OSS
+# Review #66 (L1): scoped to documentation/metadata file types — compiled
+# third-party JS has no legitimate need to name the upstream product, and a
+# first-party string must never hide inside node_modules.
+(^|/)node_modules/.*\.(md|txt|json|map|d\.ts)$	Visual Studio Code|code\.visualstudio\.com|code-oss|Code - OSS

@@ -58,6 +58,7 @@ import {
 	getSdkTargetForBuild,
 	type IAgentSdkResults,
 	KNOWN_VSCODE_PLATFORMS,
+	mergeAgentSdkResults,
 	parseFlags,
 	type Sdk,
 	type VscodeBuildPlatform,
@@ -231,43 +232,6 @@ async function produceOne(
 	};
 }
 
-/**
- * Merges freshly produced per-SDK entries into the results file that is
- * already on disk (Issue #66, H1 follow-up): the local packaging flow
- * (`scripts/bundle-codex-sdk.sh`) shares ONE results file across repeated
- * `--target=` runs, so an unconditional overwrite would drop every other
- * target's hash — the exact multi-target hole H1 closes.
- *
- * Merge rules per SDK:
- *   - `version` / `urlTemplate` must agree with the existing entry — a
- *     drift means the on-disk file is stale (a previous SDK bump), which
- *     fails loud instead of silently mixing versions.
- *   - `sha256ByTarget` is unioned (the fresh run wins for its own target).
- *   - the scalar `sha256` tracks the freshly produced target (legacy
- *     single-target readers keep working).
- * SDKs absent from this run keep their existing entries untouched.
- */
-export function mergeAgentSdkResults(existing: IAgentSdkResults, produced: IAgentSdkResults): IAgentSdkResults {
-	const merged: IAgentSdkResults = { ...existing };
-	for (const [sdk, entry] of Object.entries(produced)) {
-		const prior = existing[sdk];
-		if (!prior) {
-			merged[sdk] = entry;
-			continue;
-		}
-		if (prior.version !== entry.version) {
-			throw new Error(`results-file merge: sdk '${sdk}' version drift (on-disk ${prior.version} vs freshly produced ${entry.version}) — the existing results file is stale; delete it and re-run the bundle step for every target`);
-		}
-		if (prior.urlTemplate !== entry.urlTemplate) {
-			throw new Error(`results-file merge: sdk '${sdk}' urlTemplate drift (on-disk ${prior.urlTemplate} vs freshly produced ${entry.urlTemplate}) — refusing to mix distribution endpoints in one results file`);
-		}
-		merged[sdk] = {
-			...entry,
-			sha256ByTarget: { ...prior.sha256ByTarget, ...entry.sha256ByTarget },
-		};
-	}
-	return merged;
-}
 
 main().catch(err => {
 	console.error(err);

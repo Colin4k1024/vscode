@@ -252,5 +252,11 @@ right-click > Open, or: xattr -d com.apple.quarantine "<app>"
 * SDK tarballs are NOT uploaded by this script. Publish them with:
 bash scripts/publish-sdk-release.sh
 until then the urlTemplate stamped into product.agentSdks resolves 404.
+* COPILOT/CAPI-BACKED PATHS UNAVAILABLE (Issue #66, M3 — declared
+regression): excludeCopilotFromPackaging removes @vscode/copilot-api
+(D10 section 5), so Copilot model refresh, Copilot-backed Responses
+proxying, and Copilot PR title/description generation fail loud if
+invoked. The Copilot setup / sign-in UI is hidden in this build
+(chatSetupHidden when product.json has no defaultChatAgent).
 ================================================================
 EOT

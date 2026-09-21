@@ -24,14 +24,24 @@ on:
   # build + beta gates are proven green BEFORE merge, not only after a
   # manual dispatch. Publishing to Releases stays dispatch-only (see the
   # publish-sdk job's `if`).
+  # Review #66 (L9): docs-only changes don't need a ~2h macos-15 build.
   pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - '.agents/**'
+      - '.goal-state/**'
+      - '**.md'
+      - 'LICENSE.txt'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Review #66 (L9): PR runs may cancel each other, but a dispatch run that
+  # is mid-publish must never be cancelled by a PR push — key the group by
+  # event name so the two streams don't share a slot.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   darwin-arm64:

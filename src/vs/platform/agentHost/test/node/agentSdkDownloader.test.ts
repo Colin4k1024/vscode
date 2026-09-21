@@ -103,7 +103,7 @@ function makeEnvService(userDataPath: string): INativeEnvironmentService {
 	return { userDataPath, args: { 'force-disable-user-env': true } as never } as unknown as INativeEnvironmentService;
 }
 
-function makeProductService(config: { version: string; urlTemplate: string; sha256?: string } | undefined): IProductService {
+function makeProductService(config: { version: string; urlTemplate: string; sha256?: string; sha256ByTarget?: { readonly [sdkTarget: string]: string } } | undefined): IProductService {
 	return {
 		agentSdks: config ? { claude: config } : undefined,
 	} as unknown as IProductService;
@@ -287,7 +287,7 @@ suite('AgentSdkDownloader', () => {
 	 * entirely (the "no product config" case).
 	 */
 	function makeDownloader(
-		productConfig?: { version?: string; urlTemplate?: string; sha256?: string } | null,
+		productConfig?: { version?: string; urlTemplate?: string; sha256?: string; sha256ByTarget?: { readonly [sdkTarget: string]: string } } | null,
 		telemetryService: ITelemetryService = NullTelemetryService,
 		storageService?: IAgentHostStorageService,
 		logService: ILogService = new NullLogService(),
@@ -296,6 +296,7 @@ suite('AgentSdkDownloader', () => {
 			version: productConfig?.version ?? '1.0.0',
 			urlTemplate: productConfig?.urlTemplate ?? `http://127.0.0.1:${server.port}/sdk-{sdkTarget}.tgz`,
 			...(productConfig?.sha256 !== undefined ? { sha256: productConfig.sha256 } : {}),
+			...(productConfig?.sha256ByTarget !== undefined ? { sha256ByTarget: productConfig.sha256ByTarget } : {}),
 		};
 		const storage = storageService ?? disposables.add(new AgentHostStorageService(undefined, new NullLogService()));
 		return disposables.add(new AgentSdkDownloader(
@@ -363,6 +364,41 @@ suite('AgentSdkDownloader', () => {
 		const cacheDir = path.join(userDataPath, 'agent-host', 'sdk-cache', 'claude', '1.0.0', hostSdkTarget);
 		assert.ok(!fs.existsSync(path.join(cacheDir, '.complete')), 'sentinel must not be written for a failed verification');
 		assert.ok(!fs.existsSync(`${cacheDir}.tmp.${process.pid}`), 'scratch dir must be deleted on verification failure');
+	});
+
+	test('loadSdkRoot: sha256ByTarget for the host target verifies and completes (Issue #66, H1)', async () => {
+		// Multi-target product.json: the map carries this host's hash, the
+		// scalar carries a DIFFERENT (foreign) target's hash — the exact
+		// macOS-Universal shape H1 reports. The downloader must verify
+		// against the map entry and ignore the scalar.
+		const sha256 = createHash('sha256').update(await fsp.readFile(fixture.tarballPath)).digest('hex');
+		const root = await makeDownloader({
+			sha256: 'deadbeef'.repeat(8),
+			sha256ByTarget: { [hostSdkTarget]: sha256, 'win32-x64': 'deadbeef'.repeat(8) },
+		}).loadSdkRoot(ClaudeSdkPackage, newToken());
+		assert.ok(fs.existsSync(path.join(root, '.complete')));
+	});
+
+	test('loadSdkRoot: sha256ByTarget entry mismatch fails loud', async () => {
+		await assert.rejects(
+			() => makeDownloader({ sha256ByTarget: { [hostSdkTarget]: 'deadbeef'.repeat(8) } }).loadSdkRoot(ClaudeSdkPackage, newToken()),
+			/sha256 mismatch/,
+		);
+	});
+
+	test('loadSdkRoot: sha256ByTarget present but host target absent warns and proceeds — never falls back to the scalar', async () => {
+		// H1 ruling: with a map present, the scalar belongs to some other
+		// target; falling back would fail closed against good bytes.
+		const logService = new RecordingLogService();
+		const root = await makeDownloader(
+			{ sha256: 'deadbeef'.repeat(8), sha256ByTarget: { 'win32-x64': 'deadbeef'.repeat(8) } },
+			NullTelemetryService, undefined, logService,
+		).loadSdkRoot(ClaudeSdkPackage, newToken());
+		assert.ok(fs.existsSync(path.join(root, '.complete')), 'must proceed without verification rather than failing against the foreign-target scalar');
+		assert.ok(
+			logService.warnings.some(w => /sha256ByTarget has no entry/.test(w)),
+			`expected a sha256ByTarget-absent-key warning, got: ${JSON.stringify(logService.warnings)}`,
+		);
 	});
 
 	test('loadSdkRoot: missing sha256 (legacy product.json) warns and proceeds', async () => {

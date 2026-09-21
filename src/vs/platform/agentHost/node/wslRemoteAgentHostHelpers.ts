@@ -11,13 +11,13 @@ import type { IWSLDistro } from '../common/wslRemoteAgentHost.js';
 import {
 	buildAgentHostBaseCommand,
 	buildCLIDownloadUrl,
+	buildCliDownloadAndVerifyCommand,
 	buildCleanupOldCLIsCommand,
 	buildFindFallbackCLICommand,
 	extractAgentHostWebSocketURL,
 	getRemoteCLIBin,
 	getRemoteCLIDataDir,
 	getRemoteCLIInstallRoot,
-	shellEscape,
 	validateAgentHostTelemetryLevel,
 	validateShellToken,
 } from './sshRemoteAgentHostHelpers.js';
@@ -303,7 +303,8 @@ export function composeAgentHostBootstrapScript(args: IComposeAgentHostBootstrap
 		const cleanup = buildCleanupOldCLIsCommand(args.serverDataFolderName, args.quality);
 		const installSteps = [
 			`tmpdir=$(mktemp -d ${installRoot}/.cli-install-XXXXXX)`,
-			`(cd "$tmpdir" && curl -fsSL ${shellEscape(url)} | tar xz)`,
+			// L11 (Issue #66): verify the published sha256 sidecar when present.
+			`(cd "$tmpdir" && ${buildCliDownloadAndVerifyCommand(url, '.')})`,
 			`mv "$tmpdir"/* ${cliBin}`,
 			`chmod +x ${cliBin}`,
 			`rm -rf "$tmpdir"`,
@@ -320,7 +321,7 @@ export function composeAgentHostBootstrapScript(args: IComposeAgentHostBootstrap
 
 	// Loose dev-build path. Matches SSH's ensureLooseCliInstalled: single
 	// non-pinned binary, no retention pruning, install on first miss.
-	const installLoose = `curl -fsSL ${shellEscape(url)} | tar xz -C ${installRoot} && chmod +x ${cliBin}`;
+	const installLoose = `(cd ${installRoot} && ${buildCliDownloadAndVerifyCommand(url, '.')}) && chmod +x ${cliBin}`;
 	return [
 		`mkdir -p ${installRoot}`,
 		`cli=${cliBin}`,

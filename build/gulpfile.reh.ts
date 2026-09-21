@@ -36,6 +36,20 @@ import { readAgentSdkResults } from './agent-sdk/common.ts';
 
 const rcedit = promisify(rceditCallback);
 
+// Issue #66 (M7): the desktop packageTask honors the mixin's
+// `excludeCopilotFromPackaging` (D10 section 5 redistribution hard block);
+// this REH/server packaging path does not — Issue #11 declared REH out of
+// scope for the branded product. Fail loud at load time instead of
+// silently shipping the block-listed packages (@vscode/copilot-api,
+// @github/copilot, blackbird utils) in a branded server build. Upstream
+// product.json (no flag) keeps the unchanged upstream behavior.
+if ((product as { readonly excludeCopilotFromPackaging?: boolean }).excludeCopilotFromPackaging === true) {
+	throw new Error(
+		'gulpfile.reh: product.json sets excludeCopilotFromPackaging (branded mixin), but REH/server packaging does not honor the D10 section 5 Copilot exclusion — Issue #11 declared REH out of scope for the branded product. ' +
+		'Package the desktop target instead (build/gulpfile.vscode.ts), or build from pristine upstream product.json for an upstream-flavored server.'
+	);
+}
+
 const REPO_ROOT = path.dirname(import.meta.dirname);
 const commit = getVersion(REPO_ROOT);
 const BUILD_ROOT = path.dirname(REPO_ROOT);

@@ -106,6 +106,18 @@ SDK_VERSION="$(node -p "const d=JSON.parse(require('fs').readFileSync('build/age
 TGZ="$TARBALLS_DIR/$SDK-$SDK_VERSION-$TARGET.tgz"
 [ -f "$TGZ" ] || fail "expected tarball missing: $TGZ"
 
+# Review #66 (M5): the tarballs dir is never cleaned, so a stale tarball
+# from a previous SDK bump would linger and — without the results-file
+# filters in package.sh / publish-sdk-release.sh — leak into manifests and
+# release tags. Remove same-SDK tarballs pinned to a different version.
+for stale in "$TARBALLS_DIR/$SDK"-*-*.tgz; do
+	[ -e "$stale" ] || continue
+	case "$(basename "$stale")" in
+		"$SDK-$SDK_VERSION"-*.tgz) ;; # current version — keep
+		*) echo "    removing stale tarball: $(basename "$stale")"; rm -f "$stale" ;;
+	esac
+done
+
 # --- Apache-2.0 redistribution obligations (D17 section 4 item 4, D10 section 2) ----------
 # The @openai/codex npm packages do NOT ship a LICENSE file (verified
 # 2026-09-20 against 0.153.0). Apache-2.0 section 4 requires the license text (and
@@ -113,8 +125,12 @@ TGZ="$TARBALLS_DIR/$SDK-$SDK_VERSION-$TARGET.tgz"
 # copies and re-pack with the same node-tar portable settings package.ts
 # uses. If a future SDK version starts shipping its own license, that also
 # satisfies the obligation — skip the injection then.
-if tar -tzf "$TGZ" | grep -qiE 'license|notice'; then
-	echo "    tarball already carries LICENSE/NOTICE — injection not needed"
+DEP_NAME="$(node -p "Object.keys(JSON.parse(require('fs').readFileSync('build/agent-sdk/agents/$SDK/package.json','utf8')).dependencies)[0]")"
+# Check the SDK package's own dir only (review #66, L4): a tree-wide grep
+# would let a nested transitive dep's LICENSE satisfy the SDK's own
+# Apache-2.0 redistribution obligation.
+if tar -tzf "$TGZ" | grep -qiE "node_modules/$(echo "$DEP_NAME" | sed 's/\//\\\//g')/(LICENSE|NOTICE)"; then
+	echo "    tarball already carries LICENSE/NOTICE in $DEP_NAME — injection not needed"
 else
 	LICENSE_DIR="$REPO_ROOT/build/agent-sdk/licenses/$SDK"
 	[ -f "$LICENSE_DIR/LICENSE" ] || fail "$SDK tarball ships no license and no vendored copy exists at $LICENSE_DIR — Apache-2.0 obligations unmet"
@@ -150,7 +166,7 @@ try {
 }
 NODE_EOF
 	# Re-check: the repacked tarball MUST carry the license now.
-	tar -tzf "$TGZ" | grep -qiE 'license' || fail "license injection did not take effect in $TGZ"
+	tar -tzf "$TGZ" | grep -qiE "node_modules/$(echo "$DEP_NAME" | sed 's/\//\\\//g')/LICENSE" || fail "license injection did not take effect in $TGZ"
 fi
 
 # HIGH-1 integrity chain: results.json must carry the sha256 of the FINAL
@@ -162,17 +178,22 @@ fi
 # these bytes — so product.json, the release asset digest, and the runtime
 # check all agree.
 FINAL_SHA="$(shasum -a 256 "$TGZ" | awk '{print $1}')"
-node - "$RESULTS_FILE" "$SDK" "$FINAL_SHA" <<'NODE_EOF'
+node - "$RESULTS_FILE" "$SDK" "$TARGET" "$FINAL_SHA" <<'NODE_EOF'
 const fs = require('fs');
-const [resultsFile, sdk, sha] = process.argv.slice(2);
+const [resultsFile, sdk, target, sha] = process.argv.slice(2);
 const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
 if (!results[sdk]) {
 	console.error(`ERROR: results file ${resultsFile} has no entry for sdk '${sdk}'`);
 	process.exit(1);
 }
 results[sdk].sha256 = sha;
+// Issue #66 (H1): record the hash under its target so a results file
+// shared across repeated --target= runs carries every target's hash. The
+// runtime downloader prefers sha256ByTarget[resolvedTarget] and never
+// falls back to the (possibly foreign-target) scalar when a map exists.
+results[sdk].sha256ByTarget = { ...results[sdk].sha256ByTarget, [target]: sha };
 fs.writeFileSync(resultsFile, JSON.stringify(results, null, 2) + '\n');
-console.log(`    results.json sha256 stamped: ${sha}`);
+console.log(`    results.json sha256 stamped: ${sha} (target: ${target})`);
 NODE_EOF
 
 echo

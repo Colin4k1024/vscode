@@ -46,6 +46,9 @@ while [ $# -gt 0 ]; do
 done
 
 fail() { echo "ERROR: $*" >&2; exit 1; }
+# Portable file size (review #66, L3): GNU stat uses -c%s, BSD stat -f%z —
+# hard-coding the BSD form breaks the publish job's ubuntu runners.
+filesize() { stat -c%s "$1" 2>/dev/null || stat -f%z "$1"; }
 command -v node >/dev/null 2>&1 || fail "node not found on PATH (use node@24: export PATH=/opt/homebrew/opt/node@24/bin:\$PATH)"
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 [ "$NODE_MAJOR" -ge 22 ] || fail "node >= 22 required, got $(node --version)"
@@ -80,7 +83,9 @@ fi
 # bundle-non-native-extensions-build). 32GB cap — node only commits what it needs (dev machines have the headroom; CI runners peak lower because their node_modules are real dirs, not the symlinked overlay used locally).
 case " ${NODE_OPTIONS:-} " in
 	*" --max-old-space-size"*) ;;
-	*) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=32768" ;;
+	# 16GB cap: 4x the observed ~4.1GB peak, and within a 16GB CI runner's
+	# RAM (review #66, L7 — the previous 32GB cap exceeded the machine).
+	*) export NODE_OPTIONS="${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=16384" ;;
 esac
 
 DIST_DIR="$REPO_ROOT/.build/dist"
@@ -105,6 +110,32 @@ if [ "$SKIP_SDK" -eq 0 ]; then
 else
 	echo "==> [3/6] bundle Codex agent SDK — SKIPPED (--skip-sdk)"
 	[ -f "$RESULTS_FILE" ] || fail "--skip-sdk given but no prior results file at $RESULTS_FILE"
+	# Issue #66 (H1): a bare existence check accepts ANY stale results file.
+	# Assert the recorded SDK version still matches the pinned npm dependency
+	# and that the integrity hash covers the target being packaged.
+	node - "$RESULTS_FILE" "$PLATFORM-$ARCH" <<'NODE_EOF'
+const fs = require('fs');
+const [resultsFile, target] = process.argv.slice(2);
+const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+for (const [sdk, entry] of Object.entries(results)) {
+	const pinned = JSON.parse(fs.readFileSync(`build/agent-sdk/agents/${sdk}/package.json`, 'utf8'));
+	const pinnedVersion = pinned.dependencies[Object.keys(pinned.dependencies)[0]];
+	if (entry.version !== pinnedVersion) {
+		console.error(`ERROR: --skip-sdk: results file records ${sdk} ${entry.version} but the pinned dependency is ${pinnedVersion} — the results file is stale; re-run the bundle step (drop --skip-sdk)`);
+		process.exit(1);
+	}
+	if (entry.sha256ByTarget !== undefined) {
+		if (!entry.sha256ByTarget[target]) {
+			console.error(`ERROR: --skip-sdk: results file has no sha256 for target ${target} (have: ${Object.keys(entry.sha256ByTarget).join(', ') || '<none>'}) — bundle that target first (drop --skip-sdk)`);
+			process.exit(1);
+		}
+	} else if (!entry.sha256) {
+		console.error(`ERROR: --skip-sdk: results file entry for ${sdk} carries no integrity hash at all — re-run the bundle step`);
+		process.exit(1);
+	}
+	console.log(`    results file verified: ${sdk} ${entry.version}, target ${target} covered`);
+}
+NODE_EOF
 fi
 # The local/GHA equivalent of Azure's `##vso[task.setvariable ...]` handoff:
 # gulp's packageTask reads this env var and stamps product.agentSdks.
@@ -159,33 +190,58 @@ if [ "$SKIP_ZIP" -eq 0 ]; then
 	else
 		(cd "$APP_OUT" && zip -q -r -y "$ZIP" .)
 	fi
-	echo "    zip: $ZIP ($(stat -f%z "$ZIP") bytes)"
+	echo "    zip: $ZIP ($(filesize "$ZIP") bytes)"
 fi
 
 SUMS="$DIST_DIR/SHA256SUMS.txt"
+# Bare filenames, verifiable via `shasum -a 256 -c SHA256SUMS.txt` from the
+# manifest's own directory (review #66, L6): repo-root-relative paths broke
+# verification against the flattened CI artifact, and absolute paths (LOW-2)
+# bake the builder's home directory into a published artifact.
 {
-	# Repo-root-relative paths (review round-1, LOW-2): absolute paths bake
-	# the builder's home directory into a published artifact and leak the
-	# machine layout. With relative paths the manifest is verifiable via
-	# `shasum -a 256 -c SHA256SUMS.txt` from the repo root.
 	if [ "$SKIP_ZIP" -eq 0 ]; then
-		(cd "$REPO_ROOT" && shasum -a 256 "${ZIP#"$REPO_ROOT"/}")
+		(cd "$DIST_DIR" && shasum -a 256 "$(basename "$ZIP")")
 	fi
-	for t in "$REPO_ROOT"/.build/agent-sdk/tarballs/*.tgz; do
-		if [ -e "$t" ]; then
-			(cd "$REPO_ROOT" && shasum -a 256 "${t#"$REPO_ROOT"/}")
-		fi
-	done
 } > "$SUMS"
 echo "    manifest: $SUMS"
 cat "$SUMS"
+
+# SDK tarball manifest lives next to the tarballs so the (separately
+# flattened) tarballs artifact stays self-verifiable. Only tarballs whose
+# version the results file actually records are listed (review #66, M5) —
+# a stale tarball from a previous SDK bump must not sail into a manifest.
+TARBALLS_DIR="$REPO_ROOT/.build/agent-sdk/tarballs"
+TGZ_SUMS="$TARBALLS_DIR/SHA256SUMS.txt"
+if [ -f "$RESULTS_FILE" ]; then
+	node - "$RESULTS_FILE" "$TARBALLS_DIR" <<'NODE_EOF'
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const [resultsFile, tarballsDir] = process.argv.slice(2);
+const results = JSON.parse(fs.readFileSync(resultsFile, 'utf8'));
+const versions = new Set(Object.entries(results).map(([sdk, e]) => `${sdk}-${e.version}`));
+const lines = [];
+for (const f of fs.readdirSync(tarballsDir).filter(f => f.endsWith('.tgz')).sort()) {
+	// <sdk>-<version>-<sdkTarget>.tgz — match the <sdk>-<version> prefix.
+	const m = /^([a-z]+-[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)-(?:darwin|linux|win32)-(?:x64|arm64)(?:-musl)?\.tgz$/.exec(f);
+	if (!m || !versions.has(m[1])) {
+		console.log(`    skipping stale/foreign tarball: ${f}`);
+		continue;
+	}
+	const sha = execFileSync('shasum', ['-a', '256', path.join(tarballsDir, f)], { encoding: 'utf8' }).split(/\s+/)[0];
+	lines.push(`${sha}  ${f}`);
+}
+fs.writeFileSync(path.join(tarballsDir, 'SHA256SUMS.txt'), lines.join('\n') + (lines.length ? '\n' : ''));
+console.log(`    tarball manifest: ${path.join(tarballsDir, 'SHA256SUMS.txt')} (${lines.length} entries)`);
+NODE_EOF
+fi
 
 cat <<-EOT
 
 ================================================================
 BUILD COMPLETE
 app:      $APP_PATH
-zip:      ${ZIP%-skip}
+zip:      $([ "$SKIP_ZIP" -eq 0 ] && echo "$ZIP" || echo "(skipped)")
 manifest: $SUMS
 
 Known limitations (D09 ruling 3, recorded per AC11):

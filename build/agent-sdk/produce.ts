@@ -171,8 +171,17 @@ async function main(): Promise<void> {
 		console.log(`[${SCRIPT}] upload=false but AGENT_SDK_WRITE_RESULTS=true — writing the results file without uploading. The urlTemplate entries point at the configured endpoint; make sure the tarballs there are (or will be) published, e.g. via scripts/publish-sdk-release.sh.`);
 	}
 
+	// Merge into the results file already on disk (if any) so repeated
+	// per-target runs accumulate `sha256ByTarget` instead of clobbering
+	// each other — see mergeAgentSdkResults.
+	let toWrite = results;
+	if (fs.existsSync(args.resultsFile)) {
+		const existing = JSON.parse(fs.readFileSync(args.resultsFile, 'utf8')) as IAgentSdkResults;
+		toWrite = mergeAgentSdkResults(existing, results);
+		console.log(`[${SCRIPT}] merged into existing results file ${args.resultsFile} (per-target hashes accumulate)`);
+	}
 	fs.mkdirSync(path.dirname(args.resultsFile), { recursive: true });
-	fs.writeFileSync(args.resultsFile, JSON.stringify(results, null, 2) + '\n');
+	fs.writeFileSync(args.resultsFile, JSON.stringify(toWrite, null, 2) + '\n');
 	const sdkCount = Object.keys(results).length;
 	console.log(`[${SCRIPT}] Wrote ${sdkCount} SDK entr${sdkCount === 1 ? 'y' : 'ies'} to ${args.resultsFile}`);
 
@@ -212,7 +221,52 @@ async function produceOne(
 			sha256: built.sha256,
 		});
 	}
-	return { version: built.sdkVersion, urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion), sha256: built.sha256 };
+	return {
+		version: built.sdkVersion,
+		urlTemplate: buildCdnUrlTemplate(sdk, built.sdkVersion),
+		sha256: built.sha256,
+		// Issue #66 (H1): per-target hashes — the scalar alone cannot describe
+		// a product.json whose urlTemplate serves more than one sdkTarget.
+		sha256ByTarget: { [sdkTarget]: built.sha256 },
+	};
+}
+
+/**
+ * Merges freshly produced per-SDK entries into the results file that is
+ * already on disk (Issue #66, H1 follow-up): the local packaging flow
+ * (`scripts/bundle-codex-sdk.sh`) shares ONE results file across repeated
+ * `--target=` runs, so an unconditional overwrite would drop every other
+ * target's hash — the exact multi-target hole H1 closes.
+ *
+ * Merge rules per SDK:
+ *   - `version` / `urlTemplate` must agree with the existing entry — a
+ *     drift means the on-disk file is stale (a previous SDK bump), which
+ *     fails loud instead of silently mixing versions.
+ *   - `sha256ByTarget` is unioned (the fresh run wins for its own target).
+ *   - the scalar `sha256` tracks the freshly produced target (legacy
+ *     single-target readers keep working).
+ * SDKs absent from this run keep their existing entries untouched.
+ */
+export function mergeAgentSdkResults(existing: IAgentSdkResults, produced: IAgentSdkResults): IAgentSdkResults {
+	const merged: IAgentSdkResults = { ...existing };
+	for (const [sdk, entry] of Object.entries(produced)) {
+		const prior = existing[sdk];
+		if (!prior) {
+			merged[sdk] = entry;
+			continue;
+		}
+		if (prior.version !== entry.version) {
+			throw new Error(`results-file merge: sdk '${sdk}' version drift (on-disk ${prior.version} vs freshly produced ${entry.version}) — the existing results file is stale; delete it and re-run the bundle step for every target`);
+		}
+		if (prior.urlTemplate !== entry.urlTemplate) {
+			throw new Error(`results-file merge: sdk '${sdk}' urlTemplate drift (on-disk ${prior.urlTemplate} vs freshly produced ${entry.urlTemplate}) — refusing to mix distribution endpoints in one results file`);
+		}
+		merged[sdk] = {
+			...entry,
+			sha256ByTarget: { ...prior.sha256ByTarget, ...entry.sha256ByTarget },
+		};
+	}
+	return merged;
 }
 
 main().catch(err => {

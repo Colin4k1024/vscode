@@ -180,6 +180,8 @@ else
 fi
 
 echo "==> [6/6] archive + sha256 manifest"
+# darwin additionally gets a drag-to-Applications DMG — the artifact meant
+# for sharing (the zip stays the CI/manifest artifact).
 SAFE_NAME="$(echo "$APP_NAME_LONG" | tr -d ' ' | tr '[:upper:]' '[:lower:]')"
 ZIP="$DIST_DIR/$SAFE_NAME-$APP_VERSION-$PLATFORM-$ARCH.zip"
 if [ "$SKIP_ZIP" -eq 0 ]; then
@@ -193,6 +195,12 @@ if [ "$SKIP_ZIP" -eq 0 ]; then
 	echo "    zip: $ZIP ($(filesize "$ZIP") bytes)"
 fi
 
+DMG=""
+if [ "$SKIP_ZIP" -eq 0 ] && [ "$PLATFORM" = "darwin" ]; then
+	DMG="$DIST_DIR/$SAFE_NAME-$APP_VERSION-darwin-$ARCH.dmg"
+	bash scripts/make-dmg.sh --app "$APP_PATH" --out "$DIST_DIR" --name="$SAFE_NAME" --version="$APP_VERSION" --arch="$ARCH"
+fi
+
 SUMS="$DIST_DIR/SHA256SUMS.txt"
 # Bare filenames, verifiable via `shasum -a 256 -c SHA256SUMS.txt` from the
 # manifest's own directory (review #66, L6): repo-root-relative paths broke
@@ -201,6 +209,9 @@ SUMS="$DIST_DIR/SHA256SUMS.txt"
 {
 	if [ "$SKIP_ZIP" -eq 0 ]; then
 		(cd "$DIST_DIR" && shasum -a 256 "$(basename "$ZIP")")
+		if [ -n "$DMG" ]; then
+			(cd "$DIST_DIR" && shasum -a 256 "$(basename "$DMG")")
+		fi
 	fi
 } > "$SUMS"
 echo "    manifest: $SUMS"
@@ -242,6 +253,7 @@ cat <<-EOT
 BUILD COMPLETE
 app:      $APP_PATH
 zip:      $([ "$SKIP_ZIP" -eq 0 ] && echo "$ZIP" || echo "(skipped)")
+dmg:      $([ -n "$DMG" ] && echo "$DMG" || echo "(non-darwin or skipped)")
 manifest: $SUMS
 
 Known limitations (D09 ruling 3, recorded per AC11):

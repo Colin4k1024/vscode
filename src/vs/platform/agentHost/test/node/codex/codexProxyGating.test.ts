@@ -12,6 +12,7 @@ import type { ChildProcessWithoutNullStreams } from 'child_process';
 import type { CCAModel } from '@vscode/copilot-api';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
 import { NullLogService } from '../../../../log/common/log.js';
+import type { IProductService } from '../../../../product/common/productService.js';
 import { CodexAgent, codexBinaryTriple, codexPackageSuffix } from '../../../node/codex/codexAgent.js';
 import { CodexProxyService, ICodexProxyService, type ICodexProxyHandle } from '../../../node/codex/codexProxyService.js';
 import type { ICopilotApiService } from '../../../node/shared/copilotApiService.js';
@@ -46,6 +47,8 @@ interface IStartRawHarness {
 	readonly _codexProxyService: ICodexProxyService;
 	readonly _logService: NullLogService;
 	readonly _otelService: { getNativeSdkTelemetryConfig(): Promise<undefined> };
+	/** Optional: the branded-build product shape (`excludeCopilotFromPackaging: true`). Absent = dev/default build. */
+	readonly _productService?: IProductService;
 	_resolveSdkRoot(): Promise<string>;
 }
 
@@ -143,7 +146,7 @@ suite('CodexAgent proxy gating (Issue #39)', () => {
 
 	ensureNoDisposablesAreLeakedInTestSuite();
 
-	async function withFakeConnection(githubToken: string | undefined, fn: (ready: IRawConnectionResult, proxy: CodexProxyService, dump: { args: string[]; openaiApiKey: string | null }) => Promise<void>): Promise<void> {
+	async function withFakeConnection(githubToken: string | undefined, fn: (ready: IRawConnectionResult, proxy: CodexProxyService, dump: { args: string[]; openaiApiKey: string | null }) => Promise<void>, productService?: IProductService): Promise<void> {
 		const sdk = await makeFakeSdk();
 		const proxy = new CodexProxyService(undefined, new NullLogService(), new FakeCopilotApiService());
 		const harness: IStartRawHarness = {
@@ -152,6 +155,7 @@ suite('CodexAgent proxy gating (Issue #39)', () => {
 			_logService: new NullLogService(),
 			_otelService: { getNativeSdkTelemetryConfig: async () => undefined },
 			_resolveSdkRoot: async () => sdk.root,
+			...(productService !== undefined ? { _productService: productService } : {}),
 		};
 		const previousDump = process.env[DUMP_ENV_VAR];
 		const previousOpenAiKey = process.env.OPENAI_API_KEY;
@@ -215,5 +219,20 @@ suite('CodexAgent proxy gating (Issue #39)', () => {
 			assert.strictEqual(dump.openaiApiKey, handle.nonce, 'OPENAI_API_KEY carries the proxy nonce');
 		});
 		assert.strictEqual(await waitForServerCount(baseline), baseline, 'disposing the handle closes the listener');
+	});
+
+	test('branded build (excludeCopilotFromPackaging): a token does not start the proxy (issue #66 M3)', async function () {
+		this.timeout(20000);
+		if (process.platform === 'win32') {
+			return;
+		}
+		const brandedProduct = { excludeCopilotFromPackaging: true } as IProductService;
+		const baseline = listeningServerCount();
+		await withFakeConnection('gh-test-token', async (ready, _proxy, dump) => {
+			assert.strictEqual(ready.proxyHandle, undefined, 'the CAPI proxy is never started in the branded build — its responses path would reject every call');
+			assert.strictEqual(listeningServerCount(), baseline, 'no new listening socket');
+			assert.ok(!dump.args.some(argument => argument.startsWith('model_providers.vscode-proxy')), 'launch config must not define the vscode-proxy provider');
+		}, brandedProduct);
+		assert.strictEqual(await waitForServerCount(baseline), baseline, 'no listener remains after teardown');
 	});
 });

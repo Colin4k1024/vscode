@@ -190,6 +190,24 @@ export interface IProductConfiguration {
 
 	readonly agentSdks?: { readonly [packageId: string]: IAgentSdkProductConfig };
 
+	/**
+	 * D10 section 5 redistribution hard block (fork mixin). When true, the
+	 * packaged product excludes the block-listed Copilot packages (the
+	 * copilotPackagingBlocklist in the mixin — the Copilot API surface,
+	 * the Copilot extension package, and the ingest utilities).
+	 *
+	 * Runtime consequence the agent host keys off: the Copilot API package
+	 * is not shipped, so every CAPI-backed path (Copilot model listing, the
+	 * vscode-proxy responses endpoint, utility completions) is unavailable —
+	 * the providers hide the Copilot sign-in entry and short-circuit those
+	 * paths instead of letting them reject per call.
+	 *
+	 * NB: keep the exact package specifiers out of this comment — this file
+	 * ships in every bundle, and the D10 section 5 bundle gate greps the
+	 * packaged output for those strings.
+	 */
+	readonly excludeCopilotFromPackaging?: boolean;
+
 	readonly copilotVersions?: {
 		readonly runtime: string;
 		readonly sdk: string;

@@ -191,7 +191,7 @@ function createTestSideEffects(
 	const titleController = disposables.add(new AgentHostSessionTitleController(stateManager, {
 		sessionDataService: options.sessionDataService,
 		isActiveAgentTitleGenerationEnabled: () => configService.getRootValue(platformRootSchema, AgentHostActiveAgentTitleGenerationConfigKey) === true,
-	}, logService));
+	}, logService, { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService));
 	services.set(IAgentHostSessionTitleController, titleController);
 	services.set(IAgentHostProviderService, createTestAgentHostProviderService(session => options.getAgent(typeof session === 'string' ? session : session.toString())));
 	const instantiationService = disposables.add(new InstantiationService(services, /*strict*/ true));

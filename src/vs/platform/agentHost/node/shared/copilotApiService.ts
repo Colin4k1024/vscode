@@ -22,6 +22,23 @@ import { IAgentHostGitHubEndpointService } from '../agentHostGitHubEndpointServi
 
 type CopilotApiModule = typeof import('@vscode/copilot-api');
 
+/**
+ * Whether `@vscode/copilot-api` is shipped in this build. The branded
+ * product sets `excludeCopilotFromPackaging` (D10 section 5 hard block),
+ * which strips the package — every CAPI-backed path would reject with the
+ * D10 error from `loadCopilotApi()`. Providers gate their Copilot surface
+ * on this instead (hide the sign-in resource, short-circuit CAPI-backed
+ * refreshes).
+ *
+ * A module-level function (not a method) so plain-object test harnesses
+ * (e.g. CodexAgent's `_startRawConnection` tests) get the same answer.
+ * An absent product service is not the branded build: CAPI paths stay
+ * available (dev/default behavior).
+ */
+export function copilotApiShipped(productService: IProductService | undefined): boolean {
+	return productService?.excludeCopilotFromPackaging !== true;
+}
+
 // Review #66 (L8): module state kept AFTER the import block — hoisted
 // imports interleaved with statements are legal ESM but defeat the
 // imports-first reading contract.

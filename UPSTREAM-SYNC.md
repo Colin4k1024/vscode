@@ -126,7 +126,7 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 §4.1 尚未补录的条目，两者不可直接对账。**#66（M8）已补录 D09 的全部源码改动行**（16 行：gulpfile×3、lib/copilot、
 agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEntitlementService、5 个测试文件、1 个冒烟 fixture）；
 其余漂移（D11–D16 新增 M 文件）仍为既有债留作后续跟进）；
-其中新增（覆盖层）153、修改（源码改动）119（含 43 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
+其中新增（覆盖层）153、修改（源码改动）129（含 49 个测试文件）、删除 0。`patches/` 目录不存在（0 patch，D09 AC12 成立，由
 `scripts/own-change-surface.sh` 断言）。上游协议生成目录
 （`protocol/generated/` 828 文件）与 `build/codex/` 在基线中已存在（上游 in-tree），
 不计入自有改动面。
@@ -144,7 +144,7 @@ agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEnt
 - **上游内嵌默认值的空值守卫/移除**（5 个）：`platform/product/common/product.ts`（移除 `defaultChatAgent`）、`abstractExtensionManagementService.ts`、`extensionsWorkbenchService.ts`、`chatStatusEntry.ts`、`chatWidget.ts`（各 1 行空值守卫）——上游假设 `defaultChatAgent` 必存在，守卫只能写在判读处。
 - **入口/contribution 注册**（5 个）：`app.ts`、`agentHostStarter.config.contribution.ts`、`agentHost.contribution.ts`、`chat.shared.contribution.ts`、`chatStatusDashboard.ts`——注册点本体。
 - **测试文件**（25 个）：跟随被测源文件演进；上游测试文件无法"覆盖"，只能就地改。
-- **构建/工具链/配置**（11 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免）、`build/hygiene.ts`（D15 extensionsGallery 检查 mixin 感知豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）、`build/gulpfile.vscode.ts` + `build/gulpfile.reh.ts` + `build/lib/copilot.ts`（D09 打包链路：agentSdks 盖章、D10 排除过滤器、REH fail-loud——打包任务/构建库本体，无覆盖层挂点）。
+- **构建/工具链/配置**（11 个）：`build/agent-sdk/{README.md,common.ts}`（D02 pin 机制）、`build/filters.ts`（D14 pin 文件 hygiene 豁免）、`build/hygiene.ts`（D15 extensionsGallery 检查 mixin 感知豁免）、根 `package.json`（D14 script alias，1 行）、`.agents/skills/launch/`×3（D06 开发启动脚本，引用 mixin 产品身份）、`build/gulpfile.vscode.ts` + `build/gulpfile.reh.ts`（D09 打包链路：agentSdks 盖章、D10 排除过滤器、REH fail-loud——打包任务本体，无覆盖层挂点）。注：`build/lib/copilot.ts` 已回归对上游 0 diff——D10 block list 数据化进 mixin 的 `copilotPackagingBlocklist`（#66 M8，PR #69 打捞）。
 - **远端安装/引导链路**（4 个）：`sshRemoteAgentHostHelpers.ts`、`sshRemoteAgentHostService.ts`、`remoteAgentHostCliInstaller.ts`、`wslRemoteAgentHostHelpers.ts`（D09：CLI 下载端点去 Microsoft CDN + fallback 回退 + digest 校验）——远端引导脚本生成是运行时行为，无扩展点可覆盖。
 - **运行时 SDK/CAPI 加载**（2 个）：`agentSdkDownloader.ts`（D09 sha256 完整性链 + #66 H1 per-target 哈希）、`copilotApiService.ts`（D09 loadCopilotApi 懒加载）。
 - **Copilot 入口隐藏**（1 个）：`chatEntitlementService.ts`（#66 M3：无 defaultChatAgent 时绑定 chatSetupHidden）。
@@ -224,7 +224,6 @@ agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEnt
 | `build/gulpfile.reh.ts` | M | +14/-0 | D09 | 源码改动 | #66 M7：mixin 置 `excludeCopilotFromPackaging` 时 REH/server 打包任务被调用时 fail-loud（#11 声明 REH 出范围，不得静默发货 D10 section 5 block-list 包）；打包任务本体，无覆盖层挂点 |
 | `build/gulpfile.vscode.ts` | M | +22/-3 | D09 | 源码改动 | D09 packageTask：product.agentSdks 盖章（build/agent-sdk results → product.json 交接，#66 H1 追加 sha256ByTarget）+ `excludeCopilotFromPackaging` 排除过滤器挂接（#66 L2 改具名 glob）；打包任务本体 |
 | `build/hygiene.ts` | M | +26/-2 | D15 | 源码改动 | D15：hygiene 的 extensionsGallery 检查改为 mixin 感知（工作树应用态放行、提交/暂存态仍红）；该检查是上游对产品 gallery 的硬约束，只能改在检查本体；覆盖层机制无法拦截构建脚本 |
-| `build/lib/copilot.ts` | M | +31/-0 | D09 | 源码改动 | D09 `getCopilotFullExcludeFilter`/`COPILOT_FULL_EXCLUDE_GLOBS`（D10 section 5 排除 glob，#66 L2 消除位置依赖）；构建库本体 |
 | `package.json` | M | +1/-0 | D14 | 源码改动 | D14：新增 1 行 `codex:check-protocol-sync` script alias；package.json 是冲突高发区，改动压到最小 |
 | `product/README.md` | A | +98/-0 | D06,D08 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/branding-residue-whitelist.txt` | A | +16/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
@@ -291,9 +290,14 @@ agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEnt
 | `src/vs/platform/agentHost/common/agentHostStarter.config.contribution.ts` | M | +3/-2 | D04,D06 | 源码改动 | starter 配置贡献点默认值；contribution 注册本体 |
 | `src/vs/platform/agentHost/common/agentService.ts` | M | +48/-4 | D04,D05 | 源码改动 | D04/D05 provider 策略裁决逻辑；核心服务行为 |
 | `src/vs/platform/agentHost/common/meta/codexAccount.ts` | M | +14/-0 | D03 | 源码改动 | D03 OpenAI 原生登录的账号元数据类型；协议元数据本体 |
+| `src/vs/platform/agentHost/node/agentHostCommitOperationHandler.ts` | M | +13/-0 | D09 | 源码改动 | #66 M3（PR #69 打捞）：品牌构建下 commit message 生成以用户可读错误失败（CAPI 不可用）；运行时行为 |
+| `src/vs/platform/agentHost/node/agentHostPullRequestOperationHandler.ts` | M | +10/-0 | D09 | 源码改动 | #66 M3（PR #69 打捞）：品牌构建下 PR 标题/描述生成以用户可读错误失败；运行时行为 |
+| `src/vs/platform/agentHost/node/agentHostSessionTitleController.ts` | M | +11/-0 | D09 | 源码改动 | #66 M3（PR #69 打捞）：品牌构建下会话标题生成短路；运行时行为 |
 | `src/vs/platform/agentHost/node/agentSdkDownloader.ts` | M | +60/-1 | D09 | 源码改动 | D09 HIGH-1 sha256 完整性链消费端（下载后提取前校验；#66 H1 追加 sha256ByTarget 按目标解析，多目标 product.json 不再 fail-closed）；运行时行为 |
 | `src/vs/platform/agentHost/node/codex/codexAccountState.ts` | M | +4/-1 | D03 | 源码改动 | D03 登录状态机；运行时行为 |
-| `src/vs/platform/agentHost/node/codex/codexAgent.ts` | M | +173/-16 | D03,D04,D05,D08,D13,D14 | 源码改动 | 最大源码改动（+173/-16）：D03 登录、D04 去 GitHub 耦合、D05 策略、D08 clientInfo 身份与遥测隔离、D13 负向路径；D14 追加 1 字符注释修复（§→section，hygiene）。会话宿主核心行为，无扩展点可覆盖 |
+| `src/vs/platform/agentHost/node/codex/codexAgent.ts` | M | +393/-42 | D03,D04,D05,D08,D13,D14,D09 | 源码改动 | 最大源码改动（+393/-42）：D03 登录、D04 去 GitHub 耦合、D05 策略、D08 clientInfo 身份与遥测隔离、D13 负向路径；D14 追加 1 字符注释修复（§→section，hygiene）；#66 M3（PR #69 打捞）：品牌构建下隐藏 Copilot 登录资源、短路 Copilot 模型刷新（消除重试风暴）、不启动 CAPI proxy。会话宿主核心行为，无扩展点可覆盖 |
+| `src/vs/platform/agentHost/node/claude/claudeAgent.ts` | M | +25/-1 | D09 | 源码改动 | #66 M3（PR #71 审查轮补齐）：Claude provider 同款门禁——品牌构建不列 Copilot 登录资源、忽略 Copilot token、proxy 模型目录短路；运行时行为 |
+| `src/vs/platform/agentHost/node/codex/codexProxyService.ts` | M | +8/-0 | D09 | 源码改动 | #66 M3（PR #69 打捞）：proxy start 契约文档（品牌构建不启动 CAPI proxy）；接口契约本体 |
 | `src/vs/platform/agentHost/node/remoteAgentHostCliInstaller.ts` | M | +26/-7 | D09 | 源码改动 | D09（PR #64）：远端 CLI 安装失败回退到既有 CLI（pinned + loose 两条路径）；#66 L11：curl\|tar → 下载落盘 + `<url>.sha256` sidecar 校验；运行时行为 |
 | `src/vs/platform/agentHost/node/shared/copilotApiService.ts` | M | +39/-1 | D09 | 源码改动 | D09：`@vscode/copilot-api` 改 `loadCopilotApi()` 动态导入（D10 排除下 CAPI 路径 fail-loud 而非启动崩溃；#66 L8 import 顺序整理）；运行时行为 |
 | `src/vs/platform/agentHost/node/sshRemoteAgentHostHelpers.ts` | M | +57/-4 | D09 | 源码改动 | D09：CLI 下载端点默认改本仓库 Releases（去 Microsoft update CDN，可用 AGENT_HOST_CLI_DOWNLOAD_BASE 覆盖）；#66 L11：`buildCliDownloadAndVerifyCommand`（digest sidecar 校验）；运行时行为 |

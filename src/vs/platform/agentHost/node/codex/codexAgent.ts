@@ -70,7 +70,7 @@ import { MODEL_REFRESH_BASE_DELAY_MS, MODEL_REFRESH_MAX_ATTEMPTS, MODEL_REFRESH_
 import { AGENT_HOST_WORKSPACELESS_INSTRUCTIONS } from '../shared/workspacelessInstructions.js';
 import { IAgentHostCheckpointService } from '../../common/agentHostCheckpointService.js';
 import { ISessionDataService } from '../../common/sessionDataService.js';
-import { ICopilotApiService } from '../shared/copilotApiService.js';
+import { copilotApiShipped, ICopilotApiService } from '../shared/copilotApiService.js';
 import { IAgentHostWorktreeIsolation, type IAgentHostWorktreePendingState } from '../shared/worktreeIsolation.js';
 import { getServerToolDisplay } from '../shared/serverToolGroups.js';
 import { IAgentSdkDownloader, IAgentSdkPackage } from '../agentSdkDownloader.js';
@@ -1644,12 +1644,37 @@ export class CodexAgent extends Disposable implements IAgent {
 
 	// #region Auth
 
+	/**
+	 * Whether `@vscode/copilot-api` is shipped in this build. The branded
+	 * product sets `excludeCopilotFromPackaging` (D10 section 5 hard block),
+	 * which strips the package — every CAPI-backed path (Copilot model
+	 * listing, the vscode-proxy responses endpoint, GitHub MCP endpoint
+	 * discovery) would reject with the D10 error from `loadCopilotApi()`.
+	 * Gate those paths here instead: hide the Copilot sign-in resource, skip
+	 * the Copilot model refresh (otherwise `_refreshModels` retries it with
+	 * backoff on every launch), and never start the CAPI proxy.
+	 */
+	private get _copilotApiShipped(): boolean {
+		return copilotApiShipped(this._productService);
+	}
+
 	getProtectedResources(): ProtectedResourceMetadata[] {
 		// Always listed, always optional — matching Claude. Listing it is what lets
 		// the host forward a token to an already-signed-in user (matching ignores
 		// `required`); the unconditional `required: false` is what stops
 		// `resolveSignedOutWindowGate` walling off the whole Agents window before
 		// the user reaches a surface that could explain itself.
+		//
+		// Branded build (D10 section 5): the Copilot resource is NOT listed —
+		// without @vscode/copilot-api no CAPI-backed feature can consume the
+		// token, so offering Copilot sign-in would be a dead end. The repo
+		// resource stays: it is listed for the auth coordinator's silent
+		// forwarding, not for any CAPI path.
+		if (!this._copilotApiShipped) {
+			return [
+				{ ...this._gitHubEndpointService.getRepoResource(), required: false },
+			];
+		}
 		const copilotResource = this._gitHubEndpointService.getCopilotResource();
 		return [
 			{ ...copilotResource, required: false },
@@ -1668,6 +1693,15 @@ export class CodexAgent extends Disposable implements IAgent {
 		}
 		if (resource !== this._gitHubEndpointService.getCopilotResource().resource) {
 			return false;
+		}
+		if (!this._copilotApiShipped) {
+			// Branded build (D10 section 5): the Copilot resource is not listed
+			// (getProtectedResources), so a token arriving here is a stale or
+			// dev-profile one. Accept-and-ignore — none of the CAPI-backed
+			// effects (proxy start, model refresh, GitHub MCP discovery) can
+			// run without @vscode/copilot-api.
+			this._logService.info('[Codex] Ignoring the Copilot auth token: @vscode/copilot-api is not shipped in this build (D10 section 5)');
+			return true;
 		}
 		const normalizedToken = token || undefined;
 		const generation = ++this._githubAuthenticationGeneration;
@@ -2263,6 +2297,14 @@ export class CodexAgent extends Disposable implements IAgent {
 	}
 
 	private async _refreshCopilotModels(): Promise<Error | undefined> {
+		if (!this._copilotApiShipped) {
+			// Branded build (D10 section 5): @vscode/copilot-api is not shipped,
+			// so the CAPI model listing cannot run. Return success with an empty
+			// Copilot catalog — returning an error would put _refreshModels on
+			// its backoff-retry loop forever for a condition that cannot heal.
+			this._copilotModels = [];
+			return undefined;
+		}
 		const token = this._githubToken;
 		if (!token) {
 			this._copilotModels = [];
@@ -2666,9 +2708,18 @@ export class CodexAgent extends Disposable implements IAgent {
 		// nothing. If a token arrives later, `authenticate()` / the
 		// `_ensureConnection` publish step bounce this connection so the
 		// replacement spawns with the proxy.
+		//
+		// Branded build (D10 section 5): @vscode/copilot-api is not shipped, so
+		// the proxy's CAPI read path would reject every request — never start
+		// it. `_copilotApiShipped` also gates the token paths upstream of this
+		// (authenticate, _refreshCopilotModels), so githubToken is normally
+		// already undefined here; the check is defense in depth.
 		const githubToken = this._githubToken;
 		let proxyHandle: ICodexProxyHandle | undefined;
-		if (githubToken) {
+		// NB: the bare `copilotApiShipped(...)` call, not the getter — the
+		// proxy-gating tests invoke `_startRawConnection` with a plain-object
+		// harness as `this`, on which the prototype getter does not exist.
+		if (githubToken && copilotApiShipped(this._productService)) {
 			const proxyStart = this._codexProxyService.start(githubToken);
 			try {
 				proxyHandle = await raceCancellationError(proxyStart, token);

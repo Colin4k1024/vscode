@@ -44,7 +44,7 @@ import { IAgentHostGitService } from '../../common/agentHostGitService.js';
 import { IAgentHostCheckpointService } from '../../common/agentHostCheckpointService.js';
 import { PendingRequestRegistry } from '../../common/pendingRequestRegistry.js';
 import { projectFromCopilotContext } from '../copilot/copilotGitProject.js';
-import { ICopilotApiService } from '../shared/copilotApiService.js';
+import { copilotApiShipped, ICopilotApiService } from '../shared/copilotApiService.js';
 import { ClaudeSdkPackage, IClaudeAgentSdkService } from './claudeAgentSdkService.js';
 import { buildModelEnumerationOptions } from './claudeSdkOptions.js';
 import { isClaudeAccountSetUp, resolveClaudeTransportMode, type ClaudeTransportMode } from './claudeTransportMode.js';
@@ -726,6 +726,16 @@ export class ClaudeAgent extends Disposable implements IAgent {
 		// unconditional `required: false` is what stops `resolveSignedOutWindowGate`
 		// walling off the whole Agents window before the user reaches a surface that
 		// could explain itself.
+		//
+		// Branded build (D10 section 5): the Copilot resource is NOT listed —
+		// without @vscode/copilot-api no CAPI-backed feature can consume the
+		// token, so offering Copilot sign-in would be a dead end. Mirrors
+		// CodexAgent.getProtectedResources (issue #66 M3, PR #71 review).
+		if (!copilotApiShipped(this._productService)) {
+			return [
+				{ ...this._gitHubEndpointService.getRepoResource(), required: false },
+			];
+		}
 		const copilotResource = this._gitHubEndpointService.getCopilotResource();
 		return [
 			{ ...copilotResource, required: false },
@@ -768,6 +778,14 @@ export class ClaudeAgent extends Disposable implements IAgent {
 		}
 		if (resource !== this._gitHubEndpointService.getCopilotResource().resource) {
 			return false;
+		}
+		if (!copilotApiShipped(this._productService)) {
+			// Branded build (D10 section 5): the Copilot resource is not listed
+			// (getProtectedResources), so a token arriving here is stale or from
+			// a dev profile. Accept-and-ignore — none of the CAPI-backed effects
+			// (proxy start, model refresh) can run without @vscode/copilot-api.
+			this._logService.info('[Claude] Ignoring the Copilot auth token: @vscode/copilot-api is not shipped in this build (D10 section 5)');
+			return true;
 		}
 		if (!token) {
 			const oldHandle = this._proxyHandle;
@@ -1009,6 +1027,12 @@ export class ClaudeAgent extends Disposable implements IAgent {
 	 * priority models so CAPI's ordering wins on ties.
 	 */
 	private async _fetchProxyModels(token: string): Promise<readonly IAgentModelInfo[]> {
+		if (!copilotApiShipped(this._productService)) {
+			// Defense in depth (D10 section 5): unreachable once authenticate()
+			// ignores Copilot tokens in the branded build — a CAPI call here
+			// would reject per call with the D10 error.
+			return [];
+		}
 		const userAgent = `${USER_AGENT_PREFIX}/${this._productService.version}`;
 		const all = await this._copilotApiService.models(token, { headers: { 'User-Agent': userAgent }, suppressIntegrationId: true });
 		return all

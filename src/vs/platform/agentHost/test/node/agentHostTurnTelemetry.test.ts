@@ -15,6 +15,7 @@ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../base/test/c
 import { InstantiationService } from '../../../instantiation/common/instantiationService.js';
 import { ServiceCollection } from '../../../instantiation/common/serviceCollection.js';
 import { ILogService, NullLogService } from '../../../log/common/log.js';
+import type { IProductService } from '../../../../platform/product/common/productService.js';
 import { ITelemetryService, TelemetryLevel } from '../../../telemetry/common/telemetry.js';
 import { TelemetryTrustedValue } from '../../../telemetry/common/telemetryUtils.js';
 import { createAgentModelByokMeta } from '../../common/agentModelByokMeta.js';
@@ -269,7 +270,7 @@ suite('AgentSideEffects — turn tracker telemetry', () => {
 		const chatContributions = disposables.add(new AgentHostChatContributions(logService, instantiationService));
 		services.set(IAgentHostChatContributions, chatContributions);
 		services.set(IAgentHostTurnService, new AgentHostTurnService(stateManager, chatContributions, instantiationService));
-		services.set(IAgentHostSessionTitleController, disposables.add(new AgentHostSessionTitleController(stateManager, { sessionDataService }, logService)));
+		services.set(IAgentHostSessionTitleController, disposables.add(new AgentHostSessionTitleController(stateManager, { sessionDataService }, logService, { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService)));
 		services.set(IAgentHostProviderService, createTestAgentHostProviderService(() => agent));
 		const telemetryReporter = new AgentHostTelemetryReporter(telemetryService);
 		services.set(IAgentHostTelemetryReporter, telemetryReporter);

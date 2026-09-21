@@ -10,6 +10,7 @@ import type { DisposableStore } from '../../../../base/common/lifecycle.js';
 import { URI } from '../../../../base/common/uri.js';
 import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../base/test/common/utils.js';
 import { ILogService, NullLogService } from '../../../log/common/log.js';
+import type { IProductService } from '../../../../platform/product/common/productService.js';
 import { GITHUB_COPILOT_PROTECTED_RESOURCE, GITHUB_REPO_PROTECTED_RESOURCE } from '../../common/agent.js';
 import { buildSessionChangesetUri } from '../../common/changesetUri.js';
 import { SessionConfigKey } from '../../common/sessionConfigKeys.js';
@@ -317,7 +318,7 @@ function setup(disposables: Pick<DisposableStore, 'add'>, gitService: TestGitSer
 				createdEvents.push(`${event.sessionKey}:${event.pullRequestUrl}`);
 				createdBranches.push(event.branchName);
 			},
-			createAuthenticationService(options?.withCopilotToken, options?.withRepoToken), gitService, octoKitService, createTestGitHubEndpointService(), copilotApiService, branchNameGenerator, configurationService, options?.logService ?? new NullLogService()),
+			createAuthenticationService(options?.withCopilotToken, options?.withRepoToken), gitService, octoKitService, createTestGitHubEndpointService(), copilotApiService, branchNameGenerator, configurationService, options?.logService ?? new NullLogService(), { _serviceBrand: undefined, version: '1.0.0-test', excludeCopilotFromPackaging: false } as unknown as IProductService),
 		session,
 		createdEvents,
 		createdBranches,

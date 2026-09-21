@@ -55,6 +55,14 @@ export interface ICodexProxyService {
 	 * Start the proxy (if not already running) and return a refcounted
 	 * handle. The provided token is the initial value; rotate via
 	 * {@link ICodexProxyHandle.setToken}.
+	 *
+	 * D10 section 5 (branded build): the proxy's outbound path reads
+	 * `@vscode/copilot-api`, which the branded product does not ship —
+	 * `loadCopilotApi()` rejects every CAPI call with a D10-marked error.
+	 * `CodexAgent` therefore never starts the proxy when
+	 * `product.excludeCopilotFromPackaging` is set (and never lists the
+	 * Copilot sign-in resource), so this service staying idle there is by
+	 * design, not a bug.
 	 */
 	start(githubToken: string): Promise<ICodexProxyHandle>;
 

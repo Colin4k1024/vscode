@@ -38,16 +38,24 @@ const rcedit = promisify(rceditCallback);
 
 // Issue #66 (M7): the desktop packageTask honors the mixin's
 // `excludeCopilotFromPackaging` (D10 section 5 redistribution hard block);
-// this REH/server packaging path does not — Issue #11 declared REH out of
-// scope for the branded product. Fail loud at load time instead of
-// silently shipping the block-listed packages (@vscode/copilot-api,
-// @github/copilot, blackbird utils) in a branded server build. Upstream
-// product.json (no flag) keeps the unchanged upstream behavior.
-if ((product as { readonly excludeCopilotFromPackaging?: boolean }).excludeCopilotFromPackaging === true) {
-	throw new Error(
-		'gulpfile.reh: product.json sets excludeCopilotFromPackaging (branded mixin), but REH/server packaging does not honor the D10 section 5 Copilot exclusion — Issue #11 declared REH out of scope for the branded product. ' +
-		'Package the desktop target instead (build/gulpfile.vscode.ts), or build from pristine upstream product.json for an upstream-flavored server.'
-	);
+// the REH/server packaging path does not — Issue #11 declared REH out of
+// scope for the branded product. Fail loud instead of silently shipping
+// the block-listed packages (@vscode/copilot-api, @github/copilot,
+// blackbird utils) in a branded server build.
+//
+// This must NOT throw at module load (review #70, CRITICAL-1): this file
+// is require()d by build/gulpfile.ts's gulpfile.*.ts glob on EVERY gulp
+// invocation, so a load-time throw would also kill the branded DESKTOP
+// packaging pipeline. Assert inside the REH task body instead — the throw
+// fires exactly when someone actually invokes a server target.
+// Upstream product.json (no flag) keeps the unchanged upstream behavior.
+function assertRehPackagingAllowed(): void {
+	if ((product as { readonly excludeCopilotFromPackaging?: boolean }).excludeCopilotFromPackaging === true) {
+		throw new Error(
+			'gulpfile.reh: product.json sets excludeCopilotFromPackaging (branded mixin), but REH/server packaging does not honor the D10 section 5 Copilot exclusion — Issue #11 declared REH out of scope for the branded product. ' +
+			'Package the desktop target instead (build/gulpfile.vscode.ts), or build from pristine upstream product.json for an upstream-flavored server.'
+		);
+	}
 }
 
 const REPO_ROOT = path.dirname(import.meta.dirname);
@@ -274,6 +282,7 @@ function packageTask(type: string, platform: string, arch: string, sourceFolderN
 	const destination = path.join(BUILD_ROOT, destinationFolderName);
 
 	return () => {
+		assertRehPackagingAllowed();
 		const src = gulp.src(sourceFolderName + '/**', { base: '.' })
 			.pipe(rename(function (path) { path.dirname = path.dirname!.replace(new RegExp('^' + sourceFolderName), 'out'); }))
 			.pipe(util.setExecutableBit(['**/*.sh']))

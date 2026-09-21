@@ -116,7 +116,6 @@ bash scripts/sync-upstream.sh [--ref <ref>]
 | `src/vs/sessions/` | 5 M + 2 A（按 §4.1 实测重算） | 账号菜单、键位 |
 | `src/vs/workbench/contrib/chat/` | 6 M + 3 A（按 §4.1 实测重算） | `chat.shared.contribution.ts` 已被 `sync-upstream.sh --dry-run` 实测预报冲突（2026-09-20 vs upstream/main） |
 | `product.json`（根） | 0 M | D06 mixin 保护：根 product.json 保持 0 diff（`check-product-json-pristine.sh` 把关） |
-| `build/lib/copilot.ts` | M | +31/-0 | D09 | 源码改动 | D09 `getCopilotFullExcludeFilter`/`COPILOT_FULL_EXCLUDE_GLOBS`（D10 section 5 排除 glob，#66 L2 消除位置依赖）；构建库本体 |
 | `package.json`（根） | 1 M（D14 的 1 行 script alias）+ devDependencies pin | Codex 升级必碰；上游也频繁动 devDependencies |
 
 ## 4. 薄覆盖层清单（对齐 R2 / D09 AC12）
@@ -222,9 +221,10 @@ agentSdkDownloader、copilotApiService、ssh/wsl 远端安装链路×4、chatEnt
 | `build/agent-sdk/common.ts` | M | +33/-2 | D02 | 源码改动 | D02 SDK 打包逻辑（CDN 端点等）；构建期工具链，无产品覆盖层机制可承载 |
 | `build/agent-sdk/test/cdnEndpoint.test.ts` | A | +85/-0 | D02,D14 | 覆盖层 | 测试（新增文件）：D03/D11/D12/D13 验收套件；新增文件天然无合并冲突面 |
 | `build/filters.ts` | M | +5/-0 | D14 | 源码改动 | D14：hygiene copyright 豁免 UPSTREAM_COMMIT/VERSION（机器可读 pin 文件不能加注释头）；filters.ts 是上游既有的豁免注册表 |
-| `build/gulpfile.reh.ts` | M | +14/-0 | D09 | 源码改动 | #66 M7：mixin 置 `excludeCopilotFromPackaging` 时 REH/server 打包在加载期 fail-loud（#11 声明 REH 出范围，不得静默发货 D10 section 5 block-list 包）；打包任务本体，无覆盖层挂点 |
+| `build/gulpfile.reh.ts` | M | +14/-0 | D09 | 源码改动 | #66 M7：mixin 置 `excludeCopilotFromPackaging` 时 REH/server 打包任务被调用时 fail-loud（#11 声明 REH 出范围，不得静默发货 D10 section 5 block-list 包）；打包任务本体，无覆盖层挂点 |
 | `build/gulpfile.vscode.ts` | M | +22/-3 | D09 | 源码改动 | D09 packageTask：product.agentSdks 盖章（build/agent-sdk results → product.json 交接，#66 H1 追加 sha256ByTarget）+ `excludeCopilotFromPackaging` 排除过滤器挂接（#66 L2 改具名 glob）；打包任务本体 |
 | `build/hygiene.ts` | M | +26/-2 | D15 | 源码改动 | D15：hygiene 的 extensionsGallery 检查改为 mixin 感知（工作树应用态放行、提交/暂存态仍红）；该检查是上游对产品 gallery 的硬约束，只能改在检查本体；覆盖层机制无法拦截构建脚本 |
+| `build/lib/copilot.ts` | M | +31/-0 | D09 | 源码改动 | D09 `getCopilotFullExcludeFilter`/`COPILOT_FULL_EXCLUDE_GLOBS`（D10 section 5 排除 glob，#66 L2 消除位置依赖）；构建库本体 |
 | `package.json` | M | +1/-0 | D14 | 源码改动 | D14：新增 1 行 `codex:check-protocol-sync` script alias；package.json 是冲突高发区，改动压到最小 |
 | `product/README.md` | A | +98/-0 | D06,D08 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |
 | `product/branding-residue-whitelist.txt` | A | +16/-0 | D06 | 覆盖层 | **覆盖层**：D06 产品 mixin（品牌/图标/默认设置），apply-mixin.sh 在构建/dev 前合并，上游 product.json 保持 0 diff |

@@ -36,6 +36,15 @@
 # is now exempt ONLY where user-visible upstream strings legitimately ship:
 # NLS string tables (the documented VSCodium-posture limitation above).
 (^|/)out/.*\.(js|map|json|fish|sh|css|html|md)$	code-oss|Code - OSS|code\.visualstudio\.com
+# The full product name ships inside bundled code via NLS inlining and
+# upstream comment headers (empirically enumerated against the packaged
+# darwin-arm64 artifact, review #70 round-1): the workbench/sessions main
+# bundles, the bundled extension-host process, and the terminal
+# shell-integration script headers. Anything ELSE under out/ mentioning the
+# full name fails the gate — extend deliberately, with evidence.
+(^|/)out/.*\.main\.js$	Visual Studio Code
+(^|/)out/.*extensionHost[^/]*\.js$	Visual Studio Code
+(^|/)out/vs/workbench/contrib/terminal/common/scripts/	Visual Studio Code
 (^|/)out/.*nls[^/]*\.(js|json)$	Visual Studio Code
 # vscode.d.ts / vscode.proposed.*.d.ts — API documentation comments.
 (^|/)out/vscode-dts/	Visual Studio Code|code\.visualstudio\.com|code-oss
@@ -48,7 +57,10 @@
 # codicon font CSS with the `codicon-code-oss` glyph id).
 (^|/)extensions/([^/]+/)*(dist|media|[A-Za-z-]*out)/	Visual Studio Code|code\.visualstudio\.com|code-oss|Code - OSS
 # Third-party npm packages as shipped in node_modules(.asar.unpacked).
-# Review #66 (L1): scoped to documentation/metadata file types — compiled
-# third-party JS has no legitimate need to name the upstream product, and a
-# first-party string must never hide inside node_modules.
-(^|/)node_modules/.*\.(md|txt|json|map|d\.ts)$	Visual Studio Code|code\.visualstudio\.com|code-oss|Code - OSS
+# Review #66 (L1): the file-type scoping was reverted after empirical
+# validation against the packaged artifact — compiled third-party JS DOES
+# legitimately name the upstream product in JSDoc comments (e.g.
+# commander/lib/help.js). node_modules content is lockfile-determined
+# third-party code, so a first-party string cannot smuggle itself in here;
+# the gate's first-party protection comes from the out/** scoping above.
+(^|/)node_modules/	Visual Studio Code|code\.visualstudio\.com|code-oss|Code - OSS

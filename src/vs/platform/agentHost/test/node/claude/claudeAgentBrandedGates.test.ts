@@ -4,7 +4,6 @@
  *--------------------------------------------------------------------------------------------*/
 
 import assert from 'assert';
-import { suite, test } from 'node:test';
 import { NullLogService } from '../../../../log/common/log.js';
 import type { IProductService } from '../../../../product/common/productService.js';
 import { copilotApiShipped } from '../../../node/shared/copilotApiService.js';
@@ -18,7 +17,9 @@ import type { ProtectedResourceMetadata } from '../../../common/state/protocol/s
  * one-line checks on the shared {@link copilotApiShipped} predicate; these
  * tests pin both the predicate and the two Claude entry points via a
  * plain-object harness (the same pattern codexProxyGating.test.ts uses for
- * `_startRawConnection`) so no DI container is needed.
+ * `_startRawConnection`) so no DI container is needed. suite/test are the
+ * mocha TDD globals (no import — importing node:test would shadow them and
+ * detach the suites from the project runner).
  */
 
 const COPILOT_RESOURCE: ProtectedResourceMetadata = {

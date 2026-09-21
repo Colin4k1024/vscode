@@ -116,7 +116,7 @@ if [ -n "$APP_DIR" ]; then
 		# while an opening-quote-only anchor false-positives on the bundled
 		# loadCopilotApi error string (a template literal whose specifier is
 		# followed by a SPACE — verified against the packaged agentHostMain.js).
-		if perl -pe 's/\bimport\(\s*["'"'"'`]\@vscode\/copilot-api["'"'"'`]\s*\)//g; s/"?copilotPackagingBlocklist"?\s*:\s*\[[^\]]*\]//g; s/"\@vscode\/copilot-api"\s*:\s*"[^"]*"//g' "$bundle" | grep -Eq $'[\\"\'\\x60]@vscode/copilot-api[\\"\'\\x60/]'; then
+		if perl -pe 's/\bimport\(\s*["'"'"'`]\@vscode\/copilot-api["'"'"'`]\s*\)//g; s/"?copilotPackagingBlocklist"?\s*:\s*\[[^\]]*\]//g; s/"\@vscode\/copilot-api"\s*:\s*"[^"]*"//g' "$bundle" | grep -Eq $'["\'\x60]@vscode/copilot-api["\'\x60/]'; then
 			echo "GATE FAILED: $bundle statically links @vscode/copilot-api (D10 section 5: the package is not redistributable; a static import also crashes the agent host at startup in the branded build). Use the lazy loadCopilotApi() path instead." >&2
 			exit 1
 		fi

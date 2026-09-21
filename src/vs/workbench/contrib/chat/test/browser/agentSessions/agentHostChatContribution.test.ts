@@ -1319,6 +1319,23 @@ suite('AgentHostChatContribution', () => {
 			assert.ok(chatAgentService.registeredAgents.has('agent-host-copilot'));
 		});
 
+		test('registers agent as a default agent (branded-build send gate)', () => {
+			// ColinCode does not ship the Copilot Chat extension (D08/D10), so
+			// no extension contributes a default chat agent — and
+			// chatService.sendRequest rejects every send when none exists
+			// ("No default agent available", observed live in the packaged
+			// app). The agent-host agent must register with isDefault so the
+			// send gate passes; isCore keeps it a fallback only — upstream
+			// builds with Copilot Chat prefer the extension agent
+			// (_preferExtensionAgent).
+			const { chatAgentService } = createContribution(disposables);
+
+			const registered = chatAgentService.registeredAgents.get('agent-host-copilot');
+			assert.ok(registered);
+			assert.strictEqual(registered.data.isDefault, true, 'agent-host chat agent must be a default agent or branded sends are rejected');
+			assert.strictEqual(registered.data.isCore, true, 'must stay a core agent so extension-contributed defaults win upstream');
+		});
+
 	});
 
 	suite('response resource links', () => {

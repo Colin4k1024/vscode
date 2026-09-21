@@ -1793,7 +1793,18 @@ export class AgentHostSessionHandler extends Disposable implements IChatSessionC
 			extensionVersion: undefined,
 			extensionPublisherId: 'vscode',
 			extensionDisplayName: this._config.extensionDisplayName ?? 'Agent Host',
-			isDefault: false,
+			// Branded build (ColinCode): the upstream default chat agent comes
+			// from the Copilot Chat extension, which the fork does not ship
+			// (D08 removed product.defaultChatAgent; D10 section 5 excludes it
+			// from packaging). Without a default agent, chatService.sendRequest
+			// rejects EVERY send with "No default agent available" — observed
+			// live in the packaged app. Registering as the default here is safe
+			// upstream too: isCore agents lose to any extension-contributed
+			// default via _preferExtensionAgent, so a Copilot-Chat-equipped
+			// build keeps its existing routing, while a build without one gets
+			// a working fallback. The sessions providers still route the actual
+			// request via agentIdSilent; this is the gate + fallback.
+			isDefault: true,
 			isDynamic: true,
 			isCore: true,
 			metadata: { themeIcon: getAgentSessionProviderIcon(this._config.sessionType) },

@@ -1,11 +1,11 @@
 # Goal State — 关闭 Colin4k1024/vscode 全部 open issue
-Updated: 2026-09-21T10:15+08:00
-Base branch: main (HEAD 69d35b2db83b，本轮已 fast-forward 同步)
+Updated: 2026-09-21T10:35+08:00
+Base branch: main (HEAD 360b1cad9a5a)
 
-## 总览
-- 会话开始时的实际 open 数: **2**（#1 Epic、#66 D09 post-merge audit）——此前会话已关闭 D01–D16 全部子任务（D15 #17 已于 69d35b2db83b 合入）
-- 剩余: #66（PR #70 审查通过，打包实证中）→ #1（Epic，最后关闭）
-
+## 总览 — 目标达成 ✅
+- **open issue 数 = 0**（2026-09-21 实证：`gh issue list --state open` 为空）
+- 本会话关闭: #66（PR #70 merged 360b1cad9a5a，Pascal 两轮审查 round-2 APPROVE）、#1 D00 Epic（收口评论后关闭）
+- 全量 `package.sh` 实证通过（本分支源码 → 8/8 门禁 → zip/manifest 可 `shasum -c` 自验）
 ## 当前执行
 | Issue | 状态 | 分支/PR | 测试 | 审查 |
 |---|---|---|---|---|
